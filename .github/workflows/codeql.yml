@@ -1,0 +1,83 @@
+# ============================================================
+# audio4cj CodeQL —— 安全扫描
+# ------------------------------------------------------------
+# 覆盖：
+#   - C/C++（third-party/drlibs_wrapper.c）：本项目自己写的 C 侧薄封装，
+#     位于 FFI 边界，是本仓库最需要扫描的攻击面
+#   - Python（sctiptr/*.py）：测试素材与 golden 基准的生成脚本
+#
+# 不覆盖：
+#   - 仓颉 .cj：CodeQL 不支持该语言，由 cjlint 替代（见 ci-lint.yml）
+#   - third-party/dr_libs/**：第三方单头文件库，见 .github/codeql/codeql-config.yml
+#
+# 触发：
+#   - push main / PR main：扫描当前代码
+#   - schedule：每周一 02:00 UTC 跑一次，捕获新增规则
+#
+# 【与参考实现的差异：为什么用 manual 构建】
+#   参考项目用 build-mode none 跳过构建（它的 C++ 依赖 Qt，从零编译代价过高）。
+#   本项目不同：C 侧只有一个不依赖任何外部库的源文件，用 clang 编译一次
+#   约一秒，因此可以用 **manual 构建**获得更准确的提取结果 ——
+#   同时顺带验证了该薄封装能独立编译通过。
+#
+# 【关于阻断策略】
+#   本工作流**不内置自定义阻断门禁**：结果上传到 Security 标签页，
+#   由仓库的分支保护规则决定是否阻断。这样做的原因是：
+#   自定义 SARIF 解析脚本本身需要维护与自测，而它的判定口径
+#   （哪些严重度该阻断）属于仓库策略，不宜写死在 CI 文件里。
+# ============================================================
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # 每周一 02:00 UTC（北京时间 10:00）
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write  # 上传 SARIF 到 Security 标签页
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: cpp
+            build_mode: manual
+          - language: python
+            build_mode: none
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 初始化 CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build_mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # 复用 build.cj 相同的编译参数（-I third-party/dr_libs），
+      # 既让 CodeQL 提取到真实编译单元，也顺带验证薄封装可独立编译
+      - name: 编译 C 侧薄封装（供 CodeQL 提取）
+        if: matrix.language == 'cpp'
+        run: |
+          clang -c -O2 -I third-party/dr_libs third-party/drlibs_wrapper.c -o /tmp/drlibs_wrapper.o
+          echo "C 侧薄封装编译通过"
+
+      - name: 执行 CodeQL 分析
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

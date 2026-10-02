@@ -1,0 +1,69 @@
+# ============================================================
+# audio4cj CI Lint —— 快速静态检查（<1 分钟）
+# ------------------------------------------------------------
+# 触发：任何 push / PR 到 main（**无 paths 过滤**）+ workflow_dispatch。
+# 职责：
+#   - cjfmt --check 等价物：格式检查（格式化后比对 git diff）
+#   - cjlint         语义与规范检查（项目级规则集）
+#
+# 【与 ci.yml 的分工】
+#   ci.yml 用 paths 过滤，只在源码/构建相关文件变动时跑（较慢，约数分钟）；
+#   本工作流不过滤，因此**文档、README、注释类改动也能得到快速反馈**。
+#   两者职责互补：本工作流管"写得规不规范"，ci.yml 管"跑起来对不对"。
+#
+# 【为什么 lint 只在 Linux 上跑】
+#   cjfmt 会把源码归一为 LF；若在 Windows 上跑，工作区签出的是 CRLF，
+#   格式化后必然产生全文件 diff，门禁会误报。仓库根的 .gitattributes 已用
+#   `eol=lf` 统一，但把 lint 固定在单一平台仍是更稳妥的做法。
+#
+# 【检查范围为什么只有 src/】
+#   - `testdata/` 与 `libs/` 是二进制素材，不适用；
+#   - `m0-poc/` 是 M0 阶段的历史验证代码（保留作决策留痕，不维护），
+#     不对它设格式门禁，以免冻结的历史代码反向约束当下；
+#   - `tools/` 不入库（见 .gitignore）。
+# ------------------------------------------------------------
+
+name: CI Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: cjfmt + cjlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装仓颉 SDK 1.2.0
+        uses: ./.github/actions/setup-cangjie
+        with:
+          os: linux
+          version: "1.2.0"
+          url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
+
+      # cjfmt 没有 --check 模式，官方的门禁写法就是"就地格式化 + 比对 git diff"。
+      # 之所以能这样用：已实测 cjfmt 对本仓库**幂等**（第二次运行 0 改动），
+      # 因此只要 diff 非空就一定是格式问题，不会是行尾符之类的噪声。
+      - name: cjfmt 格式检查
+        run: |
+          cjfmt -d src/
+          if ! git diff --exit-code -- src/; then
+            echo "::error::src/ 存在未按 cjfmt 格式化的文件（见上方 diff）。本地修复：cjfmt -d src/"
+            exit 1
+          fi
+          echo "cjfmt 检查通过：src/ 无格式差异"
+
+      # -c . 指向仓库根，cjlint 会读取 config/cjlint_rule_list.json，
+      # 从而只启用本项目认可并实测通过的规则集，不污染全局配置。
+      # 当前 src/ 实测 0 条告警 —— 门禁一旦报警即为真实新增问题。
+      - name: cjlint 静态检查
+        run: cjlint -f src/ -c .

@@ -1,0 +1,78 @@
+# setup-cangjie — 仓颉 SDK 安装 composite action
+# ------------------------------------------------------------
+# 用法:
+#   - uses: ./.github/actions/setup-cangjie
+#     with:
+#       os: linux | windows | macos | linux-arm64
+#       version: 1.2.0                                     # 可选,默认 1.2.0
+#       url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}    # 可选
+#       sha-override: ${{ vars.CANGJIE_SDK_SHA_LINUX }}    # 可选,空则用内置 SHA
+#
+# 说明: 内置下载源表覆盖 1.2.0（四平台）。objectKey / SHA-256 逐条列举在
+#       install.sh 与 install.ps1 中 —— objectKey 是官方对象存储的文件 ID，
+#       换版本必须换 key，所以按 "${OS}_${VERSION}" 整条列出而不是拼字符串。
+#
+# 【为什么需要它】
+#   仓颉官方尚未提供公开的 setup action，GitHub 的 runner 镜像也不预装仓颉 SDK。
+#   因此必须自己下载 + 校验 + 注入环境。这也是本工作流唯一"非标准"的部分。
+#
+# 【来源】
+#   移植自同机另一个仓颉项目（CJQT6）的同类 action —— 那套已经在真实 runner 上
+#   跑通，直接复用比重新摸索下载源与校验方式可靠得多。
+# ------------------------------------------------------------
+# 输出:
+#   cangjie-home: 仓颉 SDK 安装根目录
+# 副作用(写入 $GITHUB_ENV / $GITHUB_PATH):
+#   - CANGJIE_HOME
+#   - $CANGJIE_HOME/bin / tools/bin / tools/lib / runtime/lib/<os>_<arch>_cjnative
+#   - LD_LIBRARY_PATH(Linux) / DYLD_LIBRARY_PATH(macOS)
+# ------------------------------------------------------------
+
+name: setup-cangjie
+description: 安装仓颉 SDK(支持 linux/windows/macos/linux-arm64),SHA-256 校验 + vars 覆盖
+
+inputs:
+  os:
+    description: 目标平台 linux | windows | macos | linux-arm64
+    required: true
+  version:
+    description: 仓颉 SDK 版本
+    required: false
+    default: "1.2.0"
+  url-override:
+    description: SDK 下载 URL 覆盖(vars.CANGJIE_SDK_URL_<PLATFORM>)
+    required: false
+    default: ""
+  sha-override:
+    description: SHA-256 覆盖(vars.CANGJIE_SDK_SHA_<PLATFORM>,空字符串跳过校验)
+    required: false
+    default: ""
+
+outputs: {}
+
+runs:
+  using: composite
+  steps:
+    # Windows runner 用 pwsh
+    - name: 安装仓颉 SDK(Windows)
+      if: runner.os == 'Windows'
+      id: install-windows
+      shell: pwsh
+      run: "${{ github.action_path }}\\install.ps1"
+      env:
+        INPUT_OS: ${{ inputs.os }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_URL_OVERRIDE: ${{ inputs.url-override }}
+        INPUT_SHA_OVERRIDE: ${{ inputs.sha-override }}
+
+    # Linux / macOS runner 用 bash
+    - name: 安装仓颉 SDK(Linux/macOS)
+      if: runner.os != 'Windows'
+      id: install-unix
+      shell: bash
+      run: bash "${{ github.action_path }}/install.sh"
+      env:
+        INPUT_OS: ${{ inputs.os }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_URL_OVERRIDE: ${{ inputs.url-override }}
+        INPUT_SHA_OVERRIDE: ${{ inputs.sha-override }}

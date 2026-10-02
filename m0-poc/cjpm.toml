@@ -1,0 +1,23 @@
+# M0 可行性验证工程 —— audio4cj
+# 目的：验证「仓颉 -> dr_libs(C)」的完整 FFI 链路
+# 注意：这是独立工程，与 audio4cj 正式项目结构（开发文档 §3.2）无关，验证完可删除
+
+[package]
+  name = "m0poc"
+  cjc-version = "1.2.0"
+  version = "0.0.1"
+  output-type = "executable"
+
+# C 库依赖：cjpm 编译期在此目录查找 libdrwav.dll（Windows 要求有 lib 前缀）
+[ffi.c]
+  drwav = { path = "./libs/windows_x86_64/" }
+
+# 链接安全加固。
+#
+# 实测教训（2026-10-02）：`-z noexecstack -z relro -z now` 是 Linux/ELF 专有选项，
+# Windows 使用 lld 链接 PE 目标，不支持 -z 参数，若写在 [package] 里全局生效
+# 会导致链接直接失败：
+#     lld: error: unknown argument: -z
+# 因此必须放在平台特有的 [target] 节中。
+[target.x86_64-unknown-linux-gnu]
+  link-option = "-z noexecstack -z relro -z now"

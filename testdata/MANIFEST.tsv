@@ -1,0 +1,57 @@
+# path	container	codec
+# 由 gen_audio_fixtures.py 生成，作为探测层识别矩阵测试的对照基准。
+# container/codec 由本脚本的 sniff() 独立识别，与仓颉探测层互为交叉检查。
+aac/aac_adts_128k.aac	aac	
+aac/aac_adts_256k.aac	aac	
+aac/aac_adts_64k.aac	aac	
+aac/aac_adts_64k_mono.aac	aac	
+flac/flac_cover.flac	flac	
+flac/flac_s16_16000_mono.flac	flac	
+flac/flac_s16_44100_mono.flac	flac	
+flac/flac_s16_44100_stereo.flac	flac	
+flac/flac_s24_44100_stereo.flac	flac	
+flac/flac_silence.flac	flac	
+flac/flac_tagged.flac	flac	
+mp3/mp3_16000_mono.mp3	mp3	
+mp3/mp3_cbr_128k.mp3	mp3	
+mp3/mp3_cover.mp3	mp3	
+mp3/mp3_id3v1.mp3	mp3	
+mp3/mp3_id3v23.mp3	mp3	
+mp3/mp3_id3v23_plus_v1.mp3	mp3	
+mp3/mp3_id3v24.mp3	mp3	
+mp3/mp3_vbr_q4.mp3	mp3	
+mp4/aac_mp4_128k.m4a	mp4	
+mp4/aac_mp4_256k.m4a	mp4	
+mp4/aac_mp4_64k.m4a	mp4	
+mp4/aac_mp4_tagged.m4a	mp4	
+mp4/mp4_cover.m4a	mp4	
+mp4/mp4_tagged_faststart.m4a	mp4	
+mp4/mp4_tagged_full.m4a	mp4	
+ogg/ogg_flac.oga	ogg	flac
+ogg/ogg_flac_tagged.oga	ogg	flac
+ogg/ogg_opus_32k.opus	ogg	opus
+ogg/ogg_opus_96k.opus	ogg	opus
+ogg/ogg_opus_tagged.opus	ogg	opus
+ogg/ogg_speex_16000.spx	ogg	speex
+ogg/ogg_vorbis_q0.ogg	ogg	vorbis
+ogg/ogg_vorbis_q4.ogg	ogg	vorbis
+ogg/ogg_vorbis_q4_mono.ogg	ogg	vorbis
+ogg/ogg_vorbis_q8.ogg	ogg	vorbis
+ogg/ogg_vorbis_silence.ogg	ogg	vorbis
+ogg/ogg_vorbis_tagged.ogg	ogg	vorbis
+ref_1khz_16000_s16_mono.wav	wav	
+ref_440hz_44100_s16_stereo.wav	wav	
+ref_silence_44100_s16_stereo.wav	wav	
+ref_sweep_44100_s16_stereo.wav	wav	
+wav/wav_info_tagged.wav	wav	
+wav/wav_s16_16000_mono.wav	wav	
+wav/wav_s16_22050_mono.wav	wav	
+wav/wav_s16_44100_mono.wav	wav	
+wav/wav_s16_44100_stereo.wav	wav	
+wav/wav_s16_48000_stereo.wav	wav	
+wav/wav_s16_96000_stereo.wav	wav	
+wav/wav_s24_44100_mono.wav	wav	
+wav/wav_s24_44100_stereo.wav	wav	
+wav/wav_s32_44100_mono.wav	wav	
+wav/wav_s32_44100_stereo.wav	wav	
+wav/wav_u8_44100_mono.wav	wav	

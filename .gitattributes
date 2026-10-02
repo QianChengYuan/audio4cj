@@ -1,0 +1,50 @@
+# ============================================================================
+# 行尾符与二进制标记
+#
+# 【为什么需要这个文件】
+#   本项目在 Windows 上开发，编辑器默认写出 CRLF；而 cjfmt（官方格式化器）
+#   会把源码归一为 LF。若不统一，CI 的 `cjfmt + git diff --exit-code` 门禁
+#   会在每次签出后立即报"格式不符"——差异却只是行尾符，与代码无关。
+#
+#   这里用 `eol=lf` 让 Git 在**签出与提交时都统一为 LF**，
+#   使工作区、仓库与 cjfmt 三者一致，门禁报出的差异才一定是真实格式问题。
+# ============================================================================
+
+# 默认：文本文件统一 LF
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# 二进制文件：禁止行尾转换（否则会损坏文件）
+#
+# 测试素材（testdata/）与 C 库产物（libs/）都是二进制，
+# 一旦被当作文本做 CRLF 转换就会静默损坏 —— 表现为解码结果错乱，
+# 而且很难想到是版本控制造成的。
+# ---------------------------------------------------------------------------
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.lib    binary
+*.exp    binary
+*.a      binary
+*.obj    binary
+
+# 音频素材与 golden 基准
+*.wav    binary
+*.flac   binary
+*.mp3    binary
+*.ogg    binary
+*.opus   binary
+*.oga    binary
+*.spx    binary
+*.aac    binary
+*.m4a    binary
+*.f32le  binary
+
+# 图片与压缩包
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.zip    binary
+*.tar    binary
+*.gz     binary

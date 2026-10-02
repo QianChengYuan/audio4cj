@@ -1,0 +1,49 @@
+# ============================================================================
+# audio4cj —— 仓颉统一音频解析库
+# 文档：docs/README.md
+# 许可证：Apache-2.0（见 LICENSE / NOTICE / LICENSES.md）
+#
+# 解码实现分工：
+#   WAV             —— 纯仓颉实现（未压缩容器，其「解码」本质是位深转换，
+#                      不含浮点 DSP）
+#   FLAC / MP3      —— 经 dr_libs 的 FFI 接入
+#   Ogg 封装的 FLAC —— 同上（dr_flac 原生支持，与原生 FLAC 共用同一读取器）
+# dr_libs 的 WAV 通路保留作交叉验证基准。
+# ============================================================================
+
+[package]
+  name = "audio4cj"
+  cjc-version = "1.2.0"
+  version = "0.1.0"
+  output-type = "static"
+  description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
+
+# C 库依赖：dr_libs 的**合并动态库**（dr_wav + dr_flac + dr_mp3 三种实现
+# 置于同一翻译单元，三者符号前缀互不冲突，实测可共存）。
+#
+# Windows 前缀规格（cjc 与 cjpm 的实现差异，属已知规格问题）：
+#   编译期 —— cjpm 查找的是**带 lib 前缀**的 libdrlibs.dll
+#   运行期 —— cjpm 构建产物加载的是**无 lib 前缀**的 drlibs.dll
+#   故 libs/windows_x86_64/ 下必须同时存在两份拷贝。
+#
+# 跨平台：本行**固定指向 libs/current/**，该目录由 build.cj 在构建前准备 ——
+# 「优先复用 libs/<平台>/ 下的预置产物，否则用该平台的工具链现场编译」。
+#
+# 之所以不写死 libs/<平台>/：`[ffi.c]` 的路径是**静态配置**，无法按目标平台切换。
+# 因此把"按平台选产物"这一步搬到了构建脚本里，换来一份配置通吃三平台。
+# 各平台的预置产物仍放在 libs/<平台>/ 下（需要入库），build.cj 会按当前平台取用：
+#   Windows : libs/windows_x86_64/   （含 lib 前缀双副本 + 导入库）
+#   Linux   : libs/linux_x86_64/     （libdrlibs.so）
+#   macOS   : libs/macos_aarch64/ 或 libs/macos_x86_64/（libdrlibs.dylib）
+[ffi.c]
+  drlibs = { path = "./libs/current/" }
+
+# 链接安全加固。
+#
+# 注意：`-z noexecstack -z relro -z now` 是 Linux/ELF 专有选项，
+# Windows 的 lld 链接 PE 目标时不支持 -z 参数，若写在 [package] 里全局生效
+# 会导致 Windows 构建直接失败（lld: error: unknown argument: -z）。
+# 因此平台相关链接选项必须放进对应的 [target] 节。
+# （实测教训见开发文档 §6.2 与 §12.4）
+[target.x86_64-unknown-linux-gnu]
+  link-option = "-z noexecstack -z relro -z now"

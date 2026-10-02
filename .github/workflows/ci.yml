@@ -1,0 +1,223 @@
+# ============================================================
+# audio4cj CI —— 三平台无人值守门禁
+# ------------------------------------------------------------
+# 触发：push / PR 到 main（仅源码与构建相关变更），以及手动 workflow_dispatch。
+# 平台：
+#   - Linux x64   (ubuntu-24.04)
+#   - Windows x64 (windows-2022)
+#   - macOS arm64 (macos-14, Apple Silicon)
+#
+# 流程：缓存 → 仓颉 SDK → C 编译器检查 → cjpm check/build → cjpm test
+#
+# 【为什么三个平台的步骤几乎一样】
+#   C 库（dr_libs 薄封装）的准备**已经下沉到 build.cj 的 pre-build 钩子**：
+#   它按当前平台复用 `libs/<平台>/` 的预置产物，没有预置产物时现场编译。
+#   因此 CI 里不需要任何平台分支的编译命令 —— 这正是 build.cj 存在的意义。
+#
+# 【测试不需要 ffmpeg】
+#   golden PCM 基准已随仓库入库，而"无损互证"本身不需要外部工具。
+#   ffmpeg 只在**生成**素材与基准时用得到，CI 完全用不上。
+#
+# 【测试也不需要下载素材】
+#   testdata/ 已入库（合成信号生成，无版权问题）。
+#   musics/ 下的第三方版权歌曲不入库，依赖它们的"长时运行"用例会打印
+#   提示并跳过（见 src/test/long_run_test.cj 文件头），不会判失败。
+#
+# 【平台覆盖的取舍】
+#   本工作流覆盖 M6 要求的三平台。若要加 Linux arm64（ubuntu-24.04-arm），
+#   复制 linux-x64 的 job 并把 setup-cangjie 的 os 改为 linux-arm64 即可 ——
+#   install.sh 的内置表已含该平台的下载源与 SHA。
+# ------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'third-party/**'
+      - 'libs/**'
+      - 'testdata/**'
+      - 'cjpm.toml'
+      - 'cjpm.lock'
+      - 'build.cj'
+      - '.gitattributes'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'third-party/**'
+      - 'libs/**'
+      - 'testdata/**'
+      - 'cjpm.toml'
+      - 'cjpm.lock'
+      - 'build.cj'
+      - '.gitattributes'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # 与 cjpm.toml 的 cjc-version = "1.2.0" 保持一致。
+  # 注意二者含义不同：cjpm.toml 声明的是**最低支持版本**，
+  # 这里用的是 CI 实际验证的版本。当前两者相同，故无需额外的"最低版本门禁"。
+  CANGJIE_VERSION: "1.2.0"
+
+jobs:
+  # ============================================================
+  # Linux x86_64
+  # ============================================================
+  linux-x64:
+    name: Linux x64
+    timeout-minutes: 40
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 缓存 cjpm 构建产物
+        uses: actions/cache@v6
+        with:
+          path: target/release
+          key: ci-linux-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          restore-keys: |
+            ci-linux-${{ env.CANGJIE_VERSION }}-
+
+      - name: 安装仓颉 SDK ${{ env.CANGJIE_VERSION }}
+        uses: ./.github/actions/setup-cangjie
+        with:
+          os: linux
+          version: ${{ env.CANGJIE_VERSION }}
+          url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
+
+      # 该平台没有预置的 C 库产物，build.cj 会现场编译，因此必须有 C 编译器
+      - name: 确保 C 编译器可用
+        run: |
+          if ! command -v clang >/dev/null 2>&1; then
+            echo "clang 缺失，尝试安装"
+            sudo apt-get update && sudo apt-get install -y clang
+          fi
+          clang --version
+
+      # 版本信息先打出来：三平台里某个失败时，第一件要确认的往往是
+      # "是不是 SDK 或编译器不对"，而不是去猜代码问题
+      - name: 打印工具链版本
+        run: |
+          cjc --version
+          cjpm --version
+
+      - name: cjpm check
+        run: cjpm check
+
+      - name: cjpm build
+        run: cjpm build
+
+      - name: 确认 C 库产物已就位
+        run: ls -l libs/current/
+
+      - name: cjpm test
+        run: cjpm test --timeout-each 300s
+
+  # ============================================================
+  # Windows x86_64
+  # ============================================================
+  windows-x64:
+    name: Windows x64
+    timeout-minutes: 40
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 缓存 cjpm 构建产物
+        uses: actions/cache@v6
+        with:
+          path: target/release
+          key: ci-windows-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          restore-keys: |
+            ci-windows-${{ env.CANGJIE_VERSION }}-
+
+      - name: 安装仓颉 SDK ${{ env.CANGJIE_VERSION }}
+        uses: ./.github/actions/setup-cangjie
+        with:
+          os: windows
+          version: ${{ env.CANGJIE_VERSION }}
+          url-override: ${{ vars.CANGJIE_SDK_URL_WINDOWS }}
+
+      # Windows 侧**无需 C 编译器**：仓库已预置 libs/windows_x86_64/ 的产物，
+      # build.cj 会直接复用（含编译期需要的 lib 前缀双副本）。
+      # 这也是本项目选择"预置产物 + 构建期装配"而非"强制现场编译"的原因。
+      - name: 打印工具链版本
+        run: |
+          cjc --version
+          cjpm --version
+
+      - name: cjpm check
+        run: cjpm check
+
+      - name: cjpm build
+        run: cjpm build
+
+      - name: 确认 C 库产物已就位
+        run: dir libs\current\
+
+      - name: cjpm test
+        run: cjpm test --timeout-each 300s
+
+  # ============================================================
+  # macOS Apple Silicon (arm64)
+  # ============================================================
+  macos-arm64:
+    name: macOS arm64
+    timeout-minutes: 40
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 缓存 cjpm 构建产物
+        uses: actions/cache@v6
+        with:
+          path: target/release
+          key: ci-macos-arm64-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          restore-keys: |
+            ci-macos-arm64-${{ env.CANGJIE_VERSION }}-
+
+      - name: 安装仓颉 SDK ${{ env.CANGJIE_VERSION }}
+        uses: ./.github/actions/setup-cangjie
+        with:
+          os: macos
+          version: ${{ env.CANGJIE_VERSION }}
+          url-override: ${{ vars.CANGJIE_SDK_URL_MACOS }}
+          sha-override: ${{ vars.CANGJIE_SDK_SHA_MACOS }}
+
+      # 仓颉链接器 ld64.lld 默认 -syslibroot '/'，需 SDKROOT 定位 macOS 系统库
+      - name: 探测 macOS SDK 路径
+        run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+
+      - name: 确保 C 编译器可用
+        run: clang --version
+
+      - name: 打印工具链版本
+        run: |
+          cjc --version
+          cjpm --version
+
+      - name: cjpm check
+        run: cjpm check
+
+      - name: cjpm build
+        env:
+          SDKROOT: ${{ env.SDKROOT }}
+        run: cjpm build
+
+      - name: 确认 C 库产物已就位
+        run: ls -l libs/current/
+
+      - name: cjpm test
+        env:
+          SDKROOT: ${{ env.SDKROOT }}
+        run: cjpm test --timeout-each 300s
