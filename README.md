@@ -97,6 +97,14 @@ cjpm check      # 依赖与编译顺序校验（须在 build 之后，原因见�
 - API 参考：[`core`](docs/api/core.md) · [`pcm`](docs/api/pcm.md) · [`meta`](docs/api/meta.md) · [`stream`](docs/api/stream.md) · [`facade`](docs/api/facade.md)
 - [OGG / AAC 解码扩展可行性评估](docs/codec-expansion-assessment.md) —— 候选库、许可证、构建代价与立项建议
 
+> **关于源码注释里的「开发文档 §X」**：阅读源码时会看到这类指向（例如
+> `src/core/exception.cj` 的「开发文档 §4.1」）。那指的是项目的**内部设计留痕**
+> —— 设计文档与可行性评估，记录的是决策过程与取舍理由，**不随本仓库分发**。
+>
+> 这些注释刻意保留：它们记录的是「某处实现依据的是哪条设计决策」，
+> 对维护者是有价值的溯源信息。上面的 `docs/` 才是面向使用者的公开文档，
+> 其中的结论已自成体系，不依赖那份内部文档。
+
 ## 依赖与许可证
 
 本项目采用 **Apache License 2.0**，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
