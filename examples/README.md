@@ -40,12 +40,25 @@ cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac info
 
 ## 关于「探测」
 
-本库**当前不暴露**「这是什么容器 / 编码」的查询：容器与子编码只在
-`AudioFile.open()` 内部判别，仅当**不受支持**时才通过
-`FormatNotSupportedException` 的信息告知使用者（如 `ogg/opus`）。
-`AudioInfo` 提供的是采样率、声道、位深、时长、总帧数。
+容器与编码通过 `format()` 拿到，且 `container` / `codec` **分开可读**，
+因此程序化判断不必去切字符串：
 
-详见 [`src/example_info.cj`](src/example_info.cj) 的说明。
+```cangjie
+let fmt = f.format()
+println("${fmt.codecId}（${fmt.mimeType}）")        // 如 ogg/flac（audio/ogg）
+if (fmt.container == "ogg" && fmt.codec == "flac") {
+    // Ogg 封装的 FLAC
+}
+```
+
+`format()` 与 `tracks()` 都是 `open()` 时的**快照**，`close()` 之后仍可读 ——
+"先看是什么格式，再决定要不要解码"不必让文件一直开着。
+
+另外，**识别与解码是两件事**：Ogg/Vorbis、MP4 等会被准确识别（连子编码一起），
+只是 `open()` 会抛 `FormatNotSupportedException`，其信息里写的就是
+`format().codecId` 那套标识。要读它们的**标签**请用示例 `tags`。
+
+详见 [`src/example_info.cj`](src/example_info.cj)。
 
 ## 更多文档
 

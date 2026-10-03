@@ -15,6 +15,8 @@ public class AudioFile <: Resource {
     public prop path: String
     public func metadata(): Tag
     public func info(): AudioInfo
+    public func format(): FormatInfo
+    public func tracks(): Array<Track>
     public func stream(): FrameStream
     public func readAll(maxFrames!: Int64 = 10_000_000): AudioBuffer
     public func readFrames(count: Int64): AudioBuffer
@@ -317,6 +319,44 @@ main() {
 ```
 
 > **与 `metadata()` 的关系**：两者返回同一 `Tag` 模型。`metadata()` 需要先成功 `open()`（因而仅对可解码格式有效），`readTags()` 直连解析器、不依赖解码链路。对 WAV 而言两者结果一致（共用同一 INFO 解析）。
+
+### 3.12 `format` 与 `tracks`（M6 新增）
+
+```cangjie
+public func format(): FormatInfo
+public func tracks(): Array<Track>
+```
+
+暴露 `open()` 时探测出的容器与编码。**在这组接口出现之前，那份判定只用于分支选实现、
+随后即被丢弃** —— 使用者拿不到"这是什么格式"，只能靠 `open()` 失败时的异常信息间接得知。
+
+| 返回值 | 说明 |
+|---|---|
+| `format().container` | 容器标识（小写）：`wav` / `flac` / `mp3` / `ogg` / … |
+| `format().codec` | 容器内的**子编码**；只有 Ogg 族有（`flac` / `vorbis` / `opus` / `speex`），其余为空串 |
+| `format().codecId` | 归一化标识，便于打印：`flac`、`ogg/flac`、`ogg/opus` |
+| `format().mimeType` | MIME 类型，如 `audio/flac` |
+| `tracks()` | 轨道信息（当前所有受支持容器均为单轨） |
+
+> **做程序化判断请用 `container` / `codec` 两个字段，不要去切 `codecId` 字符串。**
+> `codecId` 只服务于打印与日志 —— 它和异常信息用的是同一套渲染规则。
+
+```cangjie
+try (f = AudioFile.open("./song.oga")) {
+    let fmt = f.format()
+    if (fmt.container == "ogg" && fmt.codec == "flac") {
+        // Ogg 封装的 FLAC
+    }
+    println("格式：${fmt.codecId}（${fmt.mimeType}）")
+}
+```
+
+**这两个方法在 `close()` 之后仍可读。** 探测结果在 `open()` 时已固化成值类型，
+轨道信息也在那时快照了一份。这是有意为之：媒体库扫盘这类场景通常是"先看是什么格式、
+再决定要不要解码"，不该为了问一句格式而让文件保持打开。
+
+> 与之对照：**数据方法**（`info` / `metadata` / `stream` / `readAll` / `seekFrames` / `seekTo`）
+> 在关闭后一律抛 `ClosedResourceException`。
 
 ## 四、异常对照表
 

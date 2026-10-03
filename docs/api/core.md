@@ -167,11 +167,38 @@ public class Track {
 | 字段 | 说明 |
 |---|---|
 | `index` | 轨道索引，从 0 开始 |
-| `codecId` | 编码标识字符串（如 `"pcm_s16le"`） |
+| `codecId` | 该轨的编码标识，取值来自**解码读取器**（如 `flac` / `mp3` / `pcm`） |
 | `sampleRate` | 该轨采样率（Hz） |
 | `channels` | 该轨声道数 |
 
-### 2.3 `CodecParameters`
+### 2.3 `FormatInfo`
+
+容器与编码描述，由 `AudioFile.format()` 返回（见 [facade.md](facade.md#312-format-与-tracksm6-新增)）。
+
+```cangjie
+public class FormatInfo {
+    public let container: String
+    public let codec: String
+    public let codecId: String
+    public let mimeType: String
+
+    public init(container: String, codec: String, codecId: String, mimeType: String)
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `container` | 容器标识（小写）：`wav` / `flac` / `mp3` / `ogg` / `mp4` / … |
+| `codec` | 容器内的**子编码**；只有 Ogg 族非空（`flac` / `vorbis` / `opus` / `speex`，判定不出时为空串） |
+| `codecId` | 归一化标识：`flac`、`ogg/flac`、`ogg/opus`。**仅供打印 —— 程序化判断请用上面两个字段** |
+| `mimeType` | MIME 类型；无法判定时为 `application/octet-stream` |
+
+> **与 `Track.codecId` 的口径差异（容易误用，故写明）**：
+> `Track.codecId` 由**解码读取器**给出，不体现容器封装；而 `FormatInfo.codecId`
+> 由**探测层**给出，Ogg 族会带上容器前缀。就 Ogg-FLAC 而言，前者是 `flac`、
+> 后者是 `ogg/flac` —— 需要"是什么封装"用后者，需要"用哪个读取器解的"用前者。
+
+### 2.4 `CodecParameters`
 
 解码器参数载体，由解码器填充。
 

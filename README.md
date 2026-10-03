@@ -42,6 +42,10 @@ main() {
         let info = f.info()
         println("${info.sampleRate} Hz / ${info.channels} 声道")
 
+        // 容器与编码（探测结果）：container / codec 分开可读
+        let fmt = f.format()
+        println("格式: ${fmt.codecId}（${fmt.mimeType}）")
+
         // stream() 是主 API：内存占用与音频时长无关
         let s = f.stream()
         while (let Some(chunk) <- s.next()) {

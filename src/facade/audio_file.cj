@@ -37,18 +37,31 @@ public class AudioFile <: Resource {
     private let _reader: ?FormatReader
     private let _decoder: ?Decoder
 
+    /// 探测结果固化下来的格式描述（见 `format()`）。
+    private let _format: FormatInfo
+
+    /// 轨道信息**快照**（见 `tracks()`）。
+    private let _tracks: Array<Track>
+
     /// 无后端构造：M1 契约测试使用（数据方法会抛"未绑定解码后端"）。
     protected init(path: String) {
         this._path = path
         this._reader = None
         this._decoder = None
+        this._format = FormatInfo("unknown", "", "unknown", "application/octet-stream")
+        this._tracks = Array<Track>(0, repeat: Track(0, "", 0, 0))
     }
 
     /// 绑定后端的构造，由 open() 在探测成功后调用。
-    protected init(path: String, reader: FormatReader, decoder: Decoder) {
+    ///
+    /// `formatInfo` 由探测结果固化成值类型；`tracks` 在此**快照**一份 ——
+    /// reader 一旦关闭就无法再查询，而格式信息在文件关闭后仍应可读。
+    protected init(path: String, reader: FormatReader, decoder: Decoder, formatInfo: FormatInfo) {
         this._path = path
         this._reader = reader
         this._decoder = decoder
+        this._format = formatInfo
+        this._tracks = reader.tracks()
     }
 
     /// 打开音频文件：魔数探测 → 选择实现 → 绑定后端。
@@ -66,6 +79,10 @@ public class AudioFile <: Resource {
                     "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC。")
         }
 
+        // 把探测结果固化成值类型，随 AudioFile 一起保留 ——
+        // 否则这份判定只用来选实现，使用者永远看不到它。
+        let formatInfo = formatInfoOf(probe)
+
         match (probe.container) {
             case "wav" =>
                 let reader = WavFormatReader(path)
@@ -74,8 +91,8 @@ public class AudioFile <: Resource {
                     reader.channels(),
                     reader.sampleRate()
                 )
-                AudioFile(path, reader, decoder)
-            case "flac" => openFlac(path)
+                AudioFile(path, reader, decoder, formatInfo)
+            case "flac" => openFlac(path, formatInfo)
             case "mp3" =>
                 let reader = Mp3FormatReader(path)
                 let decoder = Mp3PcmDecoder(
@@ -84,7 +101,7 @@ public class AudioFile <: Resource {
                     reader.bitsPerSample(),
                     reader.totalFrames()
                 )
-                AudioFile(path, reader, decoder)
+                AudioFile(path, reader, decoder, formatInfo)
             case "ogg" =>
                 // 目前只有 Ogg 封装的 FLAC 可解码，它在 supported 检查处已通过。
                 // 这里再做一次显式判断并非冗余：它把「容器级」与「编码级」两道
@@ -92,7 +109,7 @@ public class AudioFile <: Resource {
                 if (probe.codec != "flac") {
                     throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（${path}）")
                 }
-                openFlac(path)
+                openFlac(path, formatInfo)
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（${path}）")
         }
     }
@@ -101,7 +118,7 @@ public class AudioFile <: Resource {
     ///
     /// 原生 FLAC 与 **Ogg 封装的 FLAC 共用这一条路径** —— dr_flac 对两者是同一套
     /// API（`drflac_open_file` 会自动识别封装类型），因此无需区分。
-    private static func openFlac(path: String): AudioFile {
+    private static func openFlac(path: String, formatInfo: FormatInfo): AudioFile {
         let reader = FlacFormatReader(path)
         let decoder = FlacPcmDecoder(
             reader.sampleRate(),
@@ -109,7 +126,15 @@ public class AudioFile <: Resource {
             reader.bitsPerSample(),
             reader.totalFrames()
         )
-        AudioFile(path, reader, decoder)
+        AudioFile(path, reader, decoder, formatInfo)
+    }
+
+    /// 把探测结果固化成公开的值类型。
+    ///
+    /// `codecId` 复用 `formatLabel()` —— 异常信息里用的就是它，
+    /// 两处共用同一渲染规则，不会出现"日志里写 ogg/flac、字段里写 flac"这种分叉。
+    private static func formatInfoOf(probe: ProbeResult): FormatInfo {
+        FormatInfo(probe.container, probe.codec, formatLabel(probe), probe.mimeType)
     }
 
     /// 把探测结果渲染成便于阅读的格式标签，如 "wav"、"ogg/vorbis"。
@@ -176,6 +201,23 @@ public class AudioFile <: Resource {
     public func info(): AudioInfo {
         checkOpen()
         reader().info()
+    }
+
+    /// 容器与编码描述（探测结果）。
+    ///
+    /// **不要求后端仍打开**：探测结果在 `open()` 时已固化成值类型，因此文件
+    /// 关闭后依然可读。这是有意的 —— 媒体库扫盘这类场景通常是"先看是什么格式，
+    /// 再决定要不要解码"，不该为了问一句格式而保持文件打开。
+    public func format(): FormatInfo {
+        _format
+    }
+
+    /// 轨道信息（`open()` 时**快照**，同样在关闭后仍可读）。
+    ///
+    /// 当前所有受支持的容器都是单轨，故数组长度为 1；保留数组形态是为了
+    /// 将来接入多轨容器时不必改动签名。
+    public func tracks(): Array<Track> {
+        _tracks
     }
 
     /// 获取流式读取器（主 API）。多次调用共享同一底层游标。
