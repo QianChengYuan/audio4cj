@@ -18,6 +18,13 @@
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
 
+  # 中心仓元数据（发布到仓颉中心仓时展示；字段清单见 docs/release.md 引用的官方文档）。
+  # 注意：`license` 取值须遵循 SPDX Identifier 规范。
+  # 这些字段会进入 target/meta-data.json —— 即随制品上传的元数据。
+  license = ["Apache-2.0"]
+  repository = "https://github.com/QianChengYuan/audio4cj"
+  homepage = "https://gitcode.com/yuan_1992/audio4cj"
+
   # 打包范围（cjpm 官方机制，见 docs/release.md）。
   #
   # 【为什么只用 include 白名单，不用 exclude 黑名单】
@@ -59,10 +66,12 @@
 # C 库依赖：dr_libs 的**合并动态库**（dr_wav + dr_flac + dr_mp3 三种实现
 # 置于同一翻译单元，三者符号前缀互不冲突，实测可共存）。
 #
-# Windows 前缀规格（cjc 与 cjpm 的实现差异，属已知规格问题）：
-#   编译期 —— cjpm 查找的是**带 lib 前缀**的 libdrlibs.dll
-#   运行期 —— cjpm 构建产物加载的是**无 lib 前缀**的 drlibs.dll
-#   故 libs/windows_x86_64/ 下必须同时存在两份拷贝。
+# Windows 前缀规格：
+#   编译期 —— cjpm 按 `-ldrlibs` 查找**带 lib 前缀**的 libdrlibs.dll / libdrlibs.lib
+#   运行期 —— 实测消费者产物的导入表中是 **libdrlibs.dll**（即带前缀那份）：
+#               objdump -p main.exe  →  DLL Name: libdrlibs.dll
+#             只放无前缀那份时，实测裸跑仍报 0xC0000135（STATUS_DLL_NOT_FOUND）。
+#   故 libs/windows_x86_64/ 下两个前缀各留一份，最稳妥。
 #
 # 跨平台：本行**固定指向 libs/current/**，该目录由 build.cj 在构建前准备 ——
 # 「优先复用 libs/<平台>/ 下的预置产物，否则用该平台的工具链现场编译」。

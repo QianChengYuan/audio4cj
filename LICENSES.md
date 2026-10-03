@@ -128,11 +128,23 @@ Apache-2.0 第 4(d) 条要求：若分发物中包含带 NOTICE 文件的组件�
 | 不得使用本项目商标 | 第 6 条不授予商标权 |
 | 不提供担保 | 第 7 条声明按「原样」（AS IS）提供 |
 
-### 4.4 关于 `cjpm.toml` 中没有 license 字段
+### 4.4 许可证在 `cjpm.toml` 中的声明
 
-按 cjpm 的配置规范，`[package]` 节只含 `cjc-version` / `name` / `version` /
-`output-type` / `description` / `src-dir` 等项，**没有** license 字段。
-因此许可证的声明载体是 `LICENSE` + `NOTICE` + 本文件，而不是 `cjpm.toml`。
+`cjpm.toml` 的 `[package]` 节**确实支持 `license` 字段**，取值为**字符串数组**，
+且须遵循 [SPDX Identifier](https://spdx.org/licenses/) 规范 —— 本项目的声明是：
+
+```toml
+license = ["Apache-2.0"]
+```
+
+该字段会随制品元数据（`target/meta-data.json`）一起上传到仓颉中心仓，供仓库页面展示。
+
+> **一处自我更正（留痕）**：本文件早期版本曾断言「`[package]` 节没有 license 字段」，
+> 那是**错的** —— 当时的依据是另一份配置说明，且未查证中心仓的字段表。
+> 事实见[制品包发布 · 仓颉中心仓](https://pkgdocs.cangjie-lang.cn/docs/zh/1.0.0/central-repo/source_zh_cn/client/upload.html)。
+>
+> 许可证的**权威载体**仍是 `LICENSE` 全文（本仓库根目录）+ `NOTICE`；`cjpm.toml`
+> 的 `license` 字段与 `README.md` 的声明都是**面向工具与读者的索引**，三者应当一致。
 
 ## 五、审计流程
 
