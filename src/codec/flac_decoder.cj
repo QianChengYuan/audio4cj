@@ -10,12 +10,14 @@ import audio4cj.pcm.reinterpretF32Bytes
  *
  * 为什么本类如此简单：
  *   FLAC 是**压缩**格式，真正的解码（LPC 预测、残差解码、立体声解相关等）
- *   由 dr_libs 完成 —— 见 format/flac.cj 的 FlacFormatReader.nextPacket，
- *   它经 FFI 把 f32 交错 PCM 直接写入 Packet.data。本类只把同一块内存
+ *   由**解码内核**完成 —— 见 format/flac.cj 的 FlacFormatReader.nextPacket，
+ *   它把内核产出的 f32 交错 PCM 直接写入 Packet.data。本类只把同一块内存
  *   换一个视角（字节 -> Float32），不含任何算法处理。
+ *   内核是哪一个与本类无关：原生 FLAC 走纯仓颉内核，Ogg 封装暂走 dr_libs FFI
+ *   （见 format/flac_kernel.cj 的接口说明）。
  *
  * 为什么不把「读取」放在本类：
- *   Reader 持有 dr_libs 句柄并负责 seek 与进度推进；若让 Decoder 也持有
+ *   Reader 持有解码内核句柄并负责 seek 与进度推进；若让 Decoder 也持有
  *   同一句柄会引入所有权纠缠。让 Reader 一次读取、Decoder 只做视角转换，
  *   职责边界与 WAV 实现完全对齐（WavPcmDecoder 亦是纯转换）。
  *

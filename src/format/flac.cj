@@ -8,8 +8,14 @@ import audio4cj.meta.*
  *
  * 与 WAV 实现的关键差异：
  *   WAV 是**未压缩**容器，其「解码」本质是位深转换，故 M2 走纯仓颉实现；
- *   FLAC 是**压缩**格式，需真正解码，故经 FlacDecodeKernel 抽象解耦
- *   （当前生产实现是 dr_libs FFI，纯仓颉实现见 flac_bitstream.cj）。
+ *   FLAC 是**压缩**格式，需真正解码，故经 FlacDecodeKernel 抽象解耦。
+ *
+ * 【两个容器的内核现状（本节是"当前用的是哪个实现"的唯一说明处）】
+ *   原生 FLAC  → PureFlacKernel（纯仓颉，见 flac_bitstream.cj）← **生产路径**
+ *   Ogg 封装   → DrLibsFlacKernel（dr_libs FFI）          ← 暂留，待纯仓颉 Ogg 读取器
+ *   也就是说：**原生 FLAC 已零 C 依赖**；Ogg-FLAC 还没有，它是本次纯仓颉化
+ *   尚未做完的那一部分（见 docs/codec-expansion-assessment.md 的盘点）。
+ *   纯仓颉内核只认以 `fLaC` 开头的原生流，喂 Ogg 会响亮报错而不是静默出错。
  *
  * 分工（与 WAV 保持一致）：
  *   本类持有解码内核，负责打开、参数、seek 与分块读取；
@@ -18,7 +24,9 @@ import audio4cj.meta.*
  *
  * 【本类不认识 dr_libs】
  *   自 M7 起本类只依赖 FlacDecodeKernel 接口，换内核不需改这里一行 ——
- *   这正是抽接口的目的。内核的选取发生在 init 中。
+ *   这正是抽接口的目的：本次把原生 FLAC 换成纯仓颉内核，确实只动了 init 中
+ *   的一处选择，其余方法一行未改。内核的选取发生在 init 中，
+ *   依据是调用方传入的容器信息（不在这里重新识别容器）。
  *
  * 分块策略：每次最多读取 FLAC_CHUNK_FRAMES 帧（f32 交错下约
  *   4 * 声道数 * 16384 字节，立体声约 128 KiB），内存占用与音频总时长无关。
@@ -45,9 +53,26 @@ protected class FlacFormatReader <: FormatReader {
     private var _closed: Bool = false
 
     /// 打开文件并读取音频参数。数据损坏或编码不受支持时抛异常。
-    public init(path: String) {
+    ///
+    /// `oggWrapped` 决定用哪个内核：
+    ///   false（原生 FLAC）→ PureFlacKernel，纯仓颉，零 C 依赖；
+    ///   true （Ogg 封装）→ DrLibsFlacKernel，暂留。
+    ///
+    /// 【为什么由调用方传，而不在这里嗅探文件头】"这是什么容器"已经由 facade
+    /// 的探测器算过一次；再在读取器里识别一次就是第二份判断依据，两者一旦
+    /// 出现分歧，会出现"按 A 判定的容器、按 B 选的内核"这种最难查的错。
+    /// 调用方本来就在两个 case 分支里，把已知事实传下来成本为零。
+    public init(path: String, oggWrapped: Bool) {
         this._path = path
-        this._kernel = DrLibsFlacKernel(path)
+
+        // 显式标注类型：两个分支是**不同的类**，若让编译器自行推导
+        // if 表达式的类型，得不到 FlacDecodeKernel 这个共同父类型。
+        let kernel: FlacDecodeKernel = if (oggWrapped) {
+            DrLibsFlacKernel(path)
+        } else {
+            PureFlacKernel(path)
+        }
+        this._kernel = kernel
 
         this._sampleRate = _kernel.sampleRate()
         this._channels = _kernel.channels()
@@ -114,13 +139,13 @@ protected class FlacFormatReader <: FormatReader {
     /// 按毫秒寻址，返回**实际落点毫秒**。
     ///
     /// 实现说明（开发文档 §10 M4 的一处**有意偏离**）：文档原定「FLAC 用
-    /// SEEKTABLE + 二分」，但 dr_libs 内部已实现该策略并额外处理了无
-    /// SEEKTABLE 时的回退，自行重写既冗余又更易出错。因此定位这件事
-    /// 一律委托给内核 —— 成功返回即表示**精确定位到目标帧**，
-    /// 故实际落点等于目标帧。
+    /// SEEKTABLE + 二分」，但当时代码走 dr_libs，其内部已实现该策略并额外处理了
+    /// 无 SEEKTABLE 时的回退，自行重写既冗余又更易出错，故定位一律委托给内核。
     ///
-    /// 抽内核接口后该约定被继承下来：具体策略由内核自理
-    /// （纯仓颉内核见 flac_bitstream.cj 的 seek 说明），本类不关心。
+    /// 该约定在换内核后依然成立，且**偏离本身已经消失**：纯仓颉内核现已自行实现
+    /// 「SEEKTABLE 二分定位 + 无表时向前解码」的回退（见 flac_bitstream.cj 的
+    /// seekToFrame 与 seekPointAtOrBefore），与文档原定策略一致。
+    /// 本类仍不关心策略细节 —— 成功返回即表示**精确定位到目标帧**。
     public func seekTo(timestampMs: Int64): Int64 {
         checkOpen()
 

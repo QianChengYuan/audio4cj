@@ -6,9 +6,17 @@
 # 解码实现分工：
 #   WAV             —— 纯仓颉实现（未压缩容器，其「解码」本质是位深转换，
 #                      不含浮点 DSP）
-#   FLAC / MP3      —— 经 dr_libs 的 FFI 接入
-#   Ogg 封装的 FLAC —— 同上（dr_flac 原生支持，与原生 FLAC 共用同一读取器）
-# dr_libs 的 WAV 通路保留作交叉验证基准。
+#   FLAC            —— 纯仓颉实现（帧解码 + CRC-8/CRC-16 校验 + SEEKTABLE 定位，
+#                      见 src/format/flac_bitstream.cj）
+#   MP3             —— 经 dr_libs 的 FFI 接入（dr_mp3）
+#   Ogg 封装的 FLAC —— 经 dr_libs 的 FFI 接入（dr_flac 原生支持）
+#
+# 因此下面那份 C 库依赖**只为 MP3 与 Ogg-FLAC 而存在**：WAV 与原生 FLAC 都不需要它。
+# 等纯仓颉 Ogg 读取器落地、MP3 也有纯仓颉实现后，这份依赖即可整体移除。
+#
+# 注：dr_wav 的 FFI 绑定（src/codec/dr_wav_binding.cj）**没有任何调用点** ——
+# WAV 解码自 M2 起就是纯仓颉实现。它随 C 库一起被编译进来，属历史遗留；
+# 此前此处注释称其为"交叉验证基准"，与事实不符，已更正。
 # ============================================================================
 
 [package]

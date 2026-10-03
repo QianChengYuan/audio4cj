@@ -22,7 +22,7 @@ audio4cj 把这些差异收敛到三个统一出口，让调用方不必为「�
 
 | 能力 | 覆盖范围 |
 |---|---|
-| **解码** | WAV（纯仓颉实现）、FLAC、MP3、**Ogg 封装的 FLAC** |
+| **解码** | WAV、**FLAC**（二者均为**纯仓颉实现**，不依赖 C 库）、MP3、**Ogg 封装的 FLAC**（后两者经 dr_libs 静态链接） |
 | **标签读取** | MP3（ID3v1/v2.2/v2.3/v2.4）、FLAC、WAV、**OGG**（Vorbis / Opus / FLAC-in-Ogg）、**MP4**（`ilst`） |
 | **容器探测** | 十余种容器，且 Ogg 能**精确识别到子编码**（vorbis / opus / flac / speex）；结果经 `AudioFile.format()` 暴露 |
 | **流式读取** | `FrameStream`（同步拉取）与 `AsyncFrameStream`（后台解码 + 有界队列背压） |

@@ -14,7 +14,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 用途 | FLAC / WAV / MP3 的解码内核（经 C 侧薄封装 `third-party/drlibs_wrapper.c`） |
+| 用途 | **MP3 解码**与 **Ogg 封装的 FLAC** 解码（经 C 侧薄封装 `third-party/drlibs_wrapper.c`）。**原生 FLAC 已改为纯仓颉内核、WAV 亦为纯仓颉，两者都不再经此路径** —— 因此本依赖虽仍在分发物内（另有 CVE 跟踪义务），但已不在原生 FLAC 的运行时链路中 |
 | 来源 | `third-party/dr_libs/`（含 `dr_flac.h`、`dr_wav.h`、`dr_mp3.h`） |
 | 是否分发 | **部分**：制品包只带上述三个头文件加 `LICENSE`、`README.md`；原仓库的 `tests/` 与 fuzzer 不随包分发（见 `docs/release.md` 的包内容契约） |
 | 许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0） |
@@ -31,7 +31,13 @@
 | CVE-2026-29022 | `dr_wav` 堆缓冲区溢出 | ≤ 0.14.4 | **0.14.6** | ✅ 已修复 |
 
 > 注：本项目的 WAV 解码走**纯仓颉实现**，不经 dr_wav；dr_wav 仍被编译进 `libdrlibs`，
-> 因此该 CVE 的修复状态仍需跟踪。相关攻击面回归见 `src/test/cve_regression_test.cj`。
+> 因此该 CVE 的修复状态仍需跟踪。
+>
+> 同理，**原生 FLAC 解码现已改为纯仓颉内核**，不经 dr_flac；但 **Ogg 封装的 FLAC
+> 仍走 `dr_flac`**，故 CVE-2025-14369 的修复状态同样仍需跟踪 —— 不能因为
+> "原生 FLAC 已纯仓颉化"就把这一条从清单里划掉。
+>
+> 相关攻击面回归见 `src/test/cve_regression_test.cj`。
 
 **审计方法（可复现）**：dr_libs 不发布版本标签，因此版本只能从源码宏读取：
 

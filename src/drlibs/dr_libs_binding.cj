@@ -24,7 +24,8 @@ package audio4cj.drlibs
  *   dr_libs_adapter.cj 同包（audio4cj.drlibs），对外的包装由适配层完成。
  *
  * 【为什么独立成 drlibs 包，而不是放在 codec 包】
- *   适配层需要同时被两侧使用：format 包的 FlacFormatReader 持有句柄读取数据，
+ *   适配层需要同时被两侧使用：format 包的 FlacFormatReader 持有句柄读取数据
+ *   （原生 FLAC 已改纯仓颉内核，该句柄现仅用于 Ogg 封装的 FLAC），
  *   codec 包的 FlacPcmDecoder 做字节到 f32 的视角转换。而 codec 依赖 format
  *   的 Packet —— 若适配层置于任一包内都会形成 codec <-> format 的循环依赖
  *   （实测报错：cyclic dependency）。下沉为各方共同依赖的底层包即打破此环：

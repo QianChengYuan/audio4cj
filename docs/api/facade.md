@@ -75,9 +75,9 @@ public static func open(path: String): AudioFile
 | 容器 | 解码实现 | `bitDepth` 语义 |
 |---|---|---|
 | `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深转换） | `fmt` 中的真实位深（8 / 16 / 24 / 32） |
-| `flac` | dr_libs（FFI，`dr_flac`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
+| `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
 | `mp3` | dr_libs（FFI，`dr_mp3`） | **恒为 32**，含义是「输出为 float32」—— MP3 是有损格式，无源位深 |
-| `ogg` + `flac` | dr_libs（FFI，`dr_flac`）—— **Ogg 封装的 FLAC** 由 dr_flac 原生支持，与原生 FLAC **共用同一套读取器** | `STREAMINFO` 中的真实位深 |
+| `ogg` + `flac` | dr_libs（FFI，`dr_flac`）—— **Ogg 封装的 FLAC** 由 dr_flac 原生支持。它与原生 FLAC **共用同一套读取器与解码器**，但**内核不同**（原生走纯仓颉内核，Ogg 封装暂走 FFI，见 `FlacFormatReader.init`） | `STREAMINFO` 中的真实位深 |
 
 其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
 但异常信息会写明**具体的子编码**（如 `ogg/opus`），而不是笼统的"不支持"；这些容器的**标签**多数可用
@@ -87,8 +87,9 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：`wav` 之外的格式依赖 dr_libs，它已**静态链接**进产物
+> **依赖提示**：`mp3` 与 `ogg`+`flac` 依赖 dr_libs，它已**静态链接**进产物
 > （`libs/<平台>/libdrlibs.a`），因此运行期不需要分发或加载任何动态库。
+> `wav` 与 `flac` 为纯仓颉实现 —— 它们连构建期都不需要 C 编译器。
 
 ```cangjie
 import audio4cj.facade.AudioFile

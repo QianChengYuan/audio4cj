@@ -12,13 +12,25 @@ import audio4cj.drlibs.DrLibsFormat
  *   直接耦合，任何替换都要动 demuxer 的实现。
  *
  *   抽出本接口后，FlacFormatReader 只依赖接口，不再认识 dr_libs：
- *     - DrLibsFlacKernel —— 经 dr_libs FFI
  *     - PureFlacKernel   —— 纯仓颉实现（见 flac_bitstream.cj）
+ *     - DrLibsFlacKernel —— 经 dr_libs FFI
+ *
+ *   抽象的回报已经兑现：把原生 FLAC 切到纯仓颉内核，实际只改了
+ *   FlacFormatReader.init 里的一处选择，其余方法一行未动。
+ *
+ * 【当前生产用法（本节是"哪个容器走哪个内核"的唯一说明处）】
+ *   原生 FLAC → PureFlacKernel（**零 C 依赖**）
+ *   Ogg 封装  → DrLibsFlacKernel（暂留；纯仓颉 Ogg 读取器尚未实现）
  *
  * 【两个实现的关系不是"新旧替换"，而是"互证"】
- *   两者对同一文件必须产出**逐位相同**的 f32 PCM。这既是对纯仓颉实现的
+ *   两者对同一段音频必须产出**逐位相同**的 f32 PCM。这既是对纯仓颉实现的
  *   正确性判据，也让 FFI 路径有了长期存在的理由（保留作对照基准），
  *   与 WAV 侧"纯仓颉为主、dr_libs 作交叉验证"的既有范式一致。
+ *
+ *   实测中这条互证是**自动发生**的：`probe_matrix` 的
+ *   `flacInOggIsDecodableAndMatchesNativeFlac` 打开同一段 PCM 的 Ogg 封装
+ *   （走 FFI）与原生 FLAC（走纯仓颉），断言两者逐位相同 —— 它同时成了
+ *   两条内核路径的交叉验证，不需要额外写对照用例。
  *
  * 【放在 format 包而非 codec 包的原因】
  *   codec 包已经依赖 format（Codec 需要 format.Packet），若把本接口放进

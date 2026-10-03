@@ -28,8 +28,8 @@ import std.collection.*
  *   多文件并行处理请为每个文件创建独立实例（§4.7）。
  *
  * 当前可解码范围（与 probe 层的 supported 字段保持一致）：
- *   WAV（纯仓颉实现）、FLAC / MP3（经 dr_libs FFI）、
- *   **Ogg 封装的 FLAC**（dr_flac 原生支持，与原生 FLAC 共用同一套读取器）。
+ *   WAV、**FLAC**（二者均为纯仓颉实现，不依赖 C 库）、MP3、
+ *   **Ogg 封装的 FLAC**（后两者经 dr_libs FFI）。
  * ========================================================================== */
 public class AudioFile <: Resource {
     private var _closed: Bool = false
@@ -92,7 +92,7 @@ public class AudioFile <: Resource {
                     reader.sampleRate()
                 )
                 AudioFile(path, reader, decoder, formatInfo)
-            case "flac" => openFlac(path, formatInfo)
+            case "flac" => openFlac(path, formatInfo, false)
             case "mp3" =>
                 let reader = Mp3FormatReader(path)
                 let decoder = Mp3PcmDecoder(
@@ -109,17 +109,19 @@ public class AudioFile <: Resource {
                 if (probe.codec != "flac") {
                     throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（${path}）")
                 }
-                openFlac(path, formatInfo)
+                openFlac(path, formatInfo, true)
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（${path}）")
         }
     }
 
     /// 以 FLAC 读取器 + 解码器装配 `AudioFile`。
     ///
-    /// 原生 FLAC 与 **Ogg 封装的 FLAC 共用这一条路径** —— dr_flac 对两者是同一套
-    /// API（`drflac_open_file` 会自动识别封装类型），因此无需区分。
-    private static func openFlac(path: String, formatInfo: FormatInfo): AudioFile {
-        let reader = FlacFormatReader(path)
+    /// 原生 FLAC 与 **Ogg 封装的 FLAC 共用这一条装配路径**，但**内层内核不同**：
+    /// 前者走纯仓颉内核，后者仍走 dr_libs（详见 FlacFormatReader.init）。
+    /// `oggWrapped` 就是从这里传下去的 —— 本函数的两个调用点各自处在
+    /// "flac" 与 "ogg" 分支里，容器是已知事实，无需让读取器再识别一次。
+    private static func openFlac(path: String, formatInfo: FormatInfo, oggWrapped: Bool): AudioFile {
+        let reader = FlacFormatReader(path, oggWrapped)
         let decoder = FlacPcmDecoder(
             reader.sampleRate(),
             reader.channels(),
