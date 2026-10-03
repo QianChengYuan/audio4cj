@@ -70,6 +70,92 @@ public func pcmToF32(data: Array<UInt8>, bitsPerSample: Int64): Array<Float32> {
     out
 }
 
+/// 把 f32 交错样本转换为整型 PCM 字节 —— `pcmToF32` 的**逆变换**。
+///
+/// 归一化与 `pcmToF32` 严格互逆，因此支持"写出 → 读回"的往返验证：
+///   8  bit 无符号： v * 128.0 + 128
+///   16 bit 有符号： v * 32768.0
+///   24 bit 有符号： v * 8388608.0
+///   32 bit 有符号： v * 2147483648.0
+/// 取值一律**向零截断**而非四舍五入 —— 除数是 2 的幂，截断即可精确往返。
+///
+/// 【会钳位，不会回绕】超出 [-1.0, 1.0] 的输入被夹到量程边界。
+/// 回绕会把一个轻微过冲变成刺耳的爆音（正峰变负峰）—— 那是听感上的故障；
+/// 钳位只是削顶，是可接受的失真。
+///
+/// 【两处固有不可逆，均来自整型 PCM 本身】
+///   · 正满量程无法精确表示：32767/32768 ≈ 0.99997 而非 1.0
+///     （负端 -32768 才能到 -1.0，业界通行）；
+///   · 32 位**不保证往返精确**：f32 只有 24 位有效位，无法无损承载 int32。
+///
+/// 与 `pcmToF32` 一致，调用方须先用 `isSupportedPcmFormat` 校验；
+/// 位深不受支持时返回**空数组**。
+public func f32ToPcm(samples: Array<Float32>, bitsPerSample: Int64): Array<UInt8> {
+    let bps = bytesPerSample(bitsPerSample)
+    if (bps <= 0 || !isSupportedPcmFormat(bitsPerSample, false)) {
+        return Array<UInt8>()
+    }
+
+    let out = Array<UInt8>(samples.size * bps, repeat: 0)
+
+    match (bitsPerSample) {
+        case 8 => for (i in 0..samples.size) {
+            // 8 bit WAV 为无符号，中点为 128
+            out[i] = UInt8(clampInt64(Int64(samples[i] * 128.0) + 128, 0, 255))
+        }
+        case 16 => for (i in 0..samples.size) {
+            writeInt16LE(out, i * 2, clampInt64(Int64(samples[i] * 32768.0), -32768, 32767))
+        }
+        case 24 => for (i in 0..samples.size) {
+            writeInt24LE(out, i * 3, clampInt64(Int64(samples[i] * 8388608.0), -8388608, 8388607))
+        }
+        case _ => for (i in 0..samples.size) {
+            writeInt32LE(
+                out,
+                i * 4,
+                clampInt64(Int64(samples[i] * 2147483648.0), -2147483648, 2147483647)
+            )
+        }
+    }
+
+    out
+}
+
+/// 把整数夹到 [lo, hi]。
+private func clampInt64(v: Int64, lo: Int64, hi: Int64): Int64 {
+    if (v < lo) {
+        lo
+    } else if (v > hi) {
+        hi
+    } else {
+        v
+    }
+}
+
+/// 写 2 字节小端（有符号值按补码回填）。
+private func writeInt16LE(out: Array<UInt8>, offset: Int64, v: Int64): Unit {
+    let u = UInt32(v & 0xFFFF)
+    out[offset] = UInt8(u & 0xFF)
+    out[offset + 1] = UInt8((u >> 8) & 0xFF)
+}
+
+/// 写 3 字节小端。
+private func writeInt24LE(out: Array<UInt8>, offset: Int64, v: Int64): Unit {
+    let u = UInt32(v & 0xFFFFFF)
+    out[offset] = UInt8(u & 0xFF)
+    out[offset + 1] = UInt8((u >> 8) & 0xFF)
+    out[offset + 2] = UInt8((u >> 16) & 0xFF)
+}
+
+/// 写 4 字节小端。
+private func writeInt32LE(out: Array<UInt8>, offset: Int64, v: Int64): Unit {
+    let u = UInt32(v & 0xFFFFFFFF)
+    out[offset] = UInt8(u & 0xFF)
+    out[offset + 1] = UInt8((u >> 8) & 0xFF)
+    out[offset + 2] = UInt8((u >> 16) & 0xFF)
+    out[offset + 3] = UInt8((u >> 24) & 0xFF)
+}
+
 // ---------------------------------------------------------------------------
 // 小端整型解析（手写实现，避免依赖未知的 std.binary API）
 // ---------------------------------------------------------------------------
