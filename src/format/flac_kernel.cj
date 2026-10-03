@@ -1,29 +1,25 @@
 package audio4cj.format
 
-import audio4cj.drlibs.DrLibsDecoder
-import audio4cj.drlibs.DrLibsFormat
-
 /* ============================================================================
  * FLAC 解码内核抽象
  *
- * 【为什么需要这层抽象】
- *   M4 起 FLAC 的解码一直由 dr_libs 经 FFI 承担。要评估并最终落地"纯仓颉
- *   解码"，就必须让「谁来解」成为**可替换的实现细节**，否则业务层与 FFI
- *   直接耦合，任何替换都要动 demuxer 的实现。
- *
- *   抽出本接口后，FlacFormatReader 只依赖接口，不再认识 dr_libs：
- *     - PureFlacKernel   —— 纯仓颉实现（见 flac_bitstream.cj）
- *     - DrLibsFlacKernel —— 经 dr_libs FFI
- *
- *   抽象的回报已经兑现：把原生 FLAC 切到纯仓颉内核，实际只改了
+ * 【为什么这层抽象还留着（现在只有一个实现）】
+ *   它的存在理由曾经很直接：M4 起解码由 dr_libs 经 FFI 承担，要让「谁来解」
+ *   成为**可替换的实现细节**，否则业务层与 FFI 直接耦合，任何替换都要动
+ *   demuxer。抽象兑现了回报 —— 把原生 FLAC 切到纯仓颉内核时，实际只改了
  *   FlacFormatReader.init 里的一处选择，其余方法一行未动。
+ *
+ *   现在 dr_libs 已随 C 依赖整体移除，实现只剩 PureFlacKernel 一个。接口
+ *   **依然保留**，理由有两条，都不是"留着好看"：
+ *     1. 它是**契约本身** —— readF32Into 的"0 表示正常结束"、totalFrames 的
+ *        "0 表示不可知"这类约定必须有唯一的书写处，散进实现里就会漂移；
+ *     2. 它有一个**活的调用方**：测试的驱动代码（flac_bitstream_test 的
+ *        fbDecodeAll）以接口为参数类型，"换内核"这件事在测试里同样成立。
  *
  * 【当前生产用法（本节是"哪个容器走哪个内核"的唯一说明处）】
  *   原生 FLAC 与 **Ogg 封装的 FLAC** 都走 PureFlacKernel ——
- *   FLAC 这一族无论容器都已零 C 依赖。容器差异**不在两个内核之间**，
+ *   FLAC 这一族无论容器都已是纯仓颉实现。容器差异**不在内核里**，
  *   而在更下层的**字节源**（flac_source.cj / ogg_flac_source.cj）。
- *   DrLibsFlacKernel 已不在生产路径上，它现在的身份是**独立裁判**：
- *   测试拿它给纯仓颉内核逐样本对账。
  *
  * 【两个实现的关系不是"新旧替换"，而是"互证"】
  *   两者对同一段音频必须产出**逐位相同**的 f32 PCM。这既是对纯仓颉实现的
@@ -69,47 +65,7 @@ protected interface FlacDecodeKernel {
     func isClosed(): Bool
 }
 
-/// 经 dr_libs FFI 的 FLAC 解码内核。
-///
-/// 这一层只做「接口适配」：把 DrLibsDecoder 的方法名映射为内核接口，
-/// 不添加任何逻辑 —— 逻辑留在 DrLibsDecoder 里，避免同一件事有两处实现。
-protected class DrLibsFlacKernel <: FlacDecodeKernel {
-    private let _decoder: DrLibsDecoder
-
-    /// 打开文件。数据损坏或编码不受支持时抛异常。
-    protected init(path: String) {
-        this._decoder = DrLibsDecoder(DrLibsFormat.Flac, path)
-    }
-
-    public func sampleRate(): Int64 {
-        _decoder.sampleRate()
-    }
-
-    public func channels(): Int64 {
-        _decoder.channels()
-    }
-
-    public func bitsPerSample(): Int64 {
-        _decoder.bitsPerSample()
-    }
-
-    public func totalFrames(): Int64 {
-        _decoder.totalFrames()
-    }
-
-    public func seekToFrame(index: Int64): Bool {
-        _decoder.seekToFrame(index)
-    }
-
-    public func readF32Into(bytes: Array<UInt8>, frames: Int64): Int64 {
-        _decoder.readF32Into(bytes, frames)
-    }
-
-    public func close(): Unit {
-        _decoder.close()
-    }
-
-    public func isClosed(): Bool {
-        _decoder.isClosed()
-    }
-}
+// 这里曾有 `DrLibsFlacKernel` —— 把 DrLibsDecoder 的方法名映射为内核接口的
+// 适配层。Tier 4 移除 C 依赖后它随 dr_libs 一起删除，其"独立裁判"的职责由
+// ffmpeg 的 golden 基准接替（见 src/test/flac_bitstream_test.cj 与 golden_support.cj）：
+// 判据的独立性反而更强，因为外部实现与我们的解码器之间不再有任何共享代码。

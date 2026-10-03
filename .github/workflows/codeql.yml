@@ -2,23 +2,19 @@
 # audio4cj CodeQL —— 安全扫描
 # ------------------------------------------------------------
 # 覆盖：
-#   - C/C++（third-party/drlibs_wrapper.c）：本项目自己写的 C 侧薄封装，
-#     位于 FFI 边界，是本仓库最需要扫描的攻击面
 #   - Python（sctiptr/*.py）：测试素材与 golden 基准的生成脚本
 #
 # 不覆盖：
 #   - 仓颉 .cj：CodeQL 不支持该语言，由 cjlint 替代（见 ci-lint.yml）
-#   - third-party/dr_libs/**：第三方单头文件库，见 .github/codeql/codeql-config.yml
+#   - C/C++：**本库已不含任何 C 代码**。原先扫的是
+#     third-party/drlibs_wrapper.c（本项目自己写的 C 侧薄封装，位于 FFI 边界），
+#     它已随 C 依赖整体移除，因此这里也不再保留 cpp 作业 ——
+#     留一个"无事可扫的作业"比删掉更糟：它会让构建步骤引用的文件缺失，
+#     从而把整个工作流变红。
 #
 # 触发：
 #   - push main / PR main：扫描当前代码
 #   - schedule：每周一 02:00 UTC 跑一次，捕获新增规则
-#
-# 【与参考实现的差异：为什么用 manual 构建】
-#   参考项目用 build-mode none 跳过构建（它的 C++ 依赖 Qt，从零编译代价过高）。
-#   本项目不同：C 侧只有一个不依赖任何外部库的源文件，用 clang 编译一次
-#   约一秒，因此可以用 **manual 构建**获得更准确的提取结果 ——
-#   同时顺带验证了该薄封装能独立编译通过。
 #
 # 【关于阻断策略】
 #   本工作流**不内置自定义阻断门禁**：结果上传到 Security 标签页，
@@ -53,8 +49,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: cpp
-            build_mode: manual
           - language: python
             build_mode: none
 
@@ -68,14 +62,6 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build_mode }}
           config-file: ./.github/codeql/codeql-config.yml
-
-      # 复用 build.cj 相同的编译参数（-I third-party/dr_libs），
-      # 既让 CodeQL 提取到真实编译单元，也顺带验证薄封装可独立编译
-      - name: 编译 C 侧薄封装（供 CodeQL 提取）
-        if: matrix.language == 'cpp'
-        run: |
-          clang -c -O2 -I third-party/dr_libs third-party/drlibs_wrapper.c -o /tmp/drlibs_wrapper.o
-          echo "C 侧薄封装编译通过"
 
       - name: 执行 CodeQL 分析
         uses: github/codeql-action/analyze@v4

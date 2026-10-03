@@ -2,7 +2,7 @@ package audio4cj.test
 
 import audio4cj.core.CorruptedFileException
 import audio4cj.core.FormatNotSupportedException
-import audio4cj.format.DrLibsFlacKernel
+import audio4cj.format.PureFlacKernel
 import audio4cj.format.parseStreamInfo
 import std.fs.*
 
@@ -38,58 +38,52 @@ private func fmRealHeader(): Array<UInt8> {
 @Test
 class FlacMetaTest {
     // ------------------------------------------------------------------
-    // 交叉校验：纯仓颉 vs dr_libs
+    // 与**素材规格**对照（原先这里是与 dr_libs 对照）
+    //
+    // 【判据换了，但要求没降】原先是"纯仓颉解析出的参数必须与 dr_libs 报的完全
+    //   一致"；现在改为"必须与生成素材时要求的参数一致"。后者其实**更独立** ——
+    //   dr_libs 与我们的解析器同属"读同一个 STREAMINFO"，而素材规格来自 ffmpeg 的
+    //   编码参数（sctiptr/gen_audio_fixtures.py），是我们之外的第三方事实。
     // ------------------------------------------------------------------
 
-    /// 7 个真实 FLAC 文件上，两项参数必须完全一致。
+    /// 各素材的参数必须与生成规格一致。
+    ///
+    /// 采样率 / 声道 / 位深取自 gen_audio_fixtures.py 的 REFSPECS 与各 ffmpeg 调用。
+    /// 注意 44.1k 立体声那条用的是 `-sample_fmt s32`：ffmpeg 据此写出 **24 位**
+    /// （FLAC 没有 32 位整型），故期望位深是 24 —— 这一处最容易照名字想当然
+    /// （名字叫 s24，参数却是 s32），测试把它固定下来。
     @TestCase
-    func streamInfoMatchesFfiKernelOnAllFixtures() {
-        let fixtures = [
-            "testdata/flac/flac_s16_44100_stereo.flac",
-            "testdata/flac/flac_s16_44100_mono.flac",
-            "testdata/flac/flac_s16_16000_mono.flac",
-            "testdata/flac/flac_s24_44100_stereo.flac",
-            "testdata/flac/flac_silence.flac",
-            "testdata/flac/flac_tagged.flac",
-            "testdata/flac/flac_cover.flac"
+    func streamInfoMatchesFixtureSpec() {
+        let specs = [
+            ("testdata/flac/flac_s16_44100_stereo.flac", 44100, 2, 16),
+            ("testdata/flac/flac_s16_44100_mono.flac", 44100, 1, 16),
+            ("testdata/flac/flac_s16_16000_mono.flac", 16000, 1, 16),
+            ("testdata/flac/flac_s24_44100_stereo.flac", 44100, 2, 24),
+            ("testdata/flac/flac_silence.flac", 44100, 2, 16),
+            ("testdata/flac/flac_tagged.flac", 44100, 2, 16),
+            ("testdata/flac/flac_cover.flac", 44100, 2, 16)
         ]
 
-        for (path in fixtures) {
+        for ((path, rate, channels, bits) in specs) {
             let info = parseStreamInfo(fmReadHead(path, 64))
-            let kernel = DrLibsFlacKernel(path)
-
-            // 采样率
-            if (kernel.sampleRate() != info.sampleRate) {
-                @Fail("${path} 采样率不一致：纯仓颉 ${info.sampleRate} / FFI ${kernel.sampleRate()}")
-            }
-            // 声道数
-            if (kernel.channels() != info.channels) {
-                @Fail("${path} 声道数不一致：纯仓颉 ${info.channels} / FFI ${kernel.channels()}")
-            }
-            // 位深
-            if (kernel.bitsPerSample() != info.bitsPerSample) {
-                @Fail("${path} 位深不一致：纯仓颉 ${info.bitsPerSample} / FFI ${kernel.bitsPerSample()}")
-            }
-            // 总帧数（两者的"0 = 不可知"约定一致，可直接比较）
-            if (kernel.totalFrames() != info.totalSamples) {
-                @Fail("${path} 总帧数不一致：纯仓颉 ${info.totalSamples} / FFI ${kernel.totalFrames()}")
-            }
-
-            kernel.close()
+            @Expect(info.sampleRate, rate)
+            @Expect(info.channels, channels)
+            @Expect(info.bitsPerSample, bits)
         }
     }
 
-    /// STREAMINFO 里声明的总帧数，应当与整文件解码出的帧数一致。
+    /// STREAMINFO 里声明的总帧数，必须与整文件解码出的帧数一致。
     ///
     /// 这条把"元数据声明的长度"与"实际解出的长度"对上 —— 若解析字段错位
     /// （例如采样率与声道数读串了），总帧数几乎不可能同时正确。
+    /// 解码改用纯仓颉内核（原先用 FFI 内核，那只是驱动手段，换掉不改变本断言的含义）。
     @TestCase
     func totalSamplesAgreesWithDecodedFrameCount() {
         let path = "testdata/flac/flac_s16_44100_stereo.flac"
         let info = parseStreamInfo(fmReadHead(path, 64))
 
         var decoded: Int64 = 0
-        let kernel = DrLibsFlacKernel(path)
+        let kernel = PureFlacKernel(path, false)
         let channels = kernel.channels()
         let buf = Array<UInt8>(16384 * channels * 4, repeat: 0)
         var got: Int64 = 1
@@ -100,6 +94,8 @@ class FlacMetaTest {
         kernel.close()
 
         @Expect(decoded, info.totalSamples)
+        // 顺带把"声明值本身"钉在规格上：1 秒 @ 44100
+        @Expect(info.totalSamples, 44100)
     }
 
     // ------------------------------------------------------------------

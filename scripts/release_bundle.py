@@ -84,23 +84,19 @@ ALWAYS_PACKED = ["cjpm.toml", "README.md", "README_zh.md"]
 
 # 消费者构建本库**必须**有的东西。缺任何一个，包都是不可用的。
 REQUIRED = [
-    "cjpm.toml",  # 模块定义（含 [ffi.c] 与 include 白名单）
-    "build.cj",  # 构建期装配 C 库的钩子 —— 消费者侧就靠它
+    "cjpm.toml",  # 模块定义（含 include 白名单）
     "src/",  # 库源码
     "config/cjlint_rule_list.json",  # 项目级静态检查配置
     "docs/",  # 面向使用者的公开文档
     "LICENSE",
     "NOTICE",
     "README.md",
-    # C 库来源：只需构建真正用到的那几个文件（drlibs_wrapper.c 只 include
-    # 三个单头文件库）。逐文件列出而非整目录 —— 整目录会连 tests/ 与 fuzzer
-    # 一起带上，那些构建用不到（见 cjpm.toml 的 include 注释）。
-    "third-party/drlibs_wrapper.c",
-    "third-party/dr_libs/dr_flac.h",
-    "third-party/dr_libs/dr_mp3.h",
-    "third-party/dr_libs/dr_wav.h",
-    "third-party/dr_libs/LICENSE",
 ]
+
+# 【曾经还有 build.cj 与 third-party 下的 6 个 C 文件】它们服务于"消费者现场编译
+#   C 库"这条链路。C 依赖整体移除后，包内不应再出现任何 C 源码或构建脚本 ——
+#   因此这些条目从 REQUIRED 里删除，并在 FORBIDDEN 侧被反过来钉住：
+#   "把 C 加回来"必须是一次显式动作，不能悄悄发生。
 
 # 绝不能进入分发包的条目。
 #
@@ -122,8 +118,9 @@ FORBIDDEN = [
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     # --- 构建产物 ---
     ("target/", set()),
-    # libs/ 下只有二进制与 .gitkeep，两者都不会进包；此处断言它真的没进
-    ("libs/", set()),
+    # --- C 依赖遗留：整体移除后不应再出现（防御性断言，防止将来无意带回）---
+    ("third-party/", set()),  # 曾是 dr_libs 与 C 薄封装的所在地
+    ("libs/", set()),  # 曾是各平台的 C 库产物目录
 ]
 
 # 发布元数据中**必须非空**的字段。

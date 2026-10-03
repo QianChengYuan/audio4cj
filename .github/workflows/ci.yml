@@ -120,8 +120,10 @@ jobs:
       - name: cjpm build（同时编译 C 静态库）
         run: cjpm build
 
-      - name: 确认 C 库产物已就位
-        run: ls -l libs/linux_x86_64/
+      - name: 确认无 C 依赖残留
+        run: |
+          test ! -e third-party && test ! -e build.cj
+          echo "third-party/ 与 build.cj 均已随 C 依赖移除 ✓"
 
       - name: cjpm check
         run: cjpm check
@@ -179,8 +181,11 @@ jobs:
       - name: cjpm build（复用预置的 C 静态库）
         run: cjpm build
 
-      - name: 确认 C 库产物已就位
-        run: dir libs\windows_x86_64\
+      - name: 确认无 C 依赖残留
+        run: |
+          if (Test-Path third-party) { throw "third-party/ 仍存在" }
+          if (Test-Path build.cj) { throw "build.cj 仍存在" }
+          Write-Output "third-party/ 与 build.cj 均已随 C 依赖移除"
 
       - name: cjpm check
         run: cjpm check
@@ -232,8 +237,10 @@ jobs:
           SDKROOT: ${{ env.SDKROOT }}
         run: cjpm build
 
-      - name: 确认 C 库产物已就位
-        run: ls -l libs/macos_aarch64/
+      - name: 确认无 C 依赖残留
+        run: |
+          test ! -e third-party && test ! -e build.cj
+          echo "third-party/ 与 build.cj 均已随 C 依赖移除 ✓"
 
       - name: cjpm check
         run: cjpm check
