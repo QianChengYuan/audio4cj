@@ -62,8 +62,26 @@ jobs:
           fi
           echo "cjfmt 检查通过：src/ 无格式差异"
 
+      # 示例工程是独立模块，格式同样要求统一（但不做 cjlint，理由见下）
+      - name: cjfmt 格式检查（示例工程）
+        run: |
+          cjfmt -d examples/src/
+          if ! git diff --quiet -- examples/src/; then
+            git --no-pager diff -- examples/src/
+            echo "::error::examples/src/ 存在未按 cjfmt 格式化的文件。本地修复：cjfmt -d examples/src/"
+            exit 1
+          fi
+          echo "cjfmt 检查通过：examples/src/ 无格式差异"
+
       # -c . 指向仓库根，cjlint 会读取 config/cjlint_rule_list.json，
       # 从而只启用本项目认可并实测通过的规则集，不污染全局配置。
       # 当前 src/ 实测 0 条告警 —— 门禁一旦报警即为真实新增问题。
+      #
+      # 【范围仅限 src/】examples/src/ 刻意不纳入 cjlint：示例是**教学代码**，
+      # 可读性优先。实测其 8 条告警全部来自两条与流式写法天然冲突的风格规则：
+      #   G.VAR.02 要求缩小变量作用域 —— 而流式累加器（帧数、峰值）按定义必须
+      #            声明在循环之外；
+      #   G.EXP.07 要求比较时把常量放在右侧 —— 与 a > peak 这种自然写法相悖。
+      # 但**格式**仍然统一：示例由上面那个 cjfmt 步骤一并检查。
       - name: cjlint 静态检查
         run: cjlint -f src/ -c .

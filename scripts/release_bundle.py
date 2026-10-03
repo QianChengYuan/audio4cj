@@ -107,6 +107,7 @@ FORBIDDEN = [
     ("musics/", set()),  # 本机测试素材
     ("sctiptr/", set()),  # 素材生成脚本（依赖 ffmpeg）
     ("scripts/", set()),  # 本发布脚本自身
+    ("examples/", set()),  # 示例工程（独立模块，消费者按需从仓库取）
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     # --- 构建产物 ---
     ("target/", set()),

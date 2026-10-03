@@ -128,6 +128,18 @@ jobs:
       - name: cjpm test
         run: cjpm test --timeout-each 300s
 
+      # 示例工程是**独立模块**（有自己的 cjpm.toml），必须单独构建。
+      # 纳入 CI 是为了让它不能悄悄腐烂 —— 库的 API 一变，示例就会红。
+      # 只在 Linux 上做：示例本身与平台无关，跑一遍即可。
+      - name: 构建并运行示例工程
+        run: |
+          cd examples
+          cjpm build
+          cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac
+          cjpm run -- ../testdata/flac/flac_tagged.flac tags
+          cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac async
+          cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac info
+
   # ============================================================
   # Windows x86_64
   # ============================================================
