@@ -43,14 +43,21 @@
  * 这是 FFI 适配层的通用做法，也是开发文档 §12.3「堆分配风格」思路的推广。
  *
  * ---------------------------------------------------------------------------
- * 【编译方式（三平台）】
- *   Windows : clang -shared -fstack-protector-all -I third-party/dr_libs \
- *                    third-party/drlibs_wrapper.c -o libs/windows_x86_64/libdrwav.dll
- *                （紧接复制一份无 lib 前缀副本 drwav.dll 供运行期加载）
- *   Linux   : clang -shared -fPIC -fstack-protector-all -I third-party/dr_libs \
- *                    third-party/drlibs_wrapper.c -o libs/linux_x86_64/libdrwav.so
- *   macOS   : clang -shared -fPIC -fstack-protector-all -I third-party/dr_libs \
- *                    third-party/drlibs_wrapper.c -o libs/macos_aarch64/libdrwav.dylib
+ * 【编译方式（三平台，产物均为**静态库**）】
+ *   由 build.cj 自动执行，无需手工编译。形态是「编译成目标文件 → 归档」：
+ *     Windows 必须用 MinGW 口径的 gcc（原因见下）：
+ *         gcc -c -O2 -fstack-protector-all -I third-party/dr_libs \
+ *             third-party/drlibs_wrapper.c -o <dir>/drlibs.o
+ *         ar rcs <dir>/libdrlibs.a <dir>/drlibs.o
+ *     Linux / macOS：
+ *         clang -c -fPIC -O2 -fstack-protector-all -I third-party/dr_libs \
+ *               third-party/drlibs_wrapper.c -o <dir>/drlibs.o
+ *         ar rcs <dir>/libdrlibs.a <dir>/drlibs.o
+ *   其中 <dir> = libs/<平台>/（见 build.cj 与 cjpm.toml 的 target 级 [ffi.c]）。
+ *
+ *   Windows 必须 MinGW 口径：cjc 在 Windows 上走 MinGW 链接器，而 clang 默认的
+ *   MSVC 目标所编目标文件静态链接时会缺 __chkstk / _fltused（MSVC CRT 符号）。
+ *   编**动态库**时不存在该问题，这是改成静态链接之后才暴露的。详见 build.cj。
  *
  * 【安全】
  * - 始终启用 -fstack-protector-all（对应开发文档 §6.5 规约 #13）
