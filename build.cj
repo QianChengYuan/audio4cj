@@ -187,8 +187,15 @@ func buildCommands(dir: Path): Array<Array<String>> {
 func buildCommands(dir: Path): Array<Array<String>> {
     let obj = "${dir}/${OBJ_NAME}"
     let lib = "${dir}/${LIB_NAME}"
+    // -mmacosx-version-min 必须给出，且与 cjc 的目标下限对齐：
+    // CI 实测（2026-10-03）不加该选项时，链接器会警告目标文件的最低系统版本
+    // 高于 cjc 的目标下限 ——
+    //   ld64.lld: warning: libs/macos_aarch64/libdrlibs.a(drlibs.o) has version
+    //              14.0.0, which is newer than target minimum of 12.0.0
+    // 那意味着在 macOS 12/13 上可能无法运行，故显式对齐到 12.0。
     [
         ["clang", "-c", "-fPIC", "-O2", "-fstack-protector-all",
+         "-mmacosx-version-min=12.0",
          "-I", DR_LIBS_INC, WRAPPER_SRC, "-o", obj],
         ["ar", "rcs", lib, obj],
     ]
