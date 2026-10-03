@@ -8,58 +8,49 @@
 
 ## 一、运行时依赖
 
-库被引用时会一并分发的依赖。**当前只有一个**。
+库被引用时会一并分发的依赖。**当前为空 —— 本库不依赖任何第三方代码。**
 
-### 1.1 dr_libs
+（下面 1.1 是"曾经依赖"的留痕：它已不随本库分发。保留的原因有两个 ——
+给从旧版本升级的使用者一个交代，以及记下它**为什么**被移除。）
+
+### 1.1 dr_libs（已整体移除，不再分发）
 
 | 项 | 内容 |
 |---|---|
-| 用途 | **已不在任何解码路径上**：WAV / FLAC / Ogg-FLAC 都是纯仓颉实现，**MP3 解码也已移出本版本范围**。dr_libs 的代码仍随库编译（经 C 侧薄封装 `third-party/drlibs_wrapper.c`），其中 dr_flac 被**测试**用作独立裁判，dr_wav 与 dr_mp3 已无任何调用点 |
-| 来源 | `third-party/dr_libs/`（含 `dr_flac.h`、`dr_wav.h`、`dr_mp3.h`） |
-| 是否分发 | **部分**：制品包只带上述三个头文件加 `LICENSE`、`README.md`；原仓库的 `tests/` 与 fuzzer 不随包分发（见 `docs/release.md` 的包内容契约） |
-| 许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0） |
-| 许可证原文 | `third-party/dr_libs/LICENSE`（已核对，首段即写明"available as a choice of the following licenses"） |
-| 许可风险 | **无**。两者都是最宽松的许可，且允许闭源分发 |
-| 版本锁定 | 锁定 commit `dfe8377631000664666519fdb83da193fd8037f4`（dr_libs 无 Release，只能锁 commit） |
-| 版本号（源码宏） | `dr_flac` **0.13.4** / `dr_wav` **0.14.6** / `dr_mp3` **0.7.4** |
+| 用途 | 曾承担 FLAC / MP3 / WAV 的解码内核，经 C 侧薄封装 `third-party/drlibs_wrapper.c` 以 FFI 静态链接 |
+| 现状 | **已整体移除**：`third-party/`、`build.cj` 与 `cjpm.toml` 的四节 `[target.*.ffi.c]` 均已删除 |
+| 移除原因 | 制品包内带 C 源码、且要求消费者具备 C 工具链，是中心仓审核退回的最可疑特征。取舍记录见 `docs/codec-expansion-assessment.md` |
+| 移除前的许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0）——最宽松的一档，允许闭源分发 |
+| 移除前的版本锁定 | commit `dfe8377631000664666519fdb83da193fd8037f4`（dr_libs 无 Release，只能锁 commit） |
+| 移除前的版本号（源码宏） | `dr_flac` **0.13.4** / `dr_wav` **0.14.6** / `dr_mp3` **0.7.4** |
 
-**已知 CVE 与修复状态**（本项目的供应链风险清单 R1）：
+**移除前的已知 CVE 与修复状态**（本项目的供应链风险清单 R1）：
 
-| CVE | 影响 | 受影响版本上限 | 本项目版本 | 结论 |
+| CVE | 影响 | 受影响版本上限 | 移除前所用版本 | 结论 |
 |---|---|---|---|---|
 | CVE-2025-14369 | `dr_flac` 整数溢出致 DoS | ≤ 0.13.2 | **0.13.4** | ✅ 已修复 |
 | CVE-2026-29022 | `dr_wav` 堆缓冲区溢出 | ≤ 0.14.4 | **0.14.6** | ✅ 已修复 |
 
-> 注：本项目的 WAV 解码走**纯仓颉实现**，不经 dr_wav；dr_wav 仍被编译进 `libdrlibs`，
-> 因此该 CVE 的修复状态仍需跟踪。
+> 这两条在本项目的**实际暴露面一直很小**：WAV 自 M2 起、FLAC 与 Ogg-FLAC 自纯仓颉化起，
+> 都不经 dr_wav / dr_flac。移除之后**暴露面归零**，CVE 清单可以就此收尾。
 >
-> 同理，**FLAC 与 Ogg 封装的 FLAC 现已全部走纯仓颉实现**，不经 dr_flac。
-> 但 `dr_flac` 与 `dr_wav` 仍**在制品内被编译**，且 dr_flac 还被**测试**用作
-> 独立裁判（`src/test/flac_bitstream_test.cj` 拿它给纯仓颉内核逐样本对账）——
-> 因此 CVE-2025-14369 的跟踪义务**不因"生产链路不再用它"而免除**：
-> 只要这些代码还在分发物里，供应链风险清单就得继续跟。
+> ⚠ 但**同类攻击面的回归不能停**：`src/test/cve_regression_test.cj` 仍然保留，
+> 它现在压的是**我们自己的解析器**（声明长度远超实际数据、块链永不结束等）。
+> 换句话说，收尾的是"跟踪上游"，不是"验证我们的健壮性"。
 >
-> 相关攻击面回归见 `src/test/cve_regression_test.cj`。
-
-**审计方法（可复现）**：dr_libs 不发布版本标签，因此版本只能从源码宏读取：
-
-```bash
-grep -E '^#define DR(FLAC|WAV|MP3)_VERSION_(MAJOR|MINOR|REVISION)' \
-    third-party/dr_libs/dr_flac.h third-party/dr_libs/dr_wav.h third-party/dr_libs/dr_mp3.h
-```
-
-**审计周期**：每季度一次，或在上游出现新 CVE 时立即执行。
+> **若将来重新引入 C 依赖**，必须在此重新登记，并完整恢复审计流程
+> （锁定 commit + 逐条 CVE 排查 + fuzz 回归），见第五节的操作清单。
 
 ## 二、构建期 / 开发期工具（不随库分发）
 
 这些工具**只在本仓库的构建或开发流程中使用**，不会被 audio4cj 的使用者引入，
 因此不受上述"运行时依赖"政策的约束，但**仍需登记**以免日后混淆。
 
-### 2.1 C 编译器（Linux / macOS 用 clang；Windows 用 MinGW 的 gcc + ar）
+### 2.1 C 编译器（已不再需要）
 
 | 项 | 内容 |
 |---|---|
-| 用途 | 编译 `third-party/drlibs_wrapper.c` 生成**静态库**（由 `build.cj` 的 `pre-build` 钩子调用） |
+| 现状 | **不再需要**。此前用于把 `third-party/drlibs_wrapper.c` 编译成静态库；随 C 依赖整体移除，构建链路上已不存在任何 C 编译步骤 |
 | 许可证 | 各自的开源许可（LLVM Apache-2.0 with LLVM exception / MSVC 自带许可） |
 | 是否分发 | 否 |
 

@@ -17,7 +17,7 @@
         默认必打包：根目录的 cjpm.toml、README.md、README_zh.md
         默认不打包：根目录的 cjpm.lock、cangjie-repo.toml、编译产物目录、
                     构建脚本产物目录、**所有二进制文件**
-    （最后一条解释了为什么 libs/ 与 tools/Releases/ 下的二进制从不进包。）
+    （最后一条解释了为什么 tools/Releases/ 下的二进制从不进包。）
 
 【本脚本做三件事】
 

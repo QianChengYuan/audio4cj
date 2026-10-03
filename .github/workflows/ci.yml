@@ -7,12 +7,12 @@
 #   - Windows x64 (windows-2022)
 #   - macOS arm64 (macos-14, Apple Silicon)
 #
-# 流程：缓存 → 仓颉 SDK → C 编译器检查 → cjpm build → cjpm check → cjpm test
+# 流程：缓存 → 仓颉 SDK → cjpm build → cjpm check → cjpm test
 #
-# 【为什么三个平台的步骤几乎一样】
-#   C 库（dr_libs 薄封装）的准备**已经下沉到 build.cj 的 pre-build 钩子**：
-#   它按当前平台复用 `libs/<平台>/` 的预置产物，没有预置产物时现场编译。
-#   因此 CI 里不需要任何平台分支的编译命令 —— 这正是 build.cj 存在的意义。
+# 【三个平台的步骤为什么几乎一样】
+#   构建链路上没有任何平台相关的 C 步骤：解码全部为纯仓颉实现。
+#   曾经那套"由 build.cj 按平台准备 C 静态库"的机制已随 C 依赖整体移除，
+#   因此这里既不需要 C 编译器，也不再有"先 build 后 check"的顺序约束。
 #
 # 【测试不需要 ffmpeg】
 #   golden PCM 基准已随仓库入库，而"无损互证"本身不需要外部工具。
@@ -36,12 +36,9 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'third-party/**'
-      - 'libs/**'
       - 'testdata/**'
       - 'cjpm.toml'
       - 'cjpm.lock'
-      - 'build.cj'
       - '.gitattributes'
       - '.github/workflows/ci.yml'
       - '.github/actions/**'
@@ -49,12 +46,9 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'third-party/**'
-      - 'libs/**'
       - 'testdata/**'
       - 'cjpm.toml'
       - 'cjpm.lock'
-      - 'build.cj'
       - '.gitattributes'
       - '.github/workflows/ci.yml'
       - '.github/actions/**'
@@ -84,7 +78,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/release
-          key: ci-linux-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          key: ci-linux-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj') }}
           restore-keys: |
             ci-linux-${{ env.CANGJIE_VERSION }}-
 
@@ -95,15 +89,6 @@ jobs:
           version: ${{ env.CANGJIE_VERSION }}
           url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
 
-      # 该平台没有预置的 C 库产物，build.cj 会现场编译，因此必须有 C 编译器
-      - name: 确保 C 编译器可用
-        run: |
-          if ! command -v clang >/dev/null 2>&1; then
-            echo "clang 缺失，尝试安装"
-            sudo apt-get update && sudo apt-get install -y clang
-          fi
-          clang --version
-
       # 版本信息先打出来：三平台里某个失败时，第一件要确认的往往是
       # "是不是 SDK 或编译器不对"，而不是去猜代码问题
       - name: 打印工具链版本
@@ -111,13 +96,11 @@ jobs:
           cjc --version
           cjpm --version
 
-      # 顺序：Linux 没有预置产物（本机无法交叉编译），由 build.cj 现场编出
-      # libs/linux_x86_64/libdrlibs.a。`cjpm check` 只在配置解析阶段检查
-      # [ffi.c] 指向的库是否存在、**不会触发构建脚本**，故必须先 build 后 check，
-      # 否则报 "can not find the library 'drlibs'"。
-      # （**仅限仓库内**：Windows 因 libs/windows_x86_64/ 里预置了产物而免疫该约束；
-      #   cjpm 从不把二进制打进制品包，故制品包内所有平台都必须先 build 后 check。）
-      - name: cjpm build（同时编译 C 静态库）
+      # 这里曾有一段关于"必须先 build 后 check"的说明：根因是 [ffi.c] 在配置解析
+      # 阶段校验 C 静态库是否存在、却不触发构建脚本，故两者有先后要求。
+      # C 依赖整体移除后 [ffi.c] 已不存在，这条约束随之消失 ——
+      # 下面的顺序（build → check → test）只是习惯，不再有强制含义。
+      - name: cjpm build
         run: cjpm build
 
       - name: 确认无 C 依赖残留
@@ -157,7 +140,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/release
-          key: ci-windows-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          key: ci-windows-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj') }}
           restore-keys: |
             ci-windows-${{ env.CANGJIE_VERSION }}-
 
@@ -168,17 +151,14 @@ jobs:
           version: ${{ env.CANGJIE_VERSION }}
           url-override: ${{ vars.CANGJIE_SDK_URL_WINDOWS }}
 
-      # Windows 侧**无需 C 编译器**：仓库已预置 libs/windows_x86_64/libdrlibs.a，
-      # build.cj 发现产物已存在便直接复用。
+      # Windows 侧同样不需要任何 C 工具链（纯仓颉实现，三个平台一致）。
       - name: 打印工具链版本
         run: |
           cjc --version
           cjpm --version
 
-      # **仓库内** Windows 因 libs/windows_x86_64/ 里有入库的预置产物，其实**免疫**
-      # "build 必须先于 check"这条约束（该豁免在制品包内失效 —— 包里没有二进制）；
-      # 这里仍保持与其它平台相同的顺序，只为三平台步骤一致、便于比对。
-      - name: cjpm build（复用预置的 C 静态库）
+      # 与其它平台保持相同顺序，只为三平台步骤一致、便于比对。
+      - name: cjpm build
         run: cjpm build
 
       - name: 确认无 C 依赖残留
@@ -207,7 +187,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/release
-          key: ci-macos-arm64-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj', 'third-party/drlibs_wrapper.c') }}
+          key: ci-macos-arm64-${{ env.CANGJIE_VERSION }}-${{ hashFiles('cjpm.toml', 'cjpm.lock', 'src/**/*.cj') }}
           restore-keys: |
             ci-macos-arm64-${{ env.CANGJIE_VERSION }}-
 
@@ -223,16 +203,13 @@ jobs:
       - name: 探测 macOS SDK 路径
         run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
 
-      - name: 确保 C 编译器可用
-        run: clang --version
-
       - name: 打印工具链版本
         run: |
           cjc --version
           cjpm --version
 
       # 同 Linux job：macOS 也没有预置产物，build 必须先于 check
-      - name: cjpm build（同时编译 C 静态库）
+      - name: cjpm build
         env:
           SDKROOT: ${{ env.SDKROOT }}
         run: cjpm build

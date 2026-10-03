@@ -87,9 +87,8 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：**当前没有任何解码路径依赖 dr_libs**（`wav`、`flac`、`ogg`+`flac`
-> 都是纯仓颉实现，`mp3` 解码已移出范围）。dr_libs 的代码仍随库静态链接
-> （`libs/<平台>/libdrlibs.a`），但只被测试用作独立裁判。
+> **依赖提示**：**本库不依赖任何第三方代码**（`wav`、`flac`、`ogg`+`flac` 都是纯仓颉
+> 实现，`mp3` 解码已移出范围），因此既没有静态链接进来的 C 代码，也不需要 C 工具链。
 
 ```cangjie
 import audio4cj.facade.AudioFile

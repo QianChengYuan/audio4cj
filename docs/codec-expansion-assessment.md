@@ -37,10 +37,10 @@ IMDCT、多相合成滤波器组，规模明显大于 FLAC 帧解码（后者已
 来自开发文档 §1.3 与既有实践：
 
 - 首期只承诺 **WAV / FLAC / MP3**；AAC 与 OGG 解码被**显式剔除**为"待 MVP 验证后再评估"（Vorbis 优先考虑 libvorbis FFI）。
-- 现有运行时 C 依赖只有一个：**dr_libs**（Unlicense / MIT-0）。
+- 现有运行时 C 依赖：**零**。C 依赖（dr_libs）已整体移除 —— 原因与代价见前面的取舍记录。
 - **已有纯仓颉解码的先例**：WAV（M2 起）、**FLAC** 与 **Ogg 封装的 FLAC**
   （本轮起 —— 前者含帧解码、CRC-8/CRC-16 校验与 SEEKTABLE 定位，Ogg 侧另含
-  页级重组与页 CRC-32 校验）都是纯仓颉实现，判据是"与 dr_libs 逐位相同"。
+  页级重组与页 CRC-32 校验）都是纯仓颉实现，判据是"与 ffmpeg 的 golden 基准逐位相同"。
   因此下文"新增一个 C 库要付多少代价"的评估，应同时对照另一条路线 ——
   **自己写纯仓颉实现**：两者都要付实现成本，但纯仓颉路线不引入新的供应链、
   许可与扫描面。FLAC 内核的存在证明这条路线在本项目里是走得通的。
@@ -58,7 +58,7 @@ IMDCT、多相合成滤波器组，规模明显大于 FLAC 帧解码（后者已
 | **Ogg 子编码识别**（Vorbis / Opus / FLAC / Speex） | `src/probe/magic.cj` | 探测层已能把"不支持"的信息精确到编码级，扩展后只需翻转 `supported` |
 | **Ogg 标签读取**（含 Opus 的 `OpusTags`） | `src/meta/ogg_page.cj` + `vorbis_comment.cj` | 标签能力已完整，扩展解码**不需要**再动标签层 |
 | **Decoder 接口**（一编码一实现，注册即用） | `src/codec/decoder.cj` | 新解码器只需实现 3 个方法 |
-| **C 侧薄封装 + 不透明句柄**模式 | `third-party/drlibs_wrapper.c` + `src/drlibs/` | 已验证可行的 FFI 接入范式，含句柄生命周期与错误转译 |
+| **C 侧薄封装 + 不透明句柄**模式 | `third-party/drlibs_wrapper.c` + `src/drlibs/`（**二者均已删除**） | 当年验证可行的 FFI 接入范式，含句柄生命周期与错误转译。仅作历史参考：若要重新引入 C 依赖，这套写法可以复用，但得先把构建链路重建起来 |
 | **测试素材**（Vorbis 多质量档/单声道/静音、Opus 双码率/带标签、Speex） | `testdata/ogg/` | 扩展后**素材已就绪**，无需等待 |
 | **golden PCM 比对基线**（无损互证 + ffmpeg 逐样本，实测最大差 0） | `src/test/golden_test.cj` | 新解码器可直接接入同一套正确性裁判 |
 
@@ -167,6 +167,15 @@ protected class VorbisPcmDecoder <: Decoder {
 
 ## 六、构建与分发代价
 
+> ⚠ **前提已经变了（重要，先读这段再看表）**：下表的"现状"列写于 dr_libs 仍在时。
+> 如今 C 依赖已被**整体移除**：`third-party/`、`build.cj`、四节 `[ffi.c]`、`libs/`
+> 产物目录与 CI 里的 C 编译步骤**都不存在了**。
+>
+> 因此"新增一个 C 库"的代价不再是"+1 个依赖"，而是**把这套机制整套重新装回来**，
+> 并重新承担当初促使我们移除它的那条风险（制品包内带 C 源码、消费者需 C 工具链）。
+> 评估任何新增依赖时，这一条应当被当作**主要成本**来算，而不是脚注 ——
+> 本文档后面列出的构建代价，现在每一项都是从零开始。
+
 这是本次评估中**最容易被低估**的部分。新增一个 C 库意味着：
 
 | 项 | 现状 | 新增一个 C 库之后 |
@@ -207,7 +216,7 @@ protected class VorbisPcmDecoder <: Decoder {
 - [ ] stb_vorbis 的当前 commit 是否已修复全部已知 CVE？（需逐条排查，流程同 dr_libs）
 - [ ] libvorbis 的底层合成 API 能否只链 `libvorbis`、免除 `libogg`？（需实测）
 - [ ] libopus 在 Windows / Linux / macOS 三平台的构建能否脚本化到 `build.cj` 的 pre-build 钩子里？
-- [x] `[ffi.c]` 能否按目标平台切换产物路径？—— **已证实可以**：`[target.<三元组>.ffi.c]`（2026-10-03 实测，见 `cjpm.toml` 与 `build.cj` 文件头）。原先的备选方案「由 `build.cj` 把产物拷贝到固定路径」（`libs/current/` 中间层）**已废弃**。
+- [x] `[ffi.c]` 能否按目标平台切换产物路径？—— **当年已证实可以**：`[target.<三元组>.ffi.c]`（2026-10-03 实测）。原先的备选方案「由 `build.cj` 把产物拷贝到固定路径」（`libs/current/` 中间层）当年即已废弃。**注意：这条结论现在只是历史记录 —— `[ffi.c]` 与 `build.cj` 已随 C 依赖整体移除，若重新引入需从头验证一遍。**
 - [ ] Windows 的 `lib` 前缀双副本方案能否平滑扩展到多个 C 库？
 - [ ] 新增依赖后，项目的"最小依赖足迹"叙事是否还成立？（这是本项目的差异化卖点之一，需权衡）
 

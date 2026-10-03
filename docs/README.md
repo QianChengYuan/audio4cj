@@ -39,7 +39,8 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M4** | FLAC + MP3 解码（经 dr_libs FFI，dr_flac / dr_mp3）。⚠ MP3 **解码**已在后续版本移出范围（其标签读取保留） | ✅ 已完成 |
 | **M5** | 流式与健壮性（有界队列背压 `AsyncFrameStream`、fuzz 与 CVE 同类回归、长时运行与并发测试） | ✅ 已完成 |
 | **M6 前置** | 容器与质量基线扩展（OGG 页重组与 MP4 `ilst` 标签读取、**Ogg 封装 FLAC 解码**、探测层 Ogg 子编码区分、golden PCM 三方比对基线） | ✅ 已完成 |
-| **M6** | 发布（`build.cj` 多平台构建、`LICENSES.md` 台账、CI、发布配置） | 🚧 进行中 |
+| **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | 🚧 进行中 |
+| **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 
 ## 三、文档索引
 
@@ -116,7 +117,7 @@ try (f = AudioFile.open(path)) {
 | **素材识别矩阵** | 对 `testdata/` 全部素材硬断言探测结果（容器 + 子编码 + 可解码性），与**独立实现**的基准交叉检查 |
 | **golden PCM 比对** | 与 **ffmpeg 的解码输出**逐样本比对（实测最大差 **0**）；另有无损互证：同一段 PCM 的 WAV 与 FLAC 封装解码结果必须**逐位相同** |
 | **fuzz 测试** | 固定种子的随机字节与变异输入打到探测层、全部标签解析器与打开链路，断言「不崩溃，且只抛库内异常」 |
-| **CVE 同类攻击面回归** | 针对「声明长度远超实际数据」「块链永不结束」等攻击面构造畸形容器样本。注意：这是**同类攻击面样本，不是漏洞 PoC 复现**（所用 dr_libs 已是修复版），详见测试文件注释 |
+| **CVE 同类攻击面回归** | 针对「声明长度远超实际数据」「块链永不结束」等攻击面构造畸形容器样本。注意：这是**同类攻击面样本，不是漏洞 PoC 复现**（样本针对的是**我们自己的解析器**；所用第三方库早已是修复版，且现已整体移除）。详见测试文件注释 |
 | **长时运行与并发** | 完整解码长素材验证帧数守恒；反复开关文件验证无句柄泄漏；多线程并行解码与串行结果逐位一致 |
 
 > **诚实标注 1**：开发文档 M5 条目中的「峰值内存恒定」目前只做到**结构性与正确性证据**
@@ -142,7 +143,6 @@ try (f = AudioFile.open(path)) {
 | **FLAC 的 `PICTURE` 块（封面）** | 未覆盖。原生 FLAC 与 Ogg-FLAC 的封面块均未解析。注意 **MP4 的 `covr` 与 ID3v2 的 `APIC` 已支持** |
 | **MP4 的 `moov` 位于文件中部** | 未覆盖。标签读取覆盖 `moov` 在**文件头**（faststart）与**文件尾**（ffmpeg 默认）两种布局；理论上 `moov` 只会在这两端，但若遇到中间布局的文件则读不到标签 |
 | **APE / WavPack 等容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException` |
-| **Linux / macOS 的 C 库产物** | 仓库只**预置（提交）**了 Windows x86_64 产物；`build.cj` 已能按当前平台复用预置产物或现场编译，且 **Linux / macOS 路径已在三平台 CI 上实测通过**（CI 各处均实际执行 `cjpm build`），只是产物未入库（本机无法交叉编译） |
 | **实时流传输（RTP / RTSP / WebRTC 等）** | 无任何规划，整个实时协议栈均缺失 |
 
 ## 七、包与导入
@@ -167,5 +167,4 @@ import audio4cj.core.Audio4CjException    // 异常根类型
 | `audio4cj.meta` | public | 标签模型与各体系解析器（ID3 / Vorbis comment / WAV INFO / Ogg 页 / MP4 原子） |
 | `audio4cj.stream` | public | 流式读取器（`FrameStream` 同步拉取 / `AsyncFrameStream` 异步背压） |
 | `audio4cj.facade` | public | 门面 |
-| `audio4cj.drlibs` | 模块内可见 | dr_libs 的 FFI 绑定与适配层（C 互操作，封装 unsafe 与句柄生命周期） |
 | `audio4cj.probe` / `audio4cj.format` / `audio4cj.codec` | 模块内可见 | 内部实现层，不对外暴露 |

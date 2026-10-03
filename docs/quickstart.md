@@ -6,24 +6,19 @@
 |---|---|
 | 仓颉 SDK | **1.2.0**（与 `cjpm.toml` 的 `cjc-version = "1.2.0"` 一致） |
 | 构建工具 | `cjpm`（随 SDK 提供） |
-| 平台 | Windows x86_64（仓库当前只提供了该平台的 C 库产物） |
+| 平台 | 任意（纯仓颉实现，没有平台相关的 C 产物需要预置） |
 
-> **C 库依赖（当前没有任何解码路径需要它）**
+> **没有任何 C 依赖，也没有构建顺序要求**
 >
-> - **WAV、FLAC 与 Ogg 封装的 FLAC** 走纯仓颉实现，**不需要** C 库；
-> - **MP3 解码已移出本版本范围**（它是唯一曾依赖 C 库 dr_mp3 的格式）——
->   但 MP3 **仍可识别、标签仍可读**（见下文 `readTags` 一节）。
+> - **WAV、FLAC 与 Ogg 封装的 FLAC** 都是纯仓颉实现，**不需要** C 库；
+> - **MP3 解码不在本版本范围内**（它是最后一个依赖 C 库的格式）——
+>   但 MP3 **仍可识别、标签仍可读**（见下文 `readTags` 一节）；
+> - 因此 `cjpm build` / `cjpm check` / `cjpm test` 都不需要 C 编译器，
+>   且 **`check` 与 `build` 的先后随意**。
 >
-> 一句话：**当前没有任何解码路径需要 `libs/<平台>/libdrlibs.a`**。它之所以还在，
-> 是因为 dr_flac 被**测试**用作独立裁判、而库仍按原样编译它；这份 C 依赖已在
-> 清理计划中（见 [codec-expansion-assessment](codec-expansion-assessment.md)）。
-> 在那之前消费者侧仍需 C 工具链：仓库已预置 Windows x86_64 的静态库，
-> Linux / macOS 由 `build.cj` 现场编译（需要 clang 与 ar）。
-> - 它是**静态链接**的：C 库直接进可执行文件，**运行期不需要分发或加载任何
->   动态库**（这是从动态库改为静态库的主要收益）。
-> - 以库的形式被引用时，消费者侧**需要 C 编译器**：发布包内不含 C 库二进制
->   （cjpm 一律不打包二进制文件），`build.cj` 会在消费者构建时现场编译。
->   详见 [发布打包](release.md)。
+> （此前版本要求"先 `cjpm build` 再 `cjpm check`"：`[ffi.c]` 会在配置解析阶段校验
+> 静态库是否存在，而它不触发构建脚本，否则报 `can not find the library 'drlibs'`。
+> C 依赖整体移除后该机制连同这条约束一起消失。）
 
 ## 二、引入本项目
 
@@ -56,25 +51,12 @@ cjpm test --parallel 4            # 并行执行
 cjpm clean          # 清理构建产物
 ```
 
-**不需要手工编译 C 库。** `build.cj` 的 `pre-build` / `pre-test` 钩子会按当前平台
-准备 dr_libs 薄封装的**静态库**：**优先复用**仓库里 `libs/<平台>/` 的预置产物
-（所以即使在没装 C 编译器的 Windows 上也能直接构建），没有预置产物时才现场编译
-（Linux / macOS 用 clang，Windows 用 MinGW 的 gcc + ar）。
+**没有任何 C 构建步骤。** 解码全部为纯仓颉实现，`cjpm build` / `cjpm test` 只编译仓颉代码。
 
-`[ffi.c]` 用 cjpm 的 **target 级配置**按平台分别指向 `libs/<平台>/`，
-因此**不必**为不同平台改配置；三元组与目录的对应关系见 `cjpm.toml` 的注释。
-
-**C 库是静态链接的**：C 库直接进可执行文件，运行期**不需要分发或加载任何动态库**。
-
-需要强制重新编译 C 库时（排查构建问题）：
-
-```bash
-# Linux / macOS
-AUDIO4CJ_FORCE_C_BUILD=1 cjpm build
-
-# Windows PowerShell
-$env:AUDIO4CJ_FORCE_C_BUILD="1"; cjpm build
-```
+> （此前版本这里有一段说明：`build.cj` 的 `pre-build` / `pre-test` 钩子如何按平台准备
+> `libs/<平台>/libdrlibs.a`、`[ffi.c]` 如何用 target 级配置指向该目录、以及如何用
+> `AUDIO4CJ_FORCE_C_BUILD=1` 强制重编译。C 依赖整体移除后，这些机制、产物目录与那个
+> 环境变量**都不再存在**。）
 
 > 测试套件**不依赖 ffmpeg**（golden 基准已随仓库入库），也不需要下载任何素材。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。

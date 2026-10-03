@@ -10,14 +10,14 @@
 #   范围，并由 scripts/release_bundle.py 逐项校验包内容（必需的必须有、
 #   禁止的必须没有）。完整说明见 docs/release.md。
 #
-# 【为什么要装 clang】
-#   发布包不含 C 库二进制（cjpm 一律跳过二进制）。打包过程中的 cjpm test
-#   需要链接 C 库，而 Linux 上没有预置产物，因此 build.cj 会现场编译 ——
-#   与 ci.yml 的 Linux job 同理。
+# 【为什么这里不再需要 clang】
+#   本库已无任何 C 依赖：打包过程中 `cjpm test` 要跑的用例全部是纯仓颉实现，
+#   不需要链接任何 C 库。（此前这里装 clang 是因为 [ffi.c] 指向的静态库不在包内、
+#   需要 build.cj 现场编译 —— 那套机制已随 C 依赖整体移除。）
 #
 # 【为什么在 Linux 上打包】
-#   包本身与平台无关（纯源码 + 配置）。选 Linux 是因为它本就依赖现场编译
-#   链路，最能暴露「包内容是否自洽」——包内那 187 个用例会真实跑一遍。
+#   包本身与平台无关（纯源码 + 配置）。选 Linux 是因为它是最"干净"的环境 ——
+#   若包内容有任何自洽性问题，最能暴露出来。包内那 206 个用例会真实跑一遍。
 # ------------------------------------------------------------
 
 name: Release
@@ -49,15 +49,6 @@ jobs:
           os: linux
           version: ${{ env.CANGJIE_VERSION }}
           url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
-
-      # 发布包不含库二进制，消费者与打包机都依赖现场编译
-      - name: 确保 C 编译器可用
-        run: |
-          if ! command -v clang >/dev/null 2>&1; then
-            echo "clang 缺失，尝试安装"
-            sudo apt-get update && sudo apt-get install -y clang
-          fi
-          clang --version
 
       # 工作区干净是硬要求：include 按路径生效，落在打包范围内的**未跟踪**文件
       # 同样会被打进包，因此必须先确认没有未提交内容（脚本会拒绝执行）

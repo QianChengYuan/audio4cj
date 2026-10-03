@@ -21,15 +21,15 @@ package audio4cj.format
  *   FLAC 这一族无论容器都已是纯仓颉实现。容器差异**不在内核里**，
  *   而在更下层的**字节源**（flac_source.cj / ogg_flac_source.cj）。
  *
- * 【两个实现的关系不是"新旧替换"，而是"互证"】
- *   两者对同一段音频必须产出**逐位相同**的 f32 PCM。这既是对纯仓颉实现的
- *   正确性判据，也让 FFI 路径有了长期存在的理由（保留作对照基准），
- *   与 WAV 侧"纯仓颉为主、dr_libs 作交叉验证"的既有范式一致。
+ * 【"独立裁判"这条规矩没有随 dr_libs 一起消失】
+ *   原先 dr_libs 内核的价值不只是"备选实现"，更是**对照基准**：两者对同一段
+ *   音频必须产出逐位相同的 f32 PCM。它走了之后，这条规矩由 **ffmpeg 的 golden
+ *   基准**接替（见 src/test/golden_test.cj 与 golden_support_test.cj）——
+ *   判据的独立性反而更强：外部实现与我们的解码器之间不再共享任何代码。
  *
- *   实测中这条互证是**自动发生**的：`probe_matrix` 的
- *   `flacInOggIsDecodableAndMatchesNativeFlac` 打开同一段 PCM 的 Ogg 封装
- *   （走 FFI）与原生 FLAC（走纯仓颉），断言两者逐位相同 —— 它同时成了
- *   两条内核路径的交叉验证，不需要额外写对照用例。
+ *   `probe_matrix` 的 `flacInOggIsDecodableAndMatchesNativeFlac` 仍是一条
+ *   **容器级**互证（同一段 PCM 的两种封装必须逐位相同）。它与"与 ffmpeg 对账"
+ *   是两个不同方向：一个防容器差异，一个防解码算错，缺任一个都会留下盲区。
  *
  * 【放在 format 包而非 codec 包的原因】
  *   codec 包已经依赖 format（Codec 需要 format.Packet），若把本接口放进

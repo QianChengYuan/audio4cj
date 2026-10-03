@@ -8,9 +8,10 @@ import audio4cj.pcm.AudioBuffer
  * Decoder —— 开发文档 §4.6
  *
  * 解码器统一接口：一编码一实现，注册即用。
- * M2 起由 dr_libs FFI 适配层实现（注意：适配层须与 FFI 声明同包，
- * 因 foreign 函数无法带访问修饰符、父包访问不到子包的 internal 声明，
- * 详见开发文档 §12.4.4）。
+ * 本版本各实现均为纯仓颉（WAV / FLAC / Ogg-FLAC）。
+ * （历史上 FLAC 等曾由 dr_libs 的 FFI 适配层实现，那层须与 FFI 声明同包 ——
+ * 因 foreign 函数无法带访问修饰符、父包访问不到子包的 internal 声明；
+ * 这套约束已随 C 依赖整体移除。）
  *
  * 契约要点：
  *   - decode() 遇坏帧必须抛 DecodeException，不得返回空 AudioBuffer

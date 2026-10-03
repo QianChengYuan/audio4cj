@@ -35,7 +35,7 @@ cjpm 官方支持在 `[package]` 下配置 `include`（指定打包范围）与 
 - 默认**不打包**：根目录的 `cjpm.lock`、`cangjie-repo.toml`、编译产物目录、
   构建脚本产物目录、**所有二进制文件**
 
-最后一条解释了为什么 `libs/` 与 `tools/Releases/` 下的二进制从来进不了包 ——
+最后一条解释了为什么 `tools/Releases/` 下的二进制从来进不了包（`libs/` 这个 C 产物目录本身已随依赖移除）——
 这不是本项目的配置所致，而是 cjpm 的固有行为。
 
 ## 为什么还需要一个脚本
@@ -76,8 +76,9 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 它们与 `cjpm.toml` 的 include 白名单**互为验证**：`include` 决定「打什么」，
 这两张表断言「打出来的对不对」—— 任何一边被改错，另一边都会报警。
 
-实测通过的包：**118 个条目 / 约 400 KB**（未配置打包范围时为 736 条目 / 896 KB；
-0.1.0 首次提交上架审核被退回时是 145 条目 / 422.8 KB —— 差额正是下表剔掉的那些）。
+实测通过的包：**111 个条目 / 约 400 KB**（未配置打包范围时为 736 条目 / 896 KB；
+0.1.0 首次提交上架审核被退回时是 145 条目 / 422.8 KB；配置打包范围后一度为 118 条目，
+C 依赖整体移除后又减了几个 —— 条目数的每次变化都是"包里有什么"的快照）。
 
 > 体积为什么只给近似值：`docs/` 本身也在包里，**任何文档编辑都会改变包体积**，
 > 写精确数字反而追不上自己（实测同一份代码在 397.9～399.8 KB 间浮动，差异全来自
@@ -87,19 +88,16 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 
 | 条目 | 说明 |
 |---|---|
-| `cjpm.toml`、`build.cj` | 模块定义（含 `[ffi.c]` 与 include 白名单）与**构建期装配 C 库**的钩子 —— 消费者侧就靠它 |
+| `cjpm.toml` | 模块定义（含 include 白名单） |
 | `src/` | 库源码 |
-| `third-party/drlibs_wrapper.c` | 薄封装 C 源文件（`build.cj` 编译的就是它） |
-| `third-party/dr_libs/` 下的 `dr_flac.h`、`dr_mp3.h`、`dr_wav.h` | 三个**单头文件**库 —— wrapper 只 include 这三个 |
-| `third-party/dr_libs/LICENSE`、`README.md` | 第三方许可原文与出处说明（许可义务要求保留 LICENSE） |
 | `config/cjlint_rule_list.json` | 项目级静态检查配置 |
 | `docs/`、`README.md`、`LICENSE`、`NOTICE` | 文档与许可证 |
 
-> **为什么 `third-party` 逐文件列出，而不是整目录**：dr_libs 原仓库还带 `tests/`
-> 与 fuzzer（`*.c` / `*.cpp` / `*_fuzzer.cc`）以及 `CMakeLists.txt`，构建完全用不到，
-> 而 fuzzer 是"专门让程序崩溃"的代码 —— 放进制品包对审阅者只有负面意义。
-> 0.1.0 首次提交上架审核被退回后先把这类内容清出去；**退回原因未获官方说明**，
-> 这是按官方安全策略里「三方库目录、内容审核」一条做的预防性收紧，不是已证实的成因。
+> **这里曾列出 `build.cj` 与 third-party 下的 6 个 C 文件**（薄封装 + 三个单头文件库
+> + LICENSE + README.md）。它们存在的唯一目的是让消费者现场编译 C 库。C 依赖整体移除后，
+> 制品里不再有任何 C 代码 —— 这一边少了条目，而"绝不包含"那一边**反过来把
+> `third-party/` 与 `libs/` 断言为禁止项**：白名单漏项是安全的，而"把 C 加回来"
+> 必须是一次显式动作。
 
 ### 绝不包含
 
@@ -109,40 +107,31 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `.vscode/` | 本机路径与用户名 |
 | `.codebuddy/` | 本机助手工作数据 |
 | `.github/`、`tools/`、`m0-poc/`、`musics/`、`sctiptr/`、`scripts/`、`testdata/` | 消费者不需要 |
-| `third-party/dr_libs/tests/` | dr_libs 的测试与 fuzzer，构建用不到（见上方说明） |
-| `target/`、`libs/` | 构建产物 / 库二进制 |
+| `third-party/`、`libs/` | **C 依赖遗留**：前者曾是 dr_libs 与 C 薄封装的所在地，后者曾是各平台的库产物目录。整体移除后不应再出现（防御性断言） |
+| `target/` | 构建产物 |
+
+> 历史沿革：`third-party/dr_libs/tests/`（dr_libs 的测试与 fuzzer）也曾被单独剔除 ——
+> fuzzer 是"专门让程序崩溃"的代码，放进制品包对审阅者只有负面意义。
 
 ## 消费者侧的要求（已实测）
 
-发布包是**纯源码**。消费者拿到后：
+发布包是**纯源码，且不含任何 C 代码**。消费者拿到后：
 
-1. **构建期** —— 其 `cjpm` 会执行本库的 `build.cj` 钩子来准备 C 库
-   （实测：删掉 `libs/` 下的产物后，**只在消费者侧**执行 `cjpm build` 即重新编译完成）。
-   C 库是**静态库**，编译需要该平台的 C 工具链（Linux / macOS 用 clang + ar，
-   Windows 用 MinGW 的 gcc + ar）。由于包内不含库二进制（cjpm 一律不打包二进制），
-   消费者**需要 C 编译器**。
-2. **运行期** —— **无额外要求**。C 库是**静态链接**的，直接进可执行文件，
-   不需要分发或加载任何动态库。
-   实测：消费者产物目录中没有任何 DLL，仅把 SDK 运行期库加入 PATH 即可正常运行。
+1. **构建期** —— **无额外要求**：只需 SDK 自带的 `cjpm`，**不需要 C 编译器**，
+   也不需要预先准备任何库产物。（实测：`cjpm build` / `cjpm check` / `cjpm test`
+   全部通过，且构建输出中 C 编译器痕迹为 **0 行**；包内 C 相关条目为 **0 条**。）
+2. **运行期** —— **无额外要求**：纯仓颉实现，不加载任何动态库，
+   也没有静态链接进去的第三方代码。
 
-### ⚠ 一个已知的顺序约束：先 `build`，再 `check`
-
-包内没有任何 `libs/` 目录（cjpm 从不打包二进制），而 `cjpm check` 在配置解析阶段
-就校验 `[ffi.c]` 指向的库是否存在、且**不触发构建脚本**。因此消费者侧的正确顺序是：
-
-```bash
-cjpm build     # 先由 build.cj 编出 libs/<平台>/libdrlibs.a
-cjpm check     # 此时才能通过
-```
-
-反过来会报 `can not find the library 'drlibs' which is listed in
-'target.<三元组>.ffi.c' field`。`cjpm build` 与 `cjpm test` 不受影响 —— 它们都会先跑
-各自的钩子。**注意：仓库内 `check` 通过 ≠ 包内 `check` 通过** —— 本仓库的
-`libs/windows_x86_64/` 预置了产物（二进制入库），而制品包里没有。
-
-**这条约束无法靠配置消除**（两条路都已实测否掉）：二进制进不了包；把库引用改由
-`link-option` 承担则**不会传递到消费者的最终链接**（消费者链接报 undefined symbol），
-而 `[ffi.c]` 恰是唯一能把 C 库依赖传给消费者的机制。成因详见 `build.cj` 文件头。
+> 此前版本在这里列的是两条实打实的要求：消费者**需要该平台的 C 工具链**
+> （Linux / macOS 用 clang + ar，Windows 用 MinGW 的 gcc + ar），
+> 且**必须先 `build` 再 `check`**。两者都源于 `[ffi.c]` 指向的静态库不在包内这一事实。
+> C 依赖移除后，`[ffi.c]`、`build.cj` 与那条约束**一并消失**。
+>
+> 顺带说明当时的判断为什么是"无法靠配置消除"：二进制进不了包；把库引用改由
+> `link-option` 承担**不会传递到消费者的最终链接**（实测消费者链接报 undefined symbol），
+> 而 `[ffi.c]` 是唯一能把 C 库依赖传给消费者的机制。这个结论当年成立，
+> 也正是它把"去掉 C 依赖"推成了唯一出路。
 
 ## 发布元数据（仓颉中心仓）
 

@@ -12,7 +12,7 @@ import std.collection.ArrayList
  * 【本文件的职责】
  *   把 flac_frame.cj 的帧解码接到**字节源**与流式消费上，实现 FlacDecodeKernel。
  *   它负责：元数据解析、窗口回填、按请求帧数交付、seek。
- *   它**不含**任何 FLAC 算法 —— 算法全在 flac_frame.cj，且已与 dr_libs 逐样本对齐。
+ *   它**不含**任何 FLAC 算法 —— 算法全在 flac_frame.cj，且已与 ffmpeg 基准逐样本对齐。
  *
  * 【字节从哪里来：本文件不认识"文件"，只认识 FlacByteSource】
  *   "字节来自裸文件还是 Ogg 页体"是**容器**问题，不是解码问题，故抽到
@@ -42,8 +42,9 @@ import std.collection.ArrayList
  *   1. 帧头 CRC-8 与帧尾 CRC-16 的**校验**（见表 flac_crc.cj，在流式层调用）；
  *   2. SEEKTABLE 索引定位，含无该块时的"重开 + 向前解码"回退
  *      （见 seekToFrame 与 seekPointAtOrBefore）。
- *   两项都是为了"换内核之后检测能力与定位能力不下降"，依据是与 dr_libs 的
- *   逐样本对照与逐落点对照，而不是"实现了就算"。
+ *   两项都是为了"换内核之后检测能力与定位能力不下降"：初版正是拿它与 dr_libs
+ *   做逐样本、逐落点对照，才敢说"不下降"。dr_libs 移除后这份对照改由
+ *   **ffmpeg 的 golden 基准**承担（见 src/test/golden_support_test.cj）。
  * ========================================================================== */
 
 /// f32 样本的字节数。
@@ -114,7 +115,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 窗口上的位读取器（每次回填后重设位置与有效长度）。
     private let _reader: BitReader
 
-    /// 归一化分母 2^(位深-1)，与 dr_flac 口径一致。
+    /// 归一化分母 2^(位深-1)，与 ffmpeg 口径一致。
     private let _scale: Float32
 
     /// 窗口 [0, _valid) 为有效数据。
@@ -727,7 +728,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
 
     /// 把帧内 [start, start+count) 的样本按声道交错写入 out，并完成 f32 归一化。
     ///
-    /// 归一化口径与 dr_flac 一致：sample / 2^(位深-1)。
+    /// 归一化口径与 ffmpeg 一致：sample / 2^(位深-1)。
     /// 注意 FLAC 的 8 位样本是**有符号**的（与 WAV 的无符号 8 位不同），
     /// 因此这里不能复用 pcmToF32。
     private func interleave(frame: FlacFrame, out: Array<Float32>, start: Int64, count: Int64): Unit {

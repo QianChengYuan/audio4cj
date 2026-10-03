@@ -41,7 +41,7 @@ protected class FlacPcmDecoder <: Decoder {
 
     /// 把数据包中的 f32 交错 PCM 字节重解释为 `AudioBuffer`。
     ///
-    /// 说明：dr_libs 已按 f32 交错写出（取值范围 [-1.0, 1.0]），
+    /// 说明：解码内核已按 f32 交错写出（取值范围 [-1.0, 1.0]），
     /// 因此这里不做任何数值变换，只是换视角读取同一块内存。
     public func decode(packet: Packet): AudioBuffer {
         let samples = reinterpretF32Bytes(packet.data)

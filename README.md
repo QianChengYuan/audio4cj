@@ -65,30 +65,18 @@ main() {
 构建与测试：
 
 ```bash
-cjpm build      # 首次构建会准备 C 静态库
-cjpm test       # 187 个用例
-cjpm check      # 依赖与编译顺序校验（须在 build 之后，见下）
+cjpm build      # 构建（纯仓颉，不需要任何 C 工具链）
+cjpm test       # 206 个用例
+cjpm check      # 依赖与配置校验
 ```
 
-> **不需要手工编译 C 库**：`build.cj` 的 `pre-build` 钩子会按平台准备
-> `libs/<平台>/libdrlibs.a` —— 已存在就直接复用，否则用该平台的工具链现场编译。
+> **不需要任何 C 工具链，也没有构建顺序要求**：解码全部为纯仓颉实现，
+> `cjpm build` / `cjpm test` / `cjpm check` 都不需要 C 编译器，
+> 且 `check` 与 `build` 的先后随意。
 >
-> **C 库是静态链接的**：C 库直接进可执行文件，**运行期不需要分发或加载任何动态库**。
->
-> **顺序约束：先 `cjpm build`，再 `cjpm check`**。`cjpm check` 在配置解析阶段就校验
-> `[ffi.c]` 指向的库是否存在，而它**不会触发构建脚本**，否则报
-> `can not find the library 'drlibs'`。`cjpm build` 与 `cjpm test` 不受影响。
->
-> **⚠ 本仓库 vs 制品包（一个容易踩的差别）**：本仓库的 `libs/windows_x86_64/` 里
-> **预置**了产物（二进制入库），所以**在仓库内** Windows 上不装 C 编译器也能构建与
-> check；但 cjpm **从不把二进制打进制品包**，因此**从中心仓取得本库的消费者，在任何
-> 平台都需要 C 编译器**，且必须先 `build` 再 `check`。详见
-> [docs/release.md](docs/release.md)。
->
-> **预置产物带来的一个代价（如实说明）**：Windows 的 `libdrlibs.a` 是入库的预置产物，
-> 因此改过 `third-party/drlibs_wrapper.c` 之后，必须显式重编译
-> （`AUDIO4CJ_FORCE_C_BUILD=1 cjpm build`）才会生效 —— 这是「免装 C 编译器」换来的。
-> CI 的 Linux / macOS 任务不依赖预置产物、每次从源码编译，可起到交叉验证作用。
+> （此前版本依赖 C 库 dr_libs，因而要求"先 `cjpm build` 再 `cjpm check`"，
+> 并需要预置各平台的静态库产物。该依赖已**整体移除** —— 见
+> [docs/codec-expansion-assessment.md](docs/codec-expansion-assessment.md) 的取舍记录。）
 
 ## 质量保障
 
@@ -125,10 +113,15 @@ cjpm check      # 依赖与编译顺序校验（须在 build 之后，见下）
 
 本项目采用 **Apache License 2.0**，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
 
-运行时依赖只有一个：[dr_libs](third-party/dr_libs)（公共领域或 MIT-0，二选一）。
-它**已不在任何解码路径上**（WAV / FLAC / Ogg-FLAC 都是纯仓颉实现，MP3 解码已移出
-本版本范围），目前只被**测试**用作独立裁判；相关代码仍随库编译，
-故供应链跟踪义务不变。完整的依赖台账、版本锁定与审计流程见 [LICENSES.md](LICENSES.md)。
+运行时依赖：**无**。本库不依赖任何第三方代码 —— 容器探测、各格式解码
+（WAV / FLAC / Ogg 封装的 FLAC）、标签解析与 PCM 处理全部为纯仓颉实现。
+
+> **曾有一个依赖**：`dr_libs`（公共领域 / MIT-0），长期承担 FLAC / MP3 / WAV 的解码内核，
+> 经 FFI 静态链接。随着各格式陆续改为纯仓颉实现、以及 MP3 解码移出范围，它已被
+> **整体移除**（连同 `third-party/`、`build.cj` 与 `cjpm.toml` 的 `[ffi.c]`）——
+> 因此本库现在既没有运行时第三方依赖，也没有构建期 C 工具链要求。
+> 移除原因与取舍记录见 [docs/codec-expansion-assessment.md](docs/codec-expansion-assessment.md)，
+> 依赖台账见 [LICENSES.md](LICENSES.md)。
 
 > 本项目只接受**宽许可**依赖（公共领域 / MIT / BSD / Apache-2.0），
 > 且不引入专利费。GPL 系与专有许可一律不可用 —— 这也是 AAC 解码

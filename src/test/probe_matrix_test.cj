@@ -296,10 +296,11 @@ class ProbeMatrixTest {
     /// 封装编码，两者都是无损的，解码输出必须**逐位相同**。这条不需要任何
     /// 外部工具（不依赖 ffmpeg），因此在任何环境下都能跑。
     ///
-    /// 【它现在验的是什么，不要与另一条混淆】两条路径如今都走纯仓颉内核，
-    /// 所以本条验的是"**两种容器**的解码结果一致"；而"内核与 dr_libs 逐样本
-    /// 一致"由 src/test/flac_bitstream_test.cj 的 oggWrappedMatchesFfi 单独负责。
-    /// 两个对照分工不同，缺了后者就等于失去了独立裁判。
+    /// 【它现在验的是什么，不要与另一条混淆】两条路径如今都走同一个纯仓颉内核，
+    /// 所以本条验的是"**两种容器**的解码结果一致"（页重组有没有把音频弄错）；
+    /// 而"解得对不对"由与 **ffmpeg 的 golden 基准**逐样本比对负责
+    /// （见 src/test/flac_bitstream_test.cj 与 golden_support_test.cj）。
+    /// 一个是自洽对照、一个是外部裁判，缺任一个都会留下盲区。
     @TestCase
     func flacInOggIsDecodableAndMatchesNativeFlac() {
         let oggPath = "${PM_ROOT}/ogg/ogg_flac.oga"

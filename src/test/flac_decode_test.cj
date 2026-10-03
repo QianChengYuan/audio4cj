@@ -264,7 +264,7 @@ class FlacDecodeTest {
             @Assert(buf.channels == 1)
             @Assert(buf.sampleRate == 44100)
 
-            // dr_flac 的归一化与 dr_libs 一致：v / 32768.0
+            // 归一化：v / 32768.0（与 ffmpeg 一致）
             @Assert(buf.samples[0] == -1.0)
             @Assert(buf.samples[1] == -0.5)
             @Assert(buf.samples[2] == -0.25)

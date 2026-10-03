@@ -17,18 +17,19 @@ import audio4cj.meta.*
  *     FileByteSource    ← 原生：字节就是文件本身
  *     OggFlacByteSource ← Ogg ：字节是各页页体重建出来的流
  *   内核因此只需被告知"字节流是不是 Ogg 重建出来的"（即 `oggWrapped`）。
- *   DrLibsFlacKernel 仍留在代码里，但**不在生产路径上** ——
- *   它现在的身份是**独立裁判**：测试拿它与纯仓颉实现逐样本对账。
+ *   解码内核只此一个（PureFlacKernel）；曾经的 DrLibsFlacKernel 已随 C 依赖
+ *   整体移除，它的"独立裁判"职责现由 **ffmpeg 的 golden 基准**接替 ——
+ *   判据的独立性反而更强：外部实现与我们的解码器之间不再有任何共享代码。
  *
  * 分工（与 WAV 保持一致）：
  *   本类持有解码内核，负责打开、参数、seek 与分块读取；
  *   `FlacPcmDecoder` 只把已解码的 f32 字节重解释为 AudioBuffer。
  *   这样 reader 与 decoder 不共享状态，避免所有权纠缠。
  *
- * 【本类不认识 dr_libs】
+ * 【本类不认识任何具体内核】
  *   自 M7 起本类只依赖 FlacDecodeKernel 接口，换内核不需改这里一行 ——
- *   这正是抽接口的目的：本次把原生 FLAC 换成纯仓颉内核，确实只动了 init 中
- *   的一处选择，其余方法一行未改。内核的选取发生在 init 中，
+ *   这正是抽接口的目的：把原生 FLAC 从 dr_libs 换成纯仓颉内核时，确实只动了
+ *   init 中的一处选择，其余方法一行未改。内核的选取发生在 init 中，
  *   依据是调用方传入的容器信息（不在这里重新识别容器）。
  *
  * 分块策略：每次最多读取 FLAC_CHUNK_FRAMES 帧（f32 交错下约
