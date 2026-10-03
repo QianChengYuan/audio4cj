@@ -32,10 +32,12 @@ gen_golden.py
     被测代码：测试只需把 4 字节还原成 Float32（`Float32.readLittleEndian`），
     与被测库的输出逐样本相减即可。
 
-【故意的取舍：MP3 的 golden 只用于「松比对」】
-    有损解码器（dr_mp3 与 ffmpeg 各自的 MP3 实现）在量化细节与编码器延迟补偿
-    上合法地存在差异，逐样本等同做不到。因此 MP3 的基准只用于帧数与整体能量
-    包络的松散比对，不参与逐样本断言。
+【曾有的取舍：MP3 的 golden 只用于「松比对」】
+    有损解码器在量化细节与编码器延迟补偿上合法地存在差异，逐样本等同做不到，
+    因此 MP3 的基准当时只参与"帧数 + 整体能量"的包络比对。
+    MP3 解码已移出本版本范围（它是唯一依赖 C 库 dr_mp3 的格式），该基准连同
+    envelope 模式一并移除。若将来接入有损格式，需要把这条思路恢复起来 ——
+    对两个有损解码器而言，逐样本相等是不可能达到的标准。
 """
 
 import argparse
@@ -79,16 +81,11 @@ GOLDENS = [
         "wav/wav_s16_16000_mono.wav",
         "1kHz 正弦 3 秒 / 16k / 单声道 / 16bit；与 flac_s16_16000_mono.flac 同源",
     ),
-    (
-        "mp3_cbr_128k.f32le",
-        "mp3/mp3_cbr_128k.mp3",
-        "MP3 有损 —— 仅供帧数与能量包络的松散比对",
-    ),
 ]
 
 # 素材 → (golden, 比对模式)
 #   samples  = 逐样本比对（容差由测试按位深决定，见 golden_test.cj）
-#   envelope = 只比帧数与整体能量（有损格式）
+#   （曾有 envelope = 只比帧数与整体能量，随 MP3 移出范围一并移除）
 FIXTURES = [
     ("wav/wav_s16_44100_stereo.wav", "sine_44100_stereo_s16.f32le", "samples"),
     ("flac/flac_s16_44100_stereo.flac", "sine_44100_stereo_s16.f32le", "samples"),
@@ -100,7 +97,6 @@ FIXTURES = [
     ("wav/wav_u8_44100_mono.wav", "sine_44100_mono_u8.f32le", "samples"),
     ("wav/wav_s16_16000_mono.wav", "tone_16000_mono_s16.f32le", "samples"),
     ("flac/flac_s16_16000_mono.flac", "tone_16000_mono_s16.f32le", "samples"),
-    ("mp3/mp3_cbr_128k.mp3", "mp3_cbr_128k.f32le", "envelope"),
 ]
 
 MANIFEST_NAME = "GOLDEN.tsv"

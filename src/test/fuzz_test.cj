@@ -362,7 +362,10 @@ class FuzzTest {
         let rng = Random(FUZZ_SEED + 4)
         var caseNo: Int64 = 0
 
-        // 各类"看起来像某个容器"的畸形文件：探测器会放行，随后由解析层拒绝
+        // 各类"看起来像某个容器"的畸形文件。结局有两种，用例都接受：
+        //   · 容器可解码（RIFF / fLaC / OggS）—— 探测器放行，由解析层拒绝；
+        //   · ID3 开头会被识别为 mp3，而 MP3 解码已移出范围 —— 在门面就被拦下。
+        // 换言之这里验的是"任何畸形输入都不得崩溃"，而非"必须走到解析层"。
         let magics: Array<String> = ["RIFF", "fLaC", "ID3", "OggS"]
 
         for (magic in magics) {

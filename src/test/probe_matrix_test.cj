@@ -82,7 +82,10 @@ private func pmLoadManifest(): ArrayList<(String, String, String)> {
 /// 这份判断刻意在测试里独立写一遍，不复用探测层的实现 —— 否则探测层写错时
 /// 测试会跟着一起错。可解码集合的权威定义在门面 `AudioFile.open()` 的分派分支。
 private func pmExpectSupported(container: String, codec: String): Bool {
-    if (container == "wav" || container == "flac" || container == "mp3") {
+    // mp3 曾在这张表里、现已移除：MP3 解码移出本版本范围后，它**仍然会被识别**
+    // （本文件另一条用例按 MANIFEST 校验容器与子编码，mp3 行照旧生效），
+    // 只是 supported 变为 false —— "能认出来"与"能解码"是两件事，本表只管后者。
+    if (container == "wav" || container == "flac") {
         return true
     }
     // Ogg 容器里只有 FLAC 编码可解码（由本库自己的纯仓颉 Ogg 源实现）

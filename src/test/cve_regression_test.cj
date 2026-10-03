@@ -22,9 +22,12 @@ import std.collection.ArrayList
  *   因此本文件的定位是**回归防线**：确保今后任何改动都不会让这些畸形输入
  *   重新变成崩溃或挂起。断言口径是「不崩溃 + 异常落在预期集合内」。
  *
- * 【哪些用例真的走到了 C 代码】（本节已按"FLAC 全族改纯仓颉"更新）
- *   - **MP3**：`AudioFile.open` 经 dr_libs 的 FFI（dr_mp3），所以这几个用例
- *     对**修复后的 C 实现**构成真实的健壮性回归。
+ * 【哪些用例真的走到了 C 代码】（本节已按"MP3 解码移出范围"更新）
+ *   - **现在没有任何用例走到 C 代码**：MP3 解码已移出本版本范围
+ *     （`AudioFile.open` 在探测层就抛 FormatNotSupportedException，够不到任何
+ *     解码器），FLAC 全族与 WAV 都是纯仓颉实现。
+ *   - 因此下面两个 MP3 用例如今压的是 **ID3 解析器**（仍是纯仓颉、仍在能力内），
+ *     不是 C 解码器 —— 它们原先那句 `cveOpenAndDrain` 断言已因恒真而移除。
  *   - FLAC（**原生与 Ogg 封装**）：解码都走**纯仓颉内核** —— 含帧头 CRC-8、
  *     帧尾 CRC-16，Ogg 侧还有页级重组与页 CRC-32 校验，均不经 dr_flac。
  *     相应用例针对的是**我们自己的解码器**，覆盖同类攻击面。
@@ -266,6 +269,11 @@ class CveRegressionTest {
     }
 
     /// MP3：ID3v2 头声明 synchsafe 最大长度（约 256 MB），实际不足 140 字节
+    ///
+    /// 【重点变了】解码路径已不在范围内，`AudioFile.open` 在探测层就被拦下、
+    /// 够不到任何解码器 —— 原先那句 `cveOpenAndDrain` 断言现在**恒真**，
+    /// 留着只会让人以为这里还在验 C 路径。真正仍有价值的是 **ID3 解析器**：
+    /// 它仍是纯仓颉、仍在本版本能力内，`cveReadTagsOnly` 正是压它的那条。
     @TestCase
     func mp3OversizedId3Tag() {
         let out = ArrayList<UInt8>()
@@ -282,12 +290,14 @@ class CveRegressionTest {
         }
 
         let path = cveWrite("a4cj_cve_mp3_id3.mp3", out.toArray())
-        @Assert(cveOpenAndDrain(path))
         @Assert(cveReadTagsOnly(path))
         remove(path)
     }
 
     /// MP3：以合法帧同步字开头，其后全是垃圾（无任何有效 MPEG 帧）
+    ///
+    /// 同上：解码路径已不在范围内，本条压的是"**ID3 解析器**面对垃圾字节
+    /// 仍能优雅收场"（探测器会把 0xFF 0xFB 认成 mp3，故标签路径确实会被走到）。
     @TestCase
     func mp3GarbageAfterSyncWord() {
         let out = ArrayList<UInt8>()
@@ -300,7 +310,7 @@ class CveRegressionTest {
         }
 
         let path = cveWrite("a4cj_cve_mp3_garbage.mp3", out.toArray())
-        @Assert(cveOpenAndDrain(path))
+        @Assert(cveReadTagsOnly(path))
         remove(path)
     }
 }

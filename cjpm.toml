@@ -10,17 +10,19 @@
 #                      见 src/format/flac_bitstream.cj）
 #   Ogg 封装的 FLAC —— 纯仓颉实现（页级重组 + 页 CRC-32 校验，把 Ogg 重建成一条
 #                      与原生 FLAC 逐字节等同的流，见 src/format/ogg_flac_source.cj）
-#   MP3             —— 经 dr_libs 的 FFI 接入（dr_mp3）
+#   MP3             —— **不在解码范围内**（其解码曾经 dr_libs 的 FFI 接入）。
+#                      容器仍会被识别、ID3 标签仍可读（见 src/meta/file_tags.cj）
 #
-# 因此下面那份 C 库依赖**只为 MP3 而存在**。WAV、FLAC 与 Ogg-FLAC 都不需要它；
-# 等 MP3 也有纯仓颉实现（或按既定范围从发布能力中移出），这份依赖即可整体移除。
+# 因此：**当前没有任何解码路径需要下面那份 C 库依赖**。它之所以还在，是因为
+#   dr_flac 被**测试**用作独立裁判（见 src/test/flac_bitstream_test.cj）。
+#   这份依赖的整体移除是下一步工作（见 docs/codec-expansion-assessment.md）——
+#   在那之前消费者侧仍需 C 工具链，因为下面的 [ffi.c] 与 build.cj 都还指着它。
 #
 # 注 1：dr_wav 的 FFI 绑定（src/codec/dr_wav_binding.cj）**没有任何调用点** ——
 #   WAV 解码自 M2 起就是纯仓颉实现。它随 C 库一起被编译进来，属历史遗留；
 #   此前此处注释称其为"交叉验证基准"，与事实不符，已更正。
-# 注 2：dr_flac 也已不在生产链路上（原生 FLAC 与 Ogg-FLAC 均为纯仓颉），
-#   但它仍被**测试**用作独立裁判（见 src/test/flac_bitstream_test.cj），
-#   因此仍随 C 库编译，其 CVE 跟踪义务不变（见 LICENSES.md）。
+# 注 2：dr_mp3 与 dr_wav 同理已无调用点；dr_flac 虽已不在生产链路上，
+#   但被测试用作裁判。三者仍随 C 库编译，CVE 跟踪义务不变（见 LICENSES.md）。
 # ============================================================================
 
 [package]

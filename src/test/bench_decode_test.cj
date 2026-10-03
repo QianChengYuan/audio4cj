@@ -40,7 +40,8 @@ import audio4cj.drlibs.DrLibsFormat
 private let BD_WAV_16: String = "testdata/wav/wav_s16_44100_stereo.wav"
 private let BD_FLAC_16: String = "testdata/flac/flac_s16_44100_stereo.flac"
 private let BD_FLAC_24: String = "testdata/flac/flac_s24_44100_stereo.flac"
-private let BD_MP3: String = "testdata/mp3/mp3_cbr_128k.mp3"
+// 这里曾有 BD_MP3 及其基准。MP3 解码已移出本版本范围（它依赖 C 库 dr_mp3，
+// 而带 C 的制品包在中心仓审核中被退回），故相应基准与健全性断言一并移除。
 
 /// 累加器：让基准体的计算结果"有去处"，避免被优化掉。
 ///
@@ -113,11 +114,6 @@ class BenchDecode {
         BD_SINK += bdDecodeAll(BD_FLAC_24)
     }
 
-    @Bench
-    func mp3DecodeAll() {
-        BD_SINK += bdDecodeAll(BD_MP3)
-    }
-
     // ------------------------------------------------------------------
     // 块大小敏感性：同一文件、不同块大小
     //
@@ -138,8 +134,7 @@ class BenchDecode {
         let fixtures = [
             (BD_WAV_16, "WAV 16-bit 立体声"),
             (BD_FLAC_16, "FLAC 16-bit 立体声"),
-            (BD_FLAC_24, "FLAC 24-bit 立体声"),
-            (BD_MP3, "MP3 CBR 128k")
+            (BD_FLAC_24, "FLAC 24-bit 立体声")
         ]
         for ((path, name) in fixtures) {
             let frames = bdDecodeAll(path)

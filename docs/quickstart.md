@@ -8,12 +8,17 @@
 | 构建工具 | `cjpm`（随 SDK 提供） |
 | 平台 | Windows x86_64（仓库当前只提供了该平台的 C 库产物） |
 
-> **C 库依赖（FLAC / MP3 必需）**
+> **C 库依赖（当前没有任何解码路径需要它）**
 >
 > - **WAV、FLAC 与 Ogg 封装的 FLAC** 走纯仓颉实现，**不需要** C 库；
-> - 只有 **MP3** 经 dr_libs 的 FFI 解码，链接的是 `libs/<平台>/libdrlibs.a`。
->   仓库已预置 Windows x86_64 的静态库；Linux / macOS 由 `build.cj` 现场编译
->   （需要 clang 与 ar）。
+> - **MP3 解码已移出本版本范围**（它是唯一曾依赖 C 库 dr_mp3 的格式）——
+>   但 MP3 **仍可识别、标签仍可读**（见下文 `readTags` 一节）。
+>
+> 一句话：**当前没有任何解码路径需要 `libs/<平台>/libdrlibs.a`**。它之所以还在，
+> 是因为 dr_flac 被**测试**用作独立裁判、而库仍按原样编译它；这份 C 依赖已在
+> 清理计划中（见 [codec-expansion-assessment](codec-expansion-assessment.md)）。
+> 在那之前消费者侧仍需 C 工具链：仓库已预置 Windows x86_64 的静态库，
+> Linux / macOS 由 `build.cj` 现场编译（需要 clang 与 ar）。
 > - 它是**静态链接**的：C 库直接进可执行文件，**运行期不需要分发或加载任何
 >   动态库**（这是从动态库改为静态库的主要收益）。
 > - 以库的形式被引用时，消费者侧**需要 C 编译器**：发布包内不含 C 库二进制
@@ -76,7 +81,7 @@ $env:AUDIO4CJ_FORCE_C_BUILD="1"; cjpm build
 
 ## 四、快速上手示例
 
-> 以下示例对 **WAV / FLAC / MP3** 均适用 —— 三者共用同一套 `AudioFile` API。
+> 以下示例对 **WAV / FLAC / Ogg 封装的 FLAC** 均适用 —— 三者共用同一套 `AudioFile` API。
 > 唯一需留意的是 `bitDepth` 的语义差异：MP3 恒为 `32`（表示输出为 float32，
 > 而非 32 位整数 PCM），详见 [`AudioInfo`](api/core.md)。
 
@@ -186,7 +191,7 @@ main() {
 
 ### 示例 6：只读标签（不需要解码能力）
 
-MP3、FLAC 等**尚无解码实现**的格式，也能用 `readTags` 读出标签：
+**尚无解码实现**的格式（如 MP3 —— 其解码已移出本版本范围），也能用 `readTags` 读出标签：
 
 ```cangjie
 import audio4cj.facade.AudioFile
@@ -274,7 +279,7 @@ import audio4cj.core.FormatNotSupportedException
 import audio4cj.core.CorruptedFileException
 
 main() {
-    try (f = AudioFile.open("./maybe.mp3")) {
+    try (f = AudioFile.open("./maybe.flac")) {
         println(f.info().sampleRate)
     } catch (e: FormatNotSupportedException) {
         println("格式不支持: ${e.message}")
@@ -292,7 +297,7 @@ main() {
 
 ## 六、限制与注意事项
 
-1. **当前可解码 WAV / FLAC / MP3**。OGG / AAC 虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV，不要求可解码）。
+1. **当前可解码 WAV / FLAC / Ogg 封装的 FLAC**。**MP3**（解码已移出本版本范围）、OGG/Vorbis、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
 2. **32-bit float PCM 暂不支持**，`isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`。
 3. **`AudioFile` 不跨线程共享**。多文件并行处理请为每个文件创建独立实例。
 4. **库不统一采样率**。输出统一为 f32 交错，但采样率沿用源文件，混合不同采样率的音频需自行重采样。

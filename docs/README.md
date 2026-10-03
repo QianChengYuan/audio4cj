@@ -13,13 +13,14 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | 统一的标签模型 | `Tag` | 把 ID3 / Vorbis comment / WAV INFO / MP4 `ilst` 等体系收敛为一个类型 |
 
 > **`bitDepth` 的语义提示**：`AudioInfo.bitDepth` 报告**源位深**（16 / 24 / 32）。
-> 但对于 MP3 这类有损格式不存在源位深，此时恒为 `32`，含义是「解码输出为 float32」
+> 但对于有损格式（如 MP3）不存在源位深，此时恒为 `32`，含义是「解码输出为 float32」
 > ——**不是** 32 位整数 PCM。
 >
-> **当前可解码格式：WAV / FLAC / MP3 / Ogg 封装的 FLAC**。其中 **WAV、FLAC 与 Ogg 封装的 FLAC
-> 均为纯仓颉实现**（WAV 是未压缩容器，其「解码」本质是位深转换；FLAC 的帧解码、CRC 校验、
-> SEEKTABLE 定位，以及 Ogg 的页级重组与 CRC-32 校验，都是纯仓颉）；**只有 MP3 经 dr_libs 的
-> FFI 解码**。也就是说：**除了 MP3，其余格式连构建期都不需要 C 编译器**。
+> **当前可解码格式：WAV / FLAC / Ogg 封装的 FLAC** —— 三者**都是纯仓颉实现**
+> （WAV 是未压缩容器，其「解码」本质是位深转换；FLAC 含帧解码、CRC-8/CRC-16 校验与
+> SEEKTABLE 定位；Ogg-FLAC 另含页级重组与页 CRC-32 校验）。
+> **MP3 自本版本起不在解码范围内**（其解码曾依赖 C 库 dr_mp3），
+> 但**仍能被识别、标签仍能读** —— 见下一条。
 >
 > **标签读取覆盖更广**：WAV / FLAC / MP3 / **OGG**（Vorbis、Opus、FLAC-in-Ogg）/ **MP4**（`ilst`）。
 
@@ -35,7 +36,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M1** | 契约与骨架（异常体系、`Tag` 模型、接口与注册表、`AudioFile` 门面） | ✅ 已完成 |
 | **M2** | 探测层 + WAV 最短闭环（魔数探测、RIFF 解析、流式读取） | ✅ 已完成 |
 | **M3** | 元数据层（ID3v1 / ID3v2、Vorbis comment、WAV LIST/INFO） | ✅ 已完成 |
-| **M4** | FLAC + MP3 解码（经 dr_libs FFI，dr_flac / dr_mp3） | ✅ 已完成 |
+| **M4** | FLAC + MP3 解码（经 dr_libs FFI，dr_flac / dr_mp3）。⚠ MP3 **解码**已在后续版本移出范围（其标签读取保留） | ✅ 已完成 |
 | **M5** | 流式与健壮性（有界队列背压 `AsyncFrameStream`、fuzz 与 CVE 同类回归、长时运行与并发测试） | ✅ 已完成 |
 | **M6 前置** | 容器与质量基线扩展（OGG 页重组与 MP4 `ilst` 标签读取、**Ogg 封装 FLAC 解码**、探测层 Ogg 子编码区分、golden PCM 三方比对基线） | ✅ 已完成 |
 | **M6** | 发布（`build.cj` 多平台构建、`LICENSES.md` 台账、CI、发布配置） | 🚧 进行中 |
@@ -83,7 +84,7 @@ $$
 
 ### 4. `seekTo()` 返回实际落点
 
-签名是 `seekTo(timestampMs: Int64): Int64`，返回的是**实际到达的位置**而非请求位置。对于按帧定位的格式（如 WAV、FLAC、MP3、Ogg-FLAC）二者一致。
+签名是 `seekTo(timestampMs: Int64): Int64`，返回的是**实际到达的位置**而非请求位置。对于按帧定位的格式（如 WAV、FLAC、Ogg-FLAC）二者一致。
 
 ### 5. 库不统一采样率，只统一位深与声道布局
 
@@ -131,7 +132,7 @@ try (f = AudioFile.open(path)) {
 
 | 能力 | 现状 |
 |---|---|
-| **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** |
+| **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / Ogg 封装的 FLAC**；**MP3 可识别、标签可读，但不可解码** |
 | **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。可行性结论见[评估报告](codec-expansion-assessment.md)：现有依赖政策下**无许可干净的候选库**（FAAD2 是 GPL、libfdk-aac 是专有许可） |
 | **32-bit float PCM** | `isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`，暂不支持 |
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |

@@ -63,21 +63,13 @@ private let GT_MANIFEST: String = "testdata/golden/GOLDEN.tsv"
 ///   - 远比 16 位的最小量化步长（约 3e-5）紧 30 倍，任何一位的缩放错误都跑不掉。
 private let GT_TOLERANCE: Float32 = 1.0e-6
 
-/// 有损格式（MP3）的帧数容差（相对）。
-///
-/// 实测：本机对 mp3_cbr_128k.mp3 的帧数**完全相同**（88200/88200）。
-/// 但编码器延迟/填充的处理方式在不同解码器与不同文件之间可能不同，
-/// 故容差留 1% 而不是 0 —— 拦的是"解不出/解错"这类致命问题，
-/// 而不是两种实现之间无伤大雅的几百个样本差。
-private let GT_LOSSY_FRAME_TOLERANCE: Float64 = 0.01
-
-/// 有损格式的整体能量容差（相对）。
-///
-/// 实测：本机对 mp3_cbr_128k.mp3 的能量相对差仅 1e-6（远小于此容差）。
-/// 之所以仍留 5%：有损解码器在量化细节上的差异是**合法**的，
-/// 换一个 MP3 文件（不同编码器、不同比特率模式）差异会更大。
-/// 这条断言的目标是拦住缩放错误、静音、字节序错乱，不是追求等同。
-private let GT_LOSSY_ENERGY_TOLERANCE: Float64 = 0.05
+// 这里曾有两个"有损格式容差"常量（帧数相对 1%、整体能量相对 5%），供 MP3 的
+// 松比对用例使用。MP3 解码已移出本版本范围，那份比对连同常量一并移除 ——
+// 留着它们会让人以为库里还有有损格式的比对机制在跑。
+//
+// 若将来接入有损格式（例如纯仓颉 AAC），需要连带恢复这套思路：
+// 有损解码器之间在量化细节与编码器延迟补偿上**合法地**存在差异，
+// 逐样本相等是不可能达到的标准，只能用"帧数 + 整体能量"的包络比对。
 
 /// 无损互证对：同一段 PCM 的两种无损封装。
 ///
@@ -295,41 +287,8 @@ class GoldenTest {
         }
     }
 
-    /// MP3 只做**松比对**：帧数（相对 1%）与整体能量（相对 5%）
-    ///
-    /// 为什么不逐样本：dr_mp3 与 ffmpeg 的 MP3 解码是两套独立实现，在量化
-    /// 细节与编码器延迟补偿上合法地存在差异。强行要求逐样本相等，等于用
-    /// 不可能达到的标准去断言，只会得到"永远失败的测试"而非"正确的测试"。
-    /// 但松比对仍足以拦住缩放错误、静音、字节序错乱这类致命问题。
-    @TestCase
-    func mp3MatchesInEnvelopeNotSampleBySample() {
-        let rows = gtLoadManifest()
-        var checked: Int64 = 0
-
-        for (row in rows) {
-            let (fixture, golden, mode) = row
-            if (mode != "envelope") {
-                continue
-            }
-
-            let actual = gtDecode(fixture)
-            let expected = gtLoadGolden(golden)
-
-            @Assert(actual.size > 0)
-            @Assert(expected.size > 0)
-
-            let frameRel = gtRelativeDiff(Float64(actual.size), Float64(expected.size))
-            let energyRel = gtRelativeDiff(gtMeanPower(actual), gtMeanPower(expected))
-
-            println(
-                "${fixture}: 样本 ${actual.size}/${expected.size}（相对差 ${frameRel}）, " +
-                    "能量 ${gtMeanPower(actual)}/${gtMeanPower(expected)}（相对差 ${energyRel}）")
-
-            @Assert(frameRel <= GT_LOSSY_FRAME_TOLERANCE)
-            @Assert(energyRel <= GT_LOSSY_ENERGY_TOLERANCE)
-            checked += 1
-        }
-
-        @Assert(checked > 0)
-    }
+    // 这里曾有 `mp3MatchesInEnvelopeNotSampleBySample`：对 MP3 做"帧数 + 整体能量"
+    // 的包络比对（因为两套有损解码器之间逐样本相等是不可能达到的标准）。
+    // MP3 解码移出本版本范围后，该用例与 GOLDEN.tsv 里那条 `envelope` 行一并移除 ——
+    // 数据行留着而消费者已去，只会让"package 里有一份没人读的基准"悄悄存在。
 }

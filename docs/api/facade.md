@@ -76,7 +76,7 @@ public static func open(path: String): AudioFile
 |---|---|---|
 | `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深转换） | `fmt` 中的真实位深（8 / 16 / 24 / 32） |
 | `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
-| `mp3` | dr_libs（FFI，`dr_mp3`） | **恒为 32**，含义是「输出为 float32」—— MP3 是有损格式，无源位深 |
+| `mp3` | **不在解码范围内**（其解码曾用 dr_libs FFI，已移出本版本）—— `open()` 会抛 `FormatNotSupportedException`，但标签仍可用 `readTags` 读取 | ——（无解码输出） |
 | `ogg` + `flac` | **纯仓颉**（`PureFlacKernel` + `OggFlacByteSource`）—— Ogg 容器先被重建成一条与原生 FLAC 逐字节等同的流（页体重组 + 页 CRC-32 校验），再交给同一套解码逻辑 | `STREAMINFO` 中的真实位深 |
 
 其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
@@ -87,9 +87,9 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：只有 `mp3` 依赖 dr_libs，它已**静态链接**进产物
-> （`libs/<平台>/libdrlibs.a`），因此运行期不需要分发或加载任何动态库。
-> `wav`、`flac` 与 `ogg`+`flac` 均为纯仓颉实现 —— 它们连构建期都不需要 C 编译器。
+> **依赖提示**：**当前没有任何解码路径依赖 dr_libs**（`wav`、`flac`、`ogg`+`flac`
+> 都是纯仓颉实现，`mp3` 解码已移出范围）。dr_libs 的代码仍随库静态链接
+> （`libs/<平台>/libdrlibs.a`），但只被测试用作独立裁判。
 
 ```cangjie
 import audio4cj.facade.AudioFile

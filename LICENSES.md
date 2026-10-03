@@ -14,7 +14,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 用途 | **仅 MP3 解码**（经 C 侧薄封装 `third-party/drlibs_wrapper.c`）。**WAV、FLAC 与 Ogg 封装的 FLAC 都已是纯仓颉实现，均不再经此路径**；dr_flac 仍被**测试**用作独立裁判，故这些代码仍随库编译 |
+| 用途 | **已不在任何解码路径上**：WAV / FLAC / Ogg-FLAC 都是纯仓颉实现，**MP3 解码也已移出本版本范围**。dr_libs 的代码仍随库编译（经 C 侧薄封装 `third-party/drlibs_wrapper.c`），其中 dr_flac 被**测试**用作独立裁判，dr_wav 与 dr_mp3 已无任何调用点 |
 | 来源 | `third-party/dr_libs/`（含 `dr_flac.h`、`dr_wav.h`、`dr_mp3.h`） |
 | 是否分发 | **部分**：制品包只带上述三个头文件加 `LICENSE`、`README.md`；原仓库的 `tests/` 与 fuzzer 不随包分发（见 `docs/release.md` 的包内容契约） |
 | 许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0） |

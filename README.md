@@ -22,7 +22,7 @@ audio4cj 把这些差异收敛到三个统一出口，让调用方不必为「�
 
 | 能力 | 覆盖范围 |
 |---|---|
-| **解码** | WAV、**FLAC**、**Ogg 封装的 FLAC**（三者均为**纯仓颉实现**，不依赖 C 库）、MP3（经 dr_libs 静态链接） |
+| **解码** | WAV、**FLAC**、**Ogg 封装的 FLAC**（三者均为**纯仓颉实现**，不依赖 C 库）。**MP3 不在解码范围内**（解码曾依赖 C 库；其标签读取不受影响，见下行） |
 | **标签读取** | MP3（ID3v1/v2.2/v2.3/v2.4）、FLAC、WAV、**OGG**（Vorbis / Opus / FLAC-in-Ogg）、**MP4**（`ilst`） |
 | **容器探测** | 十余种容器，且 Ogg 能**精确识别到子编码**（vorbis / opus / flac / speex）；结果经 `AudioFile.format()` 暴露 |
 | **流式读取** | `FrameStream`（同步拉取）与 `AsyncFrameStream`（后台解码 + 有界队列背压） |
@@ -125,9 +125,10 @@ cjpm check      # 依赖与编译顺序校验（须在 build 之后，见下）
 
 本项目采用 **Apache License 2.0**，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
 
-运行时依赖只有一个：[dr_libs](third-party/dr_libs)（公共领域或 MIT-0，二选一），
-用于 FLAC / MP3 / Ogg-FLAC 的解码内核。完整的依赖台账、版本锁定与审计流程见
-[LICENSES.md](LICENSES.md)。
+运行时依赖只有一个：[dr_libs](third-party/dr_libs)（公共领域或 MIT-0，二选一）。
+它**已不在任何解码路径上**（WAV / FLAC / Ogg-FLAC 都是纯仓颉实现，MP3 解码已移出
+本版本范围），目前只被**测试**用作独立裁判；相关代码仍随库编译，
+故供应链跟踪义务不变。完整的依赖台账、版本锁定与审计流程见 [LICENSES.md](LICENSES.md)。
 
 > 本项目只接受**宽许可**依赖（公共领域 / MIT / BSD / Apache-2.0），
 > 且不引入专利费。GPL 系与专有许可一律不可用 —— 这也是 AAC 解码

@@ -6,7 +6,7 @@ import audio4cj.core.Audio4CjException
  * WAV 写出 —— PCM 的**写出方向**（此前本库只有读方向）
  *
  * 用途：把解码结果落成 WAV 字节。典型场景：
- *   · 把 FLAC / MP3 转存为 WAV；
+ *   · 把 FLAC 等解码结果转存为 WAV；
  *   · 交给只接受 WAV 的播放接口 —— 例如 Windows 的 PlaySound
  *     （见 examples/windows_playback/）；
  *   · 测试里做「写出 → 自己读回」的往返验证（本文件的用例就是这么用的）。

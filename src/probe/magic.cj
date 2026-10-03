@@ -19,8 +19,10 @@ import std.fs.*
  *   - "OggS" 还需读**首个页面的 payload** 才能分辨 Vorbis / Opus / FLAC / Speex
  *
  * 本层只负责**识别**，不负责解码。「是否可解码」由 supported 字段如实标注：
- * 目前 WAV / FLAC / **Ogg 封装的 FLAC** 与 MP3 为 true（其中 MP3 经 dr_libs，
- * 其余三者均为本库的纯仓颉实现）；其余容器（Ogg/Vorbis、Ogg/Opus、MP4、APE、WMA 等）同样会被准确
+ * 目前 WAV / FLAC / **Ogg 封装的 FLAC** 为 true（三者都是本库的纯仓颉实现）；
+ * **MP3 自本版本起为 false**（它能被识别、标签也能读，但解码曾依赖 C 库 dr_mp3，
+ * 已移出范围 —— 取舍记录见 docs/codec-expansion-assessment.md）；
+ * 其余容器（Ogg/Vorbis、Ogg/Opus、MP4、APE、WMA 等）同样会被准确
  * 识别、同样给出子编码，只是 supported 为 false。这样做的目的是让
  * FormatNotSupportedException 的信息能精确到编码级，而非笼统的"不支持"。
  * ========================================================================== */
@@ -140,8 +142,11 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
     }
 
     // ---- ID3v2 标记的 MP3 ----
+    // 【supported = false 的确切含义】容器识别照旧（仍返回 container="mp3"），
+    // 但**解码不受支持** —— MP3 解码曾依赖 C 库 dr_mp3，已移出本版本范围。
+    // 标签读取不受影响：readTags 走的是与 supported 无关的另一条分派。
     if (matchAt(head, 0, ascii("ID3"))) {
-        return ProbeResult("mp3", "audio/mpeg", true)
+        return ProbeResult("mp3", "audio/mpeg", false)
     }
 
     // ---- ASF / WMA：GUID 首 4 字节 30 26 B2 75 ----
@@ -155,8 +160,10 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
     }
 
     // ---- 裸 MPEG 音频帧同步（0xFF 后高 3 位全 1）----
+    // 这是 MP3 的**第二个识别入口**（无 ID3 标记的裸流）：supported 同样为 false，
+    // 理由见上。两个入口都要改 —— 只改一个会让"裸流 MP3"仍被当作可解码。
     if (isMpegSync(head)) {
-        return ProbeResult("mp3", "audio/mpeg", true)
+        return ProbeResult("mp3", "audio/mpeg", false)
     }
 
     ProbeResult("unknown", "application/octet-stream", false)

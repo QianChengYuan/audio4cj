@@ -16,9 +16,10 @@ import audio4cj.core.Audio4CjException
  *   不该为了问一句格式而让文件保持打开。
  *
  * 【不受支持的格式仍能被识别】
- *   探测与解码是两件事：Ogg/Vorbis、MP4 等会被准确识别（连子编码一起），
- *   只是 `open()` 会抛 `FormatNotSupportedException` —— 异常信息里写的就是
- *   `format().codecId` 那套标识。要读它们的**标签**请用示例 tags。
+ *   探测与解码是两件事：**MP3（其解码已移出本版本范围）**、Ogg/Vorbis、MP4 等
+ *   都会被准确识别（连子编码一起），只是 `open()` 会抛
+ *   `FormatNotSupportedException` —— 异常信息里写的就是 `format().codecId`
+ *   那套标识。要读它们的**标签**请用示例 tags。
  * ========================================================================== */
 func exampleInfo(path: String): Int64 {
     try (f = AudioFile.open(path)) {
@@ -46,7 +47,7 @@ func exampleInfo(path: String): Int64 {
 
         println("")
         println("字段语义（见 docs/api/core.md）：")
-        println("  bitDepth    MP3 恒为 32 —— 有损格式无源位深，32 表示输出为 float32")
+        println("  bitDepth    无损格式即源位深（16 / 24）；32 保留给 float32 输出（有损格式用）")
         println("  totalFrames -1 表示不可知（例如未写 totalSamples 的 Ogg-FLAC）")
     } catch (e: Audio4CjException) {
         // 走到这里通常意味着「识别出来了，但当前没有解码实现」或「结构损坏」——

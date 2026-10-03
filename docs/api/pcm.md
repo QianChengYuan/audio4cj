@@ -237,7 +237,7 @@ public func wavBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<UIn
 
 | 用途 | 说明 |
 |---|---|
-| 转存 | 把 FLAC / MP3 解码结果落成 WAV |
+| 转存 | 把 FLAC 等解码结果落成 WAV |
 | 播放 | 交给只接受 WAV 的播放接口（如 Windows `PlaySound`，见 `examples/windows_playback/`） |
 | 自验证 | 写出的字节交回本库自己的 WAV 读取器，构成往返测试 |
 

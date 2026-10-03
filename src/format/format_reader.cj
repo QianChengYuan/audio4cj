@@ -11,7 +11,7 @@ import audio4cj.meta.Tag
  * 契约要点：
  *   - nextPacket() 返回 None 严格且仅表示"正常流结束"；
  *     解码/解析错误必须抛 CorruptedFileException，不得用 None 表达（§4.1 铁律 1）
- *   - seekTo() 返回**实际落点毫秒**，因为 VBR MP3 / Ogg Vorbis 的寻址
+ *   - seekTo() 返回**实际落点毫秒**，因为 变比特率编码（如 Ogg Vorbis）的寻址
  *     天然是近似的，返回 Unit 会让调用方误以为精确到位
  *   - metadata() 无标签时返回各字段为 None 的**空 Tag**，不返回 None
  *

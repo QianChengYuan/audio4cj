@@ -55,7 +55,7 @@ public open class Audio4CjException <: Exception {
 
 **何时抛出**：
 
-- `AudioFile.open()` 遇到探测层不支持的容器（如 MP3 / FLAC / 未知格式）；
+- `AudioFile.open()` 遇到探测层不支持的容器（如 MP3 —— 其解码已移出本版本范围、Ogg/Vorbis、未知格式）；
 - 容器虽被识别，但尚无对应实现。
 
 ```cangjie
@@ -143,7 +143,7 @@ public class AudioInfo {
 |---|---|---|
 | `sampleRate` | `Int64` | 采样率（Hz）。**源文件实际值**，本库不统一采样率 |
 | `channels` | `Int64` | 声道数 |
-| `bitDepth` | `Int64` | **源位深**：`16` / `24` / `32`；值 `32` 也用于表示 float32。**MP3 恒为 32** —— MP3 是有损格式、无源位深，该值表示「解码输出为 float32」，**不应**理解为 32 位整数 PCM |
+| `bitDepth` | `Int64` | **源位深**：`16` / `24` / `32`；值 `32` 也用于表示 float32。有损格式（当前解码范围内没有）恒为 32 —— 无源位深，该值表示「解码输出为 float32」，**不应**理解为 32 位整数 PCM |
 | `durationMs` | `Int64` | 时长（毫秒） |
 | `totalFrames` | `Int64` | 总帧数；**`-1` 表示不可知**（如无索引的流式来源） |
 
@@ -167,7 +167,7 @@ public class Track {
 | 字段 | 说明 |
 |---|---|
 | `index` | 轨道索引，从 0 开始 |
-| `codecId` | 该轨的编码标识，取值来自**解码读取器**（如 `flac` / `mp3` / `pcm`） |
+| `codecId` | 该轨的编码标识，取值来自**解码读取器**（如 `flac` / `pcm`） |
 | `sampleRate` | 该轨采样率（Hz） |
 | `channels` | 该轨声道数 |
 

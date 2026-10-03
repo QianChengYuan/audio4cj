@@ -36,7 +36,8 @@ import std.sync.*
 
 /// 长素材（相对工作区根）。选体积最小的一份以控制测试时长。
 private let LONG_FLAC: String = "musics/青花瓷 - 周杰伦.flac"
-private let LONG_MP3: String = "musics/大鱼（cover 周深） - Ciky心心.mp3"
+// 这里曾有 LONG_MP3 及其长时解码用例。MP3 解码已移出本版本范围，故一并移除 ——
+// 留着它会是一个必然失败的用例，或一个永不执行的空壳，两者都比"没有"更糟。
 
 // ---------------------------------------------------------------------------
 // 辅助
@@ -197,54 +198,6 @@ class LongRunTest {
             @Assert(maxChunkFrames <= 65536)
 
             println("FLAC: ${frames} 帧 / ${chunks} 块 / 峰值块 ${maxChunkFrames} 帧")
-        }
-    }
-
-    /// 长 MP3 完整解码：能读完且不失败
-    ///
-    /// 注意**不断言精确相等**：MP3 是有损格式，dr_mp3 的 totalPCMFrameCount
-    /// 包含编码器的 delay 与 padding，解码输出帧数与声明值允许有微小差异。
-    /// 强行断言相等会把合法行为误判为缺陷。
-    @TestCase
-    func longMp3DecodesFully() {
-        if (!exists(Path(LONG_MP3))) {
-            println("跳过（素材缺失）：${LONG_MP3}")
-            return
-        }
-
-        try (f = AudioFile.open(LONG_MP3)) {
-            let info = f.info()
-            @Assert(info.totalFrames > 0)
-
-            let s = f.stream()
-            var frames: Int64 = 0
-            var maxChunkFrames: Int64 = 0
-
-            var done = false
-            while (!done) {
-                match (s.next()) {
-                    case Some(buf) =>
-                        frames += buf.frameCount
-                        if (buf.frameCount > maxChunkFrames) {
-                            maxChunkFrames = buf.frameCount
-                        }
-                    case None => done = true
-                }
-            }
-            s.close()
-
-            @Assert(frames > 0)
-            @Assert(maxChunkFrames <= 65536)
-
-            // 与声明值的差异应在 1% 以内（delay/padding 量级远小于此）
-            let diff = if (frames > info.totalFrames) {
-                frames - info.totalFrames
-            } else {
-                info.totalFrames - frames
-            }
-            @Assert(diff * 100 <= info.totalFrames)
-
-            println("MP3: ${frames} 帧（声明 ${info.totalFrames}）")
         }
     }
 
