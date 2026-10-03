@@ -3,7 +3,7 @@ package audio4cj.format
 import audio4cj.core.ClosedResourceException
 import audio4cj.core.CorruptedFileException
 import audio4cj.core.DecodeException
-import audio4cj.drlibs.f32ToBytes
+import audio4cj.pcm.f32ToBytes
 import std.fs.*
 
 /* ============================================================================

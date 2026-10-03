@@ -3,7 +3,7 @@ package audio4cj.codec
 import audio4cj.core.*
 import audio4cj.pcm.AudioBuffer
 import audio4cj.format.Packet
-import audio4cj.drlibs.*
+import audio4cj.pcm.reinterpretF32Bytes
 
 /* ============================================================================
  * FLAC 解码器 —— 把 Packet 中已解码的 f32 交错 PCM 重解释为 AudioBuffer

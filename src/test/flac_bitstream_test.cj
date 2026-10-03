@@ -1,6 +1,6 @@
 package audio4cj.test
 
-import audio4cj.drlibs.reinterpretF32Bytes
+import audio4cj.pcm.reinterpretF32Bytes
 import audio4cj.format.DrLibsFlacKernel
 import audio4cj.format.FlacDecodeKernel
 import audio4cj.format.PureFlacKernel
