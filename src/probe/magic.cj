@@ -19,8 +19,8 @@ import std.fs.*
  *   - "OggS" 还需读**首个页面的 payload** 才能分辨 Vorbis / Opus / FLAC / Speex
  *
  * 本层只负责**识别**，不负责解码。「是否可解码」由 supported 字段如实标注：
- * 目前 WAV / FLAC / MP3 与 **Ogg 封装的 FLAC** 为 true（后者由 dr_flac 原生
- * 支持）；其余容器（Ogg/Vorbis、Ogg/Opus、MP4、APE、WMA 等）同样会被准确
+ * 目前 WAV / FLAC / **Ogg 封装的 FLAC** 与 MP3 为 true（其中 MP3 经 dr_libs，
+ * 其余三者均为本库的纯仓颉实现）；其余容器（Ogg/Vorbis、Ogg/Opus、MP4、APE、WMA 等）同样会被准确
  * 识别、同样给出子编码，只是 supported 为 false。这样做的目的是让
  * FormatNotSupportedException 的信息能精确到编码级，而非笼统的"不支持"。
  * ========================================================================== */
@@ -111,9 +111,10 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
     // ---- Ogg 容器族（必须读首个页面的 payload 才能分辨子编码）----
     if (matchAt(head, 0, ascii("OggS"))) {
         let codec = detectOggCodec(head)
-        // Ogg 封装的 FLAC 是**可解码的**：dr_flac 明确声明对 Ogg 封装的 FLAC
-        // 流提供 transparent 支持（其头文件注释原文为 "seamless support for Ogg
-        // encapsulated FLAC streams"），且 DR_FLAC_NO_OGG 未定义即默认开启。
+        // Ogg 封装的 FLAC 是**可解码的**：本库有它自己的纯仓颉实现 —— 先把各页
+        // 页体重建成一条与原生 FLAC 逐字节等同的流，再走同一套解码逻辑
+        // （见 format/ogg_flac_source.cj）。这一点起初是借 dr_flac 对 Ogg 的
+        // transparent 支持接出来的，现已不依赖任何 C 实现。
         // 其余 Ogg 子编码（Vorbis / Opus / Speex）当前没有可用解码器。
         return ProbeResult("ogg", "audio/ogg", codec == "flac", codec: codec)
     }

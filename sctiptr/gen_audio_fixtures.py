@@ -524,9 +524,9 @@ def gen_ogg(out, refs):
             "-metadata", "album=Test Fixtures",
             os.path.join(d, "ogg_opus_tagged.opus")])
 
-    # (d) FLAC-in-Ogg 变体 —— dr_flac 原生支持 Ogg 封装的 FLAC（其头文件明确
-    #     声明 seamless support）；此前探测层把它当通用 ogg 拒绝，属"本可支持
-    #     却被拒绝"的缺口，已修正为可解码。
+    # (d) FLAC-in-Ogg 变体 —— 本库可解码它（起初借 dr_flac 对 Ogg 的 transparent
+    #     支持，现已改为本库自己的纯仓颉页级读取器）；此前探测层把它当通用 ogg
+    #     拒绝，属"本可支持却被拒绝"的缺口，已修正为可解码。
     ffmpeg(["-i", sine, "-t", str(DUR_MATRIX), "-c:a", "flac", "-f", "ogg",
             os.path.join(d, "ogg_flac.oga")])
 

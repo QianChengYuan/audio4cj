@@ -28,8 +28,8 @@ import std.collection.*
  *   多文件并行处理请为每个文件创建独立实例（§4.7）。
  *
  * 当前可解码范围（与 probe 层的 supported 字段保持一致）：
- *   WAV、**FLAC**（二者均为纯仓颉实现，不依赖 C 库）、MP3、
- *   **Ogg 封装的 FLAC**（后两者经 dr_libs FFI）。
+ *   WAV、**FLAC**、**Ogg 封装的 FLAC**（三者均为纯仓颉实现，不依赖 C 库）、
+ *   MP3（经 dr_libs FFI）。
  * ========================================================================== */
 public class AudioFile <: Resource {
     private var _closed: Bool = false
@@ -116,10 +116,11 @@ public class AudioFile <: Resource {
 
     /// 以 FLAC 读取器 + 解码器装配 `AudioFile`。
     ///
-    /// 原生 FLAC 与 **Ogg 封装的 FLAC 共用这一条装配路径**，但**内层内核不同**：
-    /// 前者走纯仓颉内核，后者仍走 dr_libs（详见 FlacFormatReader.init）。
-    /// `oggWrapped` 就是从这里传下去的 —— 本函数的两个调用点各自处在
-    /// "flac" 与 "ogg" 分支里，容器是已知事实，无需让读取器再识别一次。
+    /// 原生 FLAC 与 **Ogg 封装的 FLAC 共用这一条装配路径**，内核也是同一个
+    /// （纯仓颉）—— 容器差异在更下层，由**字节源**承担（见 flac.cj 的类头说明）。
+    /// `oggWrapped` 就是从这里传下去的：它只决定"字节流是不是 Ogg 重建出来的"。
+    /// 本函数的两个调用点各自处在 "flac" 与 "ogg" 分支里，容器是已知事实，
+    /// 无需让下层的读取器再识别一次。
     private static func openFlac(path: String, formatInfo: FormatInfo, oggWrapped: Bool): AudioFile {
         let reader = FlacFormatReader(path, oggWrapped)
         let decoder = FlacPcmDecoder(

@@ -10,8 +10,8 @@
 
 > **C 库依赖（FLAC / MP3 必需）**
 >
-> - **WAV 与 FLAC** 走纯仓颉实现，**不需要** C 库；
-> - **MP3 与 Ogg 封装的 FLAC** 经 dr_libs 的 FFI 解码，链接的是 `libs/<平台>/libdrlibs.a`。
+> - **WAV、FLAC 与 Ogg 封装的 FLAC** 走纯仓颉实现，**不需要** C 库；
+> - 只有 **MP3** 经 dr_libs 的 FFI 解码，链接的是 `libs/<平台>/libdrlibs.a`。
 >   仓库已预置 Windows x86_64 的静态库；Linux / macOS 由 `build.cj` 现场编译
 >   （需要 clang 与 ar）。
 > - 它是**静态链接**的：C 库直接进可执行文件，**运行期不需要分发或加载任何

@@ -19,8 +19,11 @@ import audio4cj.drlibs.DrLibsFormat
  *   FlacFormatReader.init 里的一处选择，其余方法一行未动。
  *
  * 【当前生产用法（本节是"哪个容器走哪个内核"的唯一说明处）】
- *   原生 FLAC → PureFlacKernel（**零 C 依赖**）
- *   Ogg 封装  → DrLibsFlacKernel（暂留；纯仓颉 Ogg 读取器尚未实现）
+ *   原生 FLAC 与 **Ogg 封装的 FLAC** 都走 PureFlacKernel ——
+ *   FLAC 这一族无论容器都已零 C 依赖。容器差异**不在两个内核之间**，
+ *   而在更下层的**字节源**（flac_source.cj / ogg_flac_source.cj）。
+ *   DrLibsFlacKernel 已不在生产路径上，它现在的身份是**独立裁判**：
+ *   测试拿它给纯仓颉内核逐样本对账。
  *
  * 【两个实现的关系不是"新旧替换"，而是"互证"】
  *   两者对同一段音频必须产出**逐位相同**的 f32 PCM。这既是对纯仓颉实现的

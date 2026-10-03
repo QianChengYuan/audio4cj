@@ -16,9 +16,10 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 > 但对于 MP3 这类有损格式不存在源位深，此时恒为 `32`，含义是「解码输出为 float32」
 > ——**不是** 32 位整数 PCM。
 >
-> **当前可解码格式：WAV / FLAC / MP3 / Ogg 封装的 FLAC**。其中 **WAV 与 FLAC 为纯仓颉实现**
-> （WAV 是未压缩容器，其「解码」本质是位深转换；FLAC 的帧解码、CRC 校验与 SEEKTABLE 定位
-> 均为纯仓颉）；**MP3 与 Ogg 封装的 FLAC 经 dr_libs 的 FFI 解码**。
+> **当前可解码格式：WAV / FLAC / MP3 / Ogg 封装的 FLAC**。其中 **WAV、FLAC 与 Ogg 封装的 FLAC
+> 均为纯仓颉实现**（WAV 是未压缩容器，其「解码」本质是位深转换；FLAC 的帧解码、CRC 校验、
+> SEEKTABLE 定位，以及 Ogg 的页级重组与 CRC-32 校验，都是纯仓颉）；**只有 MP3 经 dr_libs 的
+> FFI 解码**。也就是说：**除了 MP3，其余格式连构建期都不需要 C 编译器**。
 >
 > **标签读取覆盖更广**：WAV / FLAC / MP3 / **OGG**（Vorbis、Opus、FLAC-in-Ogg）/ **MP4**（`ilst`）。
 

@@ -142,7 +142,7 @@ private func stSpliceSeekTable(image: Array<UInt8>, points: ArrayList<(Int64, In
 
 /// seek 到 `target` 后读一小段，返回 (音频, 自本次 seek 起解码的帧数)。
 private func stSeekAndRead(path: String, target: Int64, chunkFrames: Int64): (Array<Float32>, Int64) {
-    let kernel = PureFlacKernel(path)
+    let kernel = PureFlacKernel(path, false)
     let channels = kernel.channels()
     let _ = kernel.seekToFrame(target)
 
@@ -286,7 +286,7 @@ class FlacSeekTableTest {
         let pathWithTable = stWriteTemp("a4cj_withseek.flac", spliced)
 
         // ① 定位点确实被解析出来（数量应与拼入的点数一致）
-        let probe = PureFlacKernel(pathWithTable)
+        let probe = PureFlacKernel(pathWithTable, false)
         @Assert(probe.seekPointCount() == points.size)
         probe.close()
 

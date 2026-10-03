@@ -44,12 +44,14 @@ private func fbDecodeAll(kernel: FlacDecodeKernel, chunkFrames: Int64): Array<Fl
 ///
 /// 纯仓颉侧的解码包在 try 里：一旦抛异常，立即取出内核的窗口/游标状态，
 /// 把"比特流截断"翻译成可判定的位置关系（见 diagnosticState 的说明）。
-private func fbCompare(path: String, chunkFrames: Int64): Unit {
+/// `oggWrapped` 决定纯仓颉侧用哪个字节源（原生裸文件 / Ogg 页体重建流）。
+/// FFI 侧不需要它 —— dr_flac 自己会识别封装类型，这正是"独立裁判"的体现。
+private func fbCompare(path: String, chunkFrames: Int64, oggWrapped: Bool): Unit {
     let ffiKernel = DrLibsFlacKernel(path)
     let ffi = fbDecodeAll(ffiKernel, chunkFrames)
     ffiKernel.close()
 
-    let pureKernel = PureFlacKernel(path)
+    let pureKernel = PureFlacKernel(path, oggWrapped)
     var pure = Array<Float32>(0, repeat: 0.0)
     var failure: ?String = None
     try {
@@ -114,28 +116,28 @@ class FlacBitstreamTest {
             "testdata/flac/flac_silence.flac"
         ]
         for (path in fixtures) {
-            fbCompare(path, 4096)
+            fbCompare(path, 4096, false)
         }
     }
 
     /// 块大小**不与帧边界对齐**时仍须逐样本一致 —— 这条专门压测 pending 路径。
     @TestCase
     func oddChunkSizeMatchesFfi() {
-        fbCompare("testdata/flac/flac_s16_44100_stereo.flac", 1000)
-        fbCompare("testdata/flac/flac_s24_44100_stereo.flac", 1000)
+        fbCompare("testdata/flac/flac_s16_44100_stereo.flac", 1000, false)
+        fbCompare("testdata/flac/flac_s24_44100_stereo.flac", 1000, false)
     }
 
     /// 极小块（小到一帧都装不下）仍须正确 —— 此时 pending 会跨多次调用累积。
     @TestCase
     func tinyChunkSizeMatchesFfi() {
-        fbCompare("testdata/flac/flac_s16_44100_stereo.flac", 7)
+        fbCompare("testdata/flac/flac_s16_44100_stereo.flac", 7, false)
     }
 
     /// 内核报出的参数必须与 STREAMINFO 一致（顺带验证流式元数据解析）。
     @TestCase
     func kernelReportsStreamInfoParameters() {
         let path = "testdata/flac/flac_s24_44100_stereo.flac"
-        let kernel = PureFlacKernel(path)
+        let kernel = PureFlacKernel(path, false)
         let ffi = DrLibsFlacKernel(path)
 
         @Expect(kernel.sampleRate(), ffi.sampleRate())
@@ -154,7 +156,7 @@ class FlacBitstreamTest {
     @TestCase
     func seekMatchesSequentialDecode() {
         let path = "testdata/flac/flac_s16_44100_stereo.flac"
-        let reference = PureFlacKernel(path)
+        let reference = PureFlacKernel(path, false)
         let full = fbDecodeAll(reference, 4096)
         reference.close()
 
@@ -162,7 +164,7 @@ class FlacBitstreamTest {
         let targets = [0, 1, 1001, 4096, 4097, 20000, 40000]
 
         for (target in targets) {
-            let kernel = PureFlacKernel(path)
+            let kernel = PureFlacKernel(path, false)
             if (!kernel.seekToFrame(target)) {
                 @Fail("seek 到 ${target} 返回 false")
                 kernel.close()
@@ -193,5 +195,100 @@ class FlacBitstreamTest {
                 continue
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Ogg 封装的 FLAC（纯仓颉 Ogg 字节源）
+    // ------------------------------------------------------------------
+
+    /// Ogg 封装的 FLAC：**纯仓颉 Ogg 字节源** vs dr_libs（dr_flac 自带 Ogg 支持）。
+    ///
+    /// 【这条对照为什么特别有价值】
+    ///   dr_flac 对 Ogg 封装的支持是一条**完全独立**的实现 —— 它自己解析 Ogg 页、
+    ///   自己重组 packet；我们的 Ogg 源是纯仓颉新写的。两者输出逐位相同，
+    ///   证明的是"拆容器这件事做对了"，而**不是**"两边共用同一份 Ogg 代码
+    ///   所以当然一致"。这正是本库对自研实现的一贯要求：裁判必须独立。
+    @TestCase
+    func oggWrappedMatchesFfi() {
+        let fixtures = ["testdata/ogg/ogg_flac.oga", "testdata/ogg/ogg_flac_tagged.oga"]
+        for (path in fixtures) {
+            fbCompare(path, 4096, true)
+            fbCompare(path, 1000, true) // 非帧边界块大小，压 pending 通路
+        }
+    }
+
+    /// Ogg 封装的 FLAC：seek 后的样本必须与"从头顺序解码到该位置"逐位相同。
+    ///
+    /// 【为什么 Ogg 侧的 seek 必须单独验】它与原生文件的 seek 是**不同的错误面**：
+    ///   原生：按 SEEKTABLE 偏移移动文件指针即可；
+    ///   Ogg ：要先在**重建流**的坐标系里跳到该偏移 —— 源必须逐页按段表算出
+    ///         页体长度越过，并正确定位到"落在某页中间"的那个字节。
+    /// 一个是移动指针，一个是要自己算出跨了几页、页内偏移多少，
+    /// 不能靠原生用例通过来推断。
+    ///
+    /// 注意 Ogg-FLAC 的 STREAMINFO 常把总样本数写成 0（不可知），
+    /// 故本用例只比对**实际解出的样本**，不依赖 totalFrames。
+    @TestCase
+    func oggWrappedSeekMatchesSequentialDecode() {
+        let path = "testdata/ogg/ogg_flac.oga"
+        let reference = PureFlacKernel(path, true)
+        let full = fbDecodeAll(reference, 4096)
+        reference.close()
+        @Assert(full.size > 0)
+
+        let channels: Int64 = 2
+        let targets = [0, 1, 1001, 4096, 4097, 20000]
+
+        for (target in targets) {
+            let kernel = PureFlacKernel(path, true)
+            if (!kernel.seekToFrame(target)) {
+                @Fail("Ogg/FLAC seek 到 ${target} 返回 false")
+                kernel.close()
+                continue
+            }
+
+            let buf = Array<UInt8>(512 * channels * 4, repeat: 0)
+            let got = kernel.readF32Into(buf, 512)
+            let samples = reinterpretF32Bytes(buf[0..got * channels * 4])
+
+            var i: Int64 = 0
+            var mismatch: Bool = false
+            while (i < samples.size) {
+                let refIndex = target * channels + i
+                if (refIndex >= full.size) {
+                    break
+                }
+                if (samples[i] != full[refIndex]) {
+                    @Fail(
+                        "Ogg/FLAC seek 到 ${target} 后第 ${i} 个样本不符：${samples[i]} vs 顺序解码的 ${full[refIndex]}")
+                    mismatch = true
+                    break
+                }
+                i += 1
+            }
+            kernel.close()
+            if (mismatch) {
+                continue
+            }
+        }
+    }
+
+    /// Ogg 侧的参数必须与内嵌 STREAMINFO 一致，且与 dr_flac 读出的一致。
+    ///
+    /// 总样本数这一项刻意也比对：Ogg-FLAC 常写 0（不可知），本项目如实报告 -1；
+    /// 两侧都应给出同一个"不可知"，而不是一边猜一个数。
+    @TestCase
+    func oggKernelReportsStreamInfoParameters() {
+        let path = "testdata/ogg/ogg_flac.oga"
+        let kernel = PureFlacKernel(path, true)
+        let ffi = DrLibsFlacKernel(path)
+
+        @Expect(kernel.sampleRate(), ffi.sampleRate())
+        @Expect(kernel.channels(), ffi.channels())
+        @Expect(kernel.bitsPerSample(), ffi.bitsPerSample())
+        @Expect(kernel.totalFrames(), ffi.totalFrames())
+
+        kernel.close()
+        ffi.close()
     }
 }

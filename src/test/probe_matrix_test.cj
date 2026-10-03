@@ -85,7 +85,7 @@ private func pmExpectSupported(container: String, codec: String): Bool {
     if (container == "wav" || container == "flac" || container == "mp3") {
         return true
     }
-    // Ogg 容器里只有 FLAC 编码可解码（dr_flac 原生支持 Ogg 封装的 FLAC）
+    // Ogg 容器里只有 FLAC 编码可解码（由本库自己的纯仓颉 Ogg 源实现）
     if (container == "ogg") {
         return codec == "flac"
     }
@@ -285,13 +285,18 @@ class ProbeMatrixTest {
 
     /// Ogg 封装的 FLAC **可解码** —— 本轮修掉的"本可支持却被拒绝"缺口
     ///
-    /// 依据：dr_flac 头文件明确声明对 Ogg 封装的 FLAC 流提供 transparent 支持
-    /// （`drflac_open_file` 自动识别封装类型，且 DR_FLAC_NO_OGG 未定义即默认开启），
-    /// 因此本条不是"新增能力"，而是把本来就有的能力接出来。
+    /// 依据：该能力当初是借助 dr_flac 对 Ogg 封装的 transparent 支持接出来的；
+    /// 现在 **Ogg-FLAC 已改由本库自己的纯仓颉页级读取器实现**
+    /// （见 format/ogg_flac_source.cj），故本条同时是那套实现的端到端回归。
     ///
     /// 同时做一次**无损互证**：同一参考信号分别以原生 FLAC 与 Ogg/FLAC 两种
     /// 封装编码，两者都是无损的，解码输出必须**逐位相同**。这条不需要任何
     /// 外部工具（不依赖 ffmpeg），因此在任何环境下都能跑。
+    ///
+    /// 【它现在验的是什么，不要与另一条混淆】两条路径如今都走纯仓颉内核，
+    /// 所以本条验的是"**两种容器**的解码结果一致"；而"内核与 dr_libs 逐样本
+    /// 一致"由 src/test/flac_bitstream_test.cj 的 oggWrappedMatchesFfi 单独负责。
+    /// 两个对照分工不同，缺了后者就等于失去了独立裁判。
     @TestCase
     func flacInOggIsDecodableAndMatchesNativeFlac() {
         let oggPath = "${PM_ROOT}/ogg/ogg_flac.oga"

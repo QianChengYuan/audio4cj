@@ -5,19 +5,26 @@ import audio4cj.core.CorruptedFileException
 import audio4cj.core.DecodeException
 import audio4cj.pcm.f32ToBytes
 import std.collection.ArrayList
-import std.fs.*
 
 /* ============================================================================
  * 纯仓颉 FLAC 解码内核（流式）
  *
  * 【本文件的职责】
- *   把 flac_frame.cj 的帧解码接到真实文件与流式消费上，实现 FlacDecodeKernel。
+ *   把 flac_frame.cj 的帧解码接到**字节源**与流式消费上，实现 FlacDecodeKernel。
  *   它负责：元数据解析、窗口回填、按请求帧数交付、seek。
  *   它**不含**任何 FLAC 算法 —— 算法全在 flac_frame.cj，且已与 dr_libs 逐样本对齐。
+ *
+ * 【字节从哪里来：本文件不认识"文件"，只认识 FlacByteSource】
+ *   "字节来自裸文件还是 Ogg 页体"是**容器**问题，不是解码问题，故抽到
+ *   flac_source.cj（接口 + 裸文件实现）与 ogg_flac_source.cj（Ogg 实现）。
+ *   于是同一份解码逻辑同时服务原生 FLAC 与 Ogg 封装的 FLAC，两者不再各写一套。
+ *   本文件里出现的偏移一律是 **FLAC 字节流的偏移**（0 = "fLaC" 标记的第一个字节），
+ *   该口径由源负责维持（见 flac_source.cj 的"虚拟偏移"说明）。
  *
  * 【内存与音频时长无关（库的核心承诺）】
  *   解码只用一块固定容量的窗口，容量由 STREAMINFO 推出（见 worstCaseFrameBytes），
  *   与文件大小、时长都无关。多数文件（4096 块 / 立体声 / 16 位）窗口约 25 KB。
+ *   Ogg 源另需一块页缓存，同样**与时长无关**（Ogg 规范上限 65025 字节）。
  *
  * 【关键设计：窗口必须装得下"规范允许的最坏一帧"】
  *   FLAC 的帧长不写在流里（只能解完才知道），因此无法"按需只读一帧"。
@@ -31,11 +38,12 @@ import std.fs.*
  *   因此把"本帧装不下"的尾部样本留在 pending 里，下次调用先交付它。
  *   这同时让 seek 到"帧中间"成为可能（见 seekToFrame）。
  *
- * 【本版明确未做】
- *   1. 帧头 CRC-8 与帧尾 CRC-16 的**校验**（flac_frame.cj 只读掉它们以对齐位置）；
- *   2. SEEKTABLE 索引定位 —— 当前 seek 一律"重开文件后向前解码"，
- *      正确但有最坏情况 O(n) 的开销（对无 SEEKTABLE 的文件，这与多数
- *      解码器的行为一致；有 SEEKTABLE 时应利用它。已在开发文档记录为待办）。
+ * 【此前 "本版明确未做" 的两项均已补齐】
+ *   1. 帧头 CRC-8 与帧尾 CRC-16 的**校验**（见表 flac_crc.cj，在流式层调用）；
+ *   2. SEEKTABLE 索引定位，含无该块时的"重开 + 向前解码"回退
+ *      （见 seekToFrame 与 seekPointAtOrBefore）。
+ *   两项都是为了"换内核之后检测能力与定位能力不下降"，依据是与 dr_libs 的
+ *   逐样本对照与逐落点对照，而不是"实现了就算"。
  * ========================================================================== */
 
 /// f32 样本的字节数。
@@ -84,48 +92,6 @@ private func windowBytes(info: FlacStreamInfo): Int64 {
         preferred
     } else {
         byMultiple
-    }
-}
-
-/// 精确读取 n 字节；不足则抛异常。
-///
-/// 注意 `File.read` 只能从数组**起始处**写入，因此分次读取时须经临时缓冲
-/// 拼接 —— 不能靠切片（仓颉的切片是拷贝，写进去不会回到原数组）。
-private func ffReadExact(file: File, n: Int64): Array<UInt8> {
-    let buf = Array<UInt8>(n, repeat: 0)
-    var got: Int64 = 0
-    while (got < n) {
-        let scratch = Array<UInt8>(n - got, repeat: 0)
-        let r = file.read(scratch)
-        if (r <= 0) {
-            throw CorruptedFileException("FLAC 文件意外结束（还需 ${n - got} 字节）")
-        }
-        var i: Int64 = 0
-        while (i < r) {
-            buf[got + i] = scratch[i]
-            i += 1
-        }
-        got += r
-    }
-    buf
-}
-
-/// 跳过 n 字节（分块读掉，避免为巨大的元数据块分配内存）。
-private func ffSkip(file: File, n: Int64): Unit {
-    var left = n
-    let chunkSize: Int64 = 65536
-    while (left > 0) {
-        let chunk = if (left > chunkSize) {
-            chunkSize
-        } else {
-            left
-        }
-        let scratch = Array<UInt8>(chunk, repeat: 0)
-        let r = file.read(scratch)
-        if (r <= 0) {
-            throw CorruptedFileException("FLAC 元数据块声明的长度超出文件末尾")
-        }
-        left -= r
     }
 }
 
@@ -179,20 +145,41 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 已交付（或已跳过）的样本数（每声道计时）。seek 与结束判断都用它。
     private var _deliveredFrames: Int64 = 0
 
-    private var _file: File
+    /// 源是否已被读到尽头（某次回填尝试过读、却一个字节都没补进来）。
+    ///
+    /// 【为什么必须记这一笔，而不是用"窗口剩余多少"代替】
+    ///   长度不可知的流（流式编码的原生 FLAC，以及**所有** Ogg 封装的 FLAC ——
+    ///   后者的 STREAMINFO 总样本数恒为 0）只能靠"没有数据了"判断结束。
+    ///   而"窗口剩余不足一帧"这个信号在**首次回填之前**同样成立（剩余为 0），
+    ///   拿它当结束判据会把"还没开始读"误判成"已经读完"。
+    private var _sourceExhausted: Bool = false
+
+    /// 字节来源（原生裸文件，或 Ogg 页体重建流）—— 本类不关心是哪一种。
+    private var _source: FlacByteSource
     private var _closed: Bool = false
 
     /// pending：上一帧未能交付的交错 f32 样本，及其已读位置。
     private var _pending: Array<Float32> = Array<Float32>(0, repeat: 0.0)
     private var _pendingRead: Int64 = 0
 
-    protected init(path: String) {
+    /// 打开文件并解析元数据。数据损坏、容器不匹配或编码不受支持时抛异常。
+    ///
+    /// `oggWrapped` 由调用方（facade）传入 —— 容器已经探测过一次，
+    /// 这里不重新识别：两个判断点一旦分歧，就会出现"按 A 判定的容器、
+    /// 按 B 选的字节源"这种最难查的错。
+    protected init(path: String, oggWrapped: Bool) {
         this._path = path
-        let file = File(path, Read)
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(file)
+
+        // 容器差异**只体现在这一处**：字节是裸文件本身，还是 Ogg 页体的重建流
+        let source: FlacByteSource = if (oggWrapped) {
+            OggFlacByteSource(path)
+        } else {
+            FileByteSource(path)
+        }
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadataOrClose(source)
 
         this._info = info
-        this._file = file
+        this._source = source
         this._firstFrameOffset = firstFrameOffset
         this._seekPoints = seekPoints
         this._cursor = firstFrameOffset
@@ -207,19 +194,34 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     // 元数据：流式解析（不把整个头部载入内存 —— 封面块可达 MB 级）
     // ------------------------------------------------------------------
 
+    /// 解析元数据；失败时**先关闭源再抛出**。
+    ///
+    /// 构造失败的实例永远不会被使用者持有，也就没人能再调用 close()，
+    /// 句柄会随之泄漏 —— 表现为该文件无法被删除或移动（FlacFormatReader.init
+    /// 的注释记录了同一类现象）。把清理收在这里，init 因而保持一条直线。
+    private static func readMetadataOrClose(source: FlacByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+        let parsed = try {
+            PureFlacKernel.readMetadata(source)
+        } catch (e: Exception) {
+            source.close()
+            throw e
+        }
+        parsed
+    }
+
     /// 解析元数据块链，返回 (STREAMINFO, 首帧字节偏移, SEEKTABLE 定位点)。
-    /// 返回时文件位置恰好落在首帧起点。
+    /// 返回时**源的读取位置**恰好落在首帧起点。
     ///
     /// SEEKTABLE 是可选块：没有时返回空列表，seek 退化为从头解码（正确性不受影响）。
-    private static func readMetadata(file: File): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+    private static func readMetadata(source: FlacByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
         // 标记 + 首块头（复用经过测试的 parseStreamInfo，故按它期望的布局拼接）
-        let prefix = ffReadExact(file, FLAC_MARKER_SIZE + 4)
+        let prefix = source.readExact(FLAC_MARKER_SIZE + 4)
         let firstLen = (Int64(prefix[FLAC_MARKER_SIZE + 1]) << 16) | (Int64(prefix[FLAC_MARKER_SIZE + 2]) << 8) | Int64(prefix[FLAC_MARKER_SIZE +
                 3])
         if (firstLen <= 0 || firstLen > 4096) {
             throw CorruptedFileException("FLAC 首块长度 ${firstLen} 异常")
         }
-        let body = ffReadExact(file, firstLen)
+        let body = source.readExact(firstLen)
 
         let assembled = Array<UInt8>(FLAC_MARKER_SIZE + 4 + firstLen, repeat: 0)
         var i: Int64 = 0
@@ -244,7 +246,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
             if (guard > 1024) {
                 throw CorruptedFileException("FLAC 元数据块数量异常（超过 1024 块）")
             }
-            let h = ffReadExact(file, 4)
+            let h = source.readExact(4)
             isLast = (Int64(h[0]) & 0x80) != 0
             let blockType = Int64(h[0]) & 0x7F
             let len = (Int64(h[1]) << 16) | (Int64(h[2]) << 8) | Int64(h[3])
@@ -261,11 +263,11 @@ protected class PureFlacKernel <: FlacDecodeKernel {
                 }
                 let want = (capped / FLAC_SEEKPOINT_LENGTH) * FLAC_SEEKPOINT_LENGTH
                 if (want > 0) {
-                    seekPoints = parseSeekTable(ffReadExact(file, want))
+                    seekPoints = parseSeekTable(source.readExact(want))
                 }
-                ffSkip(file, len - want)
+                source.skip(len - want)
             } else {
-                ffSkip(file, len)
+                source.skip(len)
             }
             offset += 4 + len
         }
@@ -286,7 +288,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         remainingFromCursor() > 0
     }
 
-    /// 回填窗口：把未消费数据前移，再从文件补足。
+    /// 回填窗口：把未消费数据前移，再从**字节源**补足。
     ///
     /// 只在帧边界调用（一帧是原子解码的，游标不会停在帧中间）。
     /// 若已到文件末尾则补不进数据，`_valid` 保持为前移后的长度。
@@ -310,10 +312,13 @@ protected class PureFlacKernel <: FlacDecodeKernel {
 
         // 补足窗口。read 只能写入数组起始处，故经长度恰好为"所需字节数"的
         // 临时缓冲读取 —— 这样不会读过窗口末端而丢掉文件位置。
+        var gained: Int64 = 0
+        var attempts: Int64 = 0
         while (_valid < _window.size) {
+            attempts += 1
             let need = _window.size - _valid
             let scratch = Array<UInt8>(need, repeat: 0)
-            let got = _file.read(scratch)
+            let got = _source.readSome(scratch)
             if (got <= 0) {
                 break
             }
@@ -323,21 +328,34 @@ protected class PureFlacKernel <: FlacDecodeKernel {
                 i += 1
             }
             _valid += got
+            gained += got
+        }
+
+        // 尝试过读取却一个字节都没补进来 —— 源已到尽头（见 _sourceExhausted 说明）
+        if (attempts > 0 && gained == 0) {
+            _sourceExhausted = true
         }
 
         _reader.limitTo(_valid)
     }
 
-    /// 是否已到达数据末尾（按 STREAMINFO 的声明，或剩余数据已不足一帧）。
+    /// 是否已到达数据末尾。
+    ///
+    /// 两条判据，对应两类流：
+    ///   有长度声明（绝大多数原生 FLAC）—— 已交付帧数达到声明值即结束；
+    ///   无长度声明（流式编码的原生 FLAC、**所有** Ogg 封装的 FLAC）——
+    ///     必须"**源已耗尽** 且 窗口剩余不足一帧"才算结束。
+    ///
+    /// 【那个"源已耗尽"不能省】历史版本只判"剩余不足一帧"，于是**首次回填
+    ///   之前**（剩余为 0）就被判成已结束 —— 整条流解出 0 个样本且不报错。
+    ///   它长期没暴露：原生素材都由两遍编码器写入了总样本数，而总样本数
+    ///   恒为 0 的 Ogg-FLAC 此前走 dr_libs，绕过了这里。切到纯仓颉 Ogg 源
+    ///   时它立刻显形，现由 oggWrappedMatchesFfi 用例钉住。
     private func atEnd(): Bool {
-        if (_info.totalSamples > 0 && _deliveredFrames >= _info.totalSamples) {
-            return true
+        if (_info.totalSamples > 0) {
+            return _deliveredFrames >= _info.totalSamples
         }
-        // 无总样本数声明（流式编码）：以"剩余不足一帧的下限"作为结束判据
-        if (_info.totalSamples <= 0 && remainingFromCursor() < FLAC_MIN_FRAME_BYTES) {
-            return true
-        }
-        false
+        _sourceExhausted && remainingFromCursor() < FLAC_MIN_FRAME_BYTES
     }
 
     /// 解码下一帧（必要时先回填）。
@@ -599,7 +617,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     public func close(): Unit {
         if (!_closed) {
             _closed = true
-            _file.close()
+            _source.close()
         }
     }
 
@@ -667,20 +685,20 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 而游标要指向定位点。若只改游标不动文件位置，下次回填就会从首帧读数据、
     /// 却按定位点记账 —— 结果是静默的错位音频（本文件其它地方踩过同类坑）。
     private func repositionTo(offsetFromFirstFrame: Int64, sampleNumber: Int64): Bool {
-        _file.close()
-        _file = File(_path, Read)
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_file)
+        _source.reopen()
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_source)
         if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
             .channels) {
             return false // 文件在两次打开之间被替换
         }
 
-        ffSkip(_file, offsetFromFirstFrame)
+        _source.skip(offsetFromFirstFrame)
         _seekPoints = seekPoints
         _deliveredFrames = sampleNumber
         _cursor = firstFrameOffset + offsetFromFirstFrame
         _windowFileOffset = _cursor
         _valid = 0
+        _sourceExhausted = false // 换了读取位置，"已耗尽"必须重新判定
         _pending = Array<Float32>(0, repeat: 0.0)
         _pendingRead = 0
         _reader.limitTo(0)
@@ -689,9 +707,8 @@ protected class PureFlacKernel <: FlacDecodeKernel {
 
     /// 重开文件并回到首帧（同时清空窗口与 pending 状态）。
     private func rewind(): Bool {
-        _file.close()
-        _file = File(_path, Read)
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_file)
+        _source.reopen()
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_source)
         if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
             .channels) {
             return false // 文件在两次打开之间被替换
@@ -700,6 +717,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         _windowFileOffset = firstFrameOffset
         _cursor = firstFrameOffset
         _valid = 0
+        _sourceExhausted = false // 换了读取位置，"已耗尽"必须重新判定
         _deliveredFrames = 0
         _pending = Array<Float32>(0, repeat: 0.0)
         _pendingRead = 0

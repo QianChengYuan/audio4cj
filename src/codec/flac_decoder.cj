@@ -13,7 +13,7 @@ import audio4cj.pcm.reinterpretF32Bytes
  *   由**解码内核**完成 —— 见 format/flac.cj 的 FlacFormatReader.nextPacket，
  *   它把内核产出的 f32 交错 PCM 直接写入 Packet.data。本类只把同一块内存
  *   换一个视角（字节 -> Float32），不含任何算法处理。
- *   内核是哪一个与本类无关：原生 FLAC 走纯仓颉内核，Ogg 封装暂走 dr_libs FFI
+ *   内核是哪一个与本类无关：原生 FLAC 与 Ogg 封装的 FLAC 如今都走纯仓颉内核
  *   （见 format/flac_kernel.cj 的接口说明）。
  *
  * 为什么不把「读取」放在本类：

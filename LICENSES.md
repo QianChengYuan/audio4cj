@@ -14,7 +14,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 用途 | **MP3 解码**与 **Ogg 封装的 FLAC** 解码（经 C 侧薄封装 `third-party/drlibs_wrapper.c`）。**原生 FLAC 已改为纯仓颉内核、WAV 亦为纯仓颉，两者都不再经此路径** —— 因此本依赖虽仍在分发物内（另有 CVE 跟踪义务），但已不在原生 FLAC 的运行时链路中 |
+| 用途 | **仅 MP3 解码**（经 C 侧薄封装 `third-party/drlibs_wrapper.c`）。**WAV、FLAC 与 Ogg 封装的 FLAC 都已是纯仓颉实现，均不再经此路径**；dr_flac 仍被**测试**用作独立裁判，故这些代码仍随库编译 |
 | 来源 | `third-party/dr_libs/`（含 `dr_flac.h`、`dr_wav.h`、`dr_mp3.h`） |
 | 是否分发 | **部分**：制品包只带上述三个头文件加 `LICENSE`、`README.md`；原仓库的 `tests/` 与 fuzzer 不随包分发（见 `docs/release.md` 的包内容契约） |
 | 许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0） |
@@ -33,9 +33,11 @@
 > 注：本项目的 WAV 解码走**纯仓颉实现**，不经 dr_wav；dr_wav 仍被编译进 `libdrlibs`，
 > 因此该 CVE 的修复状态仍需跟踪。
 >
-> 同理，**原生 FLAC 解码现已改为纯仓颉内核**，不经 dr_flac；但 **Ogg 封装的 FLAC
-> 仍走 `dr_flac`**，故 CVE-2025-14369 的修复状态同样仍需跟踪 —— 不能因为
-> "原生 FLAC 已纯仓颉化"就把这一条从清单里划掉。
+> 同理，**FLAC 与 Ogg 封装的 FLAC 现已全部走纯仓颉实现**，不经 dr_flac。
+> 但 `dr_flac` 与 `dr_wav` 仍**在制品内被编译**，且 dr_flac 还被**测试**用作
+> 独立裁判（`src/test/flac_bitstream_test.cj` 拿它给纯仓颉内核逐样本对账）——
+> 因此 CVE-2025-14369 的跟踪义务**不因"生产链路不再用它"而免除**：
+> 只要这些代码还在分发物里，供应链风险清单就得继续跟。
 >
 > 相关攻击面回归见 `src/test/cve_regression_test.cj`。
 

@@ -53,7 +53,7 @@ private func crcWriteTemp(name: String, bytes: Array<UInt8>): String {
 /// 只捕获 `CorruptedFileException`：其它异常（越界、溢出、类型转换失败等）
 /// 会向上传播并让用例失败 —— 那正是我们希望暴露的东西，不能被这里吞掉。
 private func crcDecodePure(path: String): ?String {
-    let kernel = PureFlacKernel(path)
+    let kernel = PureFlacKernel(path, false)
     let channels = kernel.channels()
     let buf = Array<UInt8>(4096 * channels * 4, repeat: 0)
     var failure: ?String = None

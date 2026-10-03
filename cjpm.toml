@@ -8,15 +8,19 @@
 #                      不含浮点 DSP）
 #   FLAC            —— 纯仓颉实现（帧解码 + CRC-8/CRC-16 校验 + SEEKTABLE 定位，
 #                      见 src/format/flac_bitstream.cj）
+#   Ogg 封装的 FLAC —— 纯仓颉实现（页级重组 + 页 CRC-32 校验，把 Ogg 重建成一条
+#                      与原生 FLAC 逐字节等同的流，见 src/format/ogg_flac_source.cj）
 #   MP3             —— 经 dr_libs 的 FFI 接入（dr_mp3）
-#   Ogg 封装的 FLAC —— 经 dr_libs 的 FFI 接入（dr_flac 原生支持）
 #
-# 因此下面那份 C 库依赖**只为 MP3 与 Ogg-FLAC 而存在**：WAV 与原生 FLAC 都不需要它。
-# 等纯仓颉 Ogg 读取器落地、MP3 也有纯仓颉实现后，这份依赖即可整体移除。
+# 因此下面那份 C 库依赖**只为 MP3 而存在**。WAV、FLAC 与 Ogg-FLAC 都不需要它；
+# 等 MP3 也有纯仓颉实现（或按既定范围从发布能力中移出），这份依赖即可整体移除。
 #
-# 注：dr_wav 的 FFI 绑定（src/codec/dr_wav_binding.cj）**没有任何调用点** ——
-# WAV 解码自 M2 起就是纯仓颉实现。它随 C 库一起被编译进来，属历史遗留；
-# 此前此处注释称其为"交叉验证基准"，与事实不符，已更正。
+# 注 1：dr_wav 的 FFI 绑定（src/codec/dr_wav_binding.cj）**没有任何调用点** ——
+#   WAV 解码自 M2 起就是纯仓颉实现。它随 C 库一起被编译进来，属历史遗留；
+#   此前此处注释称其为"交叉验证基准"，与事实不符，已更正。
+# 注 2：dr_flac 也已不在生产链路上（原生 FLAC 与 Ogg-FLAC 均为纯仓颉），
+#   但它仍被**测试**用作独立裁判（见 src/test/flac_bitstream_test.cj），
+#   因此仍随 C 库编译，其 CVE 跟踪义务不变（见 LICENSES.md）。
 # ============================================================================
 
 [package]

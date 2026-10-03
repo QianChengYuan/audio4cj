@@ -88,7 +88,10 @@ private func buildCrc16Table(): Array<UInt16> {
 /// 区间语义是**左闭右开** `[from, until)`，与仓颉切片一致。
 private func checkRange(bytes: Array<UInt8>, from: Int64, until: Int64, what: String): Unit {
     if (from < 0 || until < from || until > bytes.size) {
-        throw CorruptedFileException("${what} 的 CRC 计算区间非法：[$from, $until)（缓冲 ${bytes.size} 字节）")
+        // 【插值只能写 ${...}】`$from` 这种写法在仓颉里是**字面文本**，不会取变量的值
+        // —— 曾实测：println("[${x}]") 得 [42]，println("[$x]") 得 [$x]。
+        // 此处原先写成 [$from, $until)，报错信息会原样打印这两个名字。
+        throw CorruptedFileException("${what} 的 CRC 计算区间非法：[${from}, ${until})（缓冲 ${bytes.size} 字节）")
     }
 }
 

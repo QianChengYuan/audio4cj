@@ -10,12 +10,15 @@ import audio4cj.meta.*
  *   WAV 是**未压缩**容器，其「解码」本质是位深转换，故 M2 走纯仓颉实现；
  *   FLAC 是**压缩**格式，需真正解码，故经 FlacDecodeKernel 抽象解耦。
  *
- * 【两个容器的内核现状（本节是"当前用的是哪个实现"的唯一说明处）】
- *   原生 FLAC  → PureFlacKernel（纯仓颉，见 flac_bitstream.cj）← **生产路径**
- *   Ogg 封装   → DrLibsFlacKernel（dr_libs FFI）          ← 暂留，待纯仓颉 Ogg 读取器
- *   也就是说：**原生 FLAC 已零 C 依赖**；Ogg-FLAC 还没有，它是本次纯仓颉化
- *   尚未做完的那一部分（见 docs/codec-expansion-assessment.md 的盘点）。
- *   纯仓颉内核只认以 `fLaC` 开头的原生流，喂 Ogg 会响亮报错而不是静默出错。
+ * 【内核现状（本节是"当前用的是哪个实现"的唯一说明处）】
+ *   原生 FLAC 与 **Ogg 封装的 FLAC** 都走 PureFlacKernel —— 也就是说
+ *   **FLAC 这一族已经完全零 C 依赖**（不论容器）。
+ *   两者的容器差异不在内核里，而在**字节源**：
+ *     FileByteSource    ← 原生：字节就是文件本身
+ *     OggFlacByteSource ← Ogg ：字节是各页页体重建出来的流
+ *   内核因此只需被告知"字节流是不是 Ogg 重建出来的"（即 `oggWrapped`）。
+ *   DrLibsFlacKernel 仍留在代码里，但**不在生产路径上** ——
+ *   它现在的身份是**独立裁判**：测试拿它与纯仓颉实现逐样本对账。
  *
  * 分工（与 WAV 保持一致）：
  *   本类持有解码内核，负责打开、参数、seek 与分块读取；
@@ -54,25 +57,19 @@ protected class FlacFormatReader <: FormatReader {
 
     /// 打开文件并读取音频参数。数据损坏或编码不受支持时抛异常。
     ///
-    /// `oggWrapped` 决定用哪个内核：
-    ///   false（原生 FLAC）→ PureFlacKernel，纯仓颉，零 C 依赖；
-    ///   true （Ogg 封装）→ DrLibsFlacKernel，暂留。
+    /// `oggWrapped` 告诉内核"字节流是不是 Ogg 重建出来的"（见类头说明）。
     ///
     /// 【为什么由调用方传，而不在这里嗅探文件头】"这是什么容器"已经由 facade
     /// 的探测器算过一次；再在读取器里识别一次就是第二份判断依据，两者一旦
-    /// 出现分歧，会出现"按 A 判定的容器、按 B 选的内核"这种最难查的错。
+    /// 出现分歧，会出现"按 A 判定的容器、按 B 选的字节源"这种最难查的错。
     /// 调用方本来就在两个 case 分支里，把已知事实传下来成本为零。
     public init(path: String, oggWrapped: Bool) {
         this._path = path
 
-        // 显式标注类型：两个分支是**不同的类**，若让编译器自行推导
-        // if 表达式的类型，得不到 FlacDecodeKernel 这个共同父类型。
-        let kernel: FlacDecodeKernel = if (oggWrapped) {
-            DrLibsFlacKernel(path)
-        } else {
-            PureFlacKernel(path)
-        }
-        this._kernel = kernel
+        // 唯一的生产内核。此处曾是一个 if/else 在两个内核间二选一
+        // （原生走纯仓颉、Ogg 走 dr_libs）；Ogg 源落地后收敛为一处 ——
+        // 容器差异已经下沉到字节源，本层不再需要分支。
+        this._kernel = PureFlacKernel(path, oggWrapped)
 
         this._sampleRate = _kernel.sampleRate()
         this._channels = _kernel.channels()
