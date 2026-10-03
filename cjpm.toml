@@ -59,8 +59,19 @@
   #               构建脚本产物目录、**所有二进制文件**
   #   （后者解释了 libs/ 与 tools/Releases/ 下的二进制从不进包。）
   #
-  # 【为什么必须有 third-party】
+  # 【为什么必须有 third-party，且为什么只取其中的几个文件】
   #   消费者侧要用它现场编译 C 库（见 build.cj 与 docs/release.md）。
+  #   而 drlibs_wrapper.c 只 include 三个**单头文件**库，因此构建真正需要的只有：
+  #       drlibs_wrapper.c + dr_flac.h / dr_mp3.h / dr_wav.h + LICENSE + README.md
+  #
+  #   刻意不含 dr_libs 原仓库的 tests/ 与 fuzzer（*.c / *.cpp / *_fuzzer.cc）：
+  #   构建完全用不到它们，而 fuzzer 是"专门让程序崩溃"的代码 ——
+  #   放进制品包对审阅者只有负面意义。0.1.0 首次提交上架审核被退回，
+  #   在拿到官方说明前，先把这类可疑内容清出去（详情见 docs/release.md）。
+  #
+  #   ⚠ 将来新增 C 源文件（例如换用别的库）时，**必须把它的路径同步加进下面的
+  #     include** —— 白名单漏写即少打包，而消费者要现场编译它，会因缺文件而失败。
+  #
   # 【规则必须用前导斜杠锚定到仓库根目录】
   #   include/exclude 遵循 gitignore 匹配语义，而 gitignore 中**不带斜杠**的
   #   规则会在任意层级生效。实测教训：规则写成 "src" 时，
@@ -69,13 +80,19 @@
   #   加前导斜杠后锚定到根目录，只匹配根下的同名项。
   include = [
     "/src",           # 库源码
-    "/third-party",   # C 库来源，消费者构建时要用
     "/config",        # 项目级 cjlint 规则集
     "/docs",          # 面向使用者的公开文档
     "/build.cj",      # 构建期装配 C 库的钩子 —— 消费者侧就靠它
     "/LICENSE",
     "/LICENSES.md",
-    "/NOTICE"
+    "/NOTICE",
+    # —— third-party：只取构建真正需要的那几个文件（理由见上方注释）——
+    "/third-party/drlibs_wrapper.c",
+    "/third-party/dr_libs/dr_flac.h",
+    "/third-party/dr_libs/dr_mp3.h",
+    "/third-party/dr_libs/dr_wav.h",
+    "/third-party/dr_libs/LICENSE",
+    "/third-party/dr_libs/README.md"
   ]
 
 # C 库依赖：dr_libs 的**静态库**（dr_wav + dr_flac + dr_mp3 三种实现置于同一
@@ -96,8 +113,12 @@
 #
 #   这样做的实际收益：Windows 的 libs/windows_x86_64/ 里**预置了产物**（入库），
 #   所以全新克隆后 `cjpm check` 直接通过，不必再「先 build 后 check」。
-#   Linux / macOS 没有预置产物（本机无法交叉编译），仍需 build 在前 ——
-#   要从根上消除，把 CI 在这两个平台编出的产物也入库即可。
+#   Linux / macOS 没有预置产物（本机无法交叉编译），仍需 build 在前。
+#
+#   ⚠ 注意作用范围：上面这条豁免**只对「仓库内」成立**。cjpm 从不把二进制打进
+#     制品包，因此消费者拿到的包里没有任何 libs/ —— **制品包内所有平台**都需
+#     先 build 后 check。「把产物也入库即可消除该约束」对制品包不适用，
+#     成因与两次实测见 build.cj 文件头。
 [target.x86_64-w64-mingw32.ffi.c]
   drlibs = { path = "./libs/windows_x86_64/" }
 

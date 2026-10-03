@@ -115,7 +115,8 @@ jobs:
       # libs/linux_x86_64/libdrlibs.a。`cjpm check` 只在配置解析阶段检查
       # [ffi.c] 指向的库是否存在、**不会触发构建脚本**，故必须先 build 后 check，
       # 否则报 "can not find the library 'drlibs'"。
-      # （Windows 因 libs/windows_x86_64/ 里预置了产物而免疫该约束。）
+      # （**仅限仓库内**：Windows 因 libs/windows_x86_64/ 里预置了产物而免疫该约束；
+      #   cjpm 从不把二进制打进制品包，故制品包内所有平台都必须先 build 后 check。）
       - name: cjpm build（同时编译 C 静态库）
         run: cjpm build
 
@@ -172,9 +173,9 @@ jobs:
           cjc --version
           cjpm --version
 
-      # Windows 因 libs/windows_x86_64/ 里有入库的预置产物，其实**免疫**
-      # "build 必须先于 check"这条约束；这里仍保持与其它平台相同的顺序，
-      # 只为三平台步骤一致、便于比对。
+      # **仓库内** Windows 因 libs/windows_x86_64/ 里有入库的预置产物，其实**免疫**
+      # "build 必须先于 check"这条约束（该豁免在制品包内失效 —— 包里没有二进制）；
+      # 这里仍保持与其它平台相同的顺序，只为三平台步骤一致、便于比对。
       - name: cjpm build（复用预置的 C 静态库）
         run: cjpm build
 

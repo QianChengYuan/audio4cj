@@ -76,7 +76,8 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 它们与 `cjpm.toml` 的 include 白名单**互为验证**：`include` 决定「打什么」，
 这两张表断言「打出来的对不对」—— 任何一边被改错，另一边都会报警。
 
-实测通过的包：**142 个条目 / 409 KB**（未配置打包范围时为 736 条目 / 896 KB）。
+实测通过的包：**118 个条目 / 397.9 KB**（未配置打包范围时为 736 条目 / 896 KB；
+0.1.0 首次提交上架审核被退回时是 145 条目 / 422.8 KB —— 差额正是下表剔掉的那些）。
 
 ### 必须包含
 
@@ -84,9 +85,17 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 |---|---|
 | `cjpm.toml`、`build.cj` | 模块定义（含 `[ffi.c]` 与 include 白名单）与**构建期装配 C 库**的钩子 —— 消费者侧就靠它 |
 | `src/` | 库源码 |
-| `third-party/dr_libs/` | C 库来源（消费者需用它现场编译） |
+| `third-party/drlibs_wrapper.c` | 薄封装 C 源文件（`build.cj` 编译的就是它） |
+| `third-party/dr_libs/` 下的 `dr_flac.h`、`dr_mp3.h`、`dr_wav.h` | 三个**单头文件**库 —— wrapper 只 include 这三个 |
+| `third-party/dr_libs/LICENSE`、`README.md` | 第三方许可原文与出处说明（许可义务要求保留 LICENSE） |
 | `config/cjlint_rule_list.json` | 项目级静态检查配置 |
 | `docs/`、`README.md`、`LICENSE`、`NOTICE` | 文档与许可证 |
+
+> **为什么 `third-party` 逐文件列出，而不是整目录**：dr_libs 原仓库还带 `tests/`
+> 与 fuzzer（`*.c` / `*.cpp` / `*_fuzzer.cc`）以及 `CMakeLists.txt`，构建完全用不到，
+> 而 fuzzer 是"专门让程序崩溃"的代码 —— 放进制品包对审阅者只有负面意义。
+> 0.1.0 首次提交上架审核被退回后先把这类内容清出去；**退回原因未获官方说明**，
+> 这是按官方安全策略里「三方库目录、内容审核」一条做的预防性收紧，不是已证实的成因。
 
 ### 绝不包含
 
@@ -96,6 +105,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `.vscode/` | 本机路径与用户名 |
 | `.codebuddy/` | 本机助手工作数据 |
 | `.github/`、`tools/`、`m0-poc/`、`musics/`、`sctiptr/`、`scripts/`、`testdata/` | 消费者不需要 |
+| `third-party/dr_libs/tests/` | dr_libs 的测试与 fuzzer，构建用不到（见上方说明） |
 | `target/`、`libs/` | 构建产物 / 库二进制 |
 
 ## 消费者侧的要求（已实测）
@@ -110,6 +120,25 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 2. **运行期** —— **无额外要求**。C 库是**静态链接**的，直接进可执行文件，
    不需要分发或加载任何动态库。
    实测：消费者产物目录中没有任何 DLL，仅把 SDK 运行期库加入 PATH 即可正常运行。
+
+### ⚠ 一个已知的顺序约束：先 `build`，再 `check`
+
+包内没有任何 `libs/` 目录（cjpm 从不打包二进制），而 `cjpm check` 在配置解析阶段
+就校验 `[ffi.c]` 指向的库是否存在、且**不触发构建脚本**。因此消费者侧的正确顺序是：
+
+```bash
+cjpm build     # 先由 build.cj 编出 libs/<平台>/libdrlibs.a
+cjpm check     # 此时才能通过
+```
+
+反过来会报 `can not find the library 'drlibs' which is listed in
+'target.<三元组>.ffi.c' field`。`cjpm build` 与 `cjpm test` 不受影响 —— 它们都会先跑
+各自的钩子。**注意：仓库内 `check` 通过 ≠ 包内 `check` 通过** —— 本仓库的
+`libs/windows_x86_64/` 预置了产物（二进制入库），而制品包里没有。
+
+**这条约束无法靠配置消除**（两条路都已实测否掉）：二进制进不了包；把库引用改由
+`link-option` 承担则**不会传递到消费者的最终链接**（消费者链接报 undefined symbol），
+而 `[ffi.c]` 恰是唯一能把 C 库依赖传给消费者的机制。成因详见 `build.cj` 文件头。
 
 ## 发布元数据（仓颉中心仓）
 

@@ -65,23 +65,25 @@ main() {
 构建与测试：
 
 ```bash
-cjpm build      # 首次构建会准备 C 静态库（Windows 已预置，直接复用）
-cjpm test       # 176 个用例
-cjpm check      # 依赖与编译顺序校验（Linux / macOS 须在 build 之后，见下）
+cjpm build      # 首次构建会准备 C 静态库
+cjpm test       # 187 个用例
+cjpm check      # 依赖与编译顺序校验（须在 build 之后，见下）
 ```
 
 > **不需要手工编译 C 库**：`build.cj` 的 `pre-build` 钩子会按平台准备
-> `libs/<平台>/libdrlibs.a` —— 已预置就直接复用（Windows 已入库），否则用该平台的
-> 工具链现场编译。因此 Windows 上即使不装 C 编译器也能直接构建。
+> `libs/<平台>/libdrlibs.a` —— 已存在就直接复用，否则用该平台的工具链现场编译。
 >
-> **C 库是静态链接的**：C 库直接进可执行文件，**消费者运行期不需要分发或加载
-> 任何动态库**。
+> **C 库是静态链接的**：C 库直接进可执行文件，**运行期不需要分发或加载任何动态库**。
 >
-> **顺序约束（仅 Linux / macOS）**：`cjpm check` 在配置解析阶段就校验 `[ffi.c]`
-> 指向的库是否存在，而它**不会触发构建脚本**。Windows 因 `libs/windows_x86_64/`
-> 里预置了产物而免疫；Linux / macOS 没有预置产物，因此必须先 `cjpm build`、
-> 再 `cjpm check`，否则报 `can not find the library 'drlibs'`。
-> （把 CI 在 Linux / macOS 上编出的产物也入库，即可在这两个平台同样消除该约束。）
+> **顺序约束：先 `cjpm build`，再 `cjpm check`**。`cjpm check` 在配置解析阶段就校验
+> `[ffi.c]` 指向的库是否存在，而它**不会触发构建脚本**，否则报
+> `can not find the library 'drlibs'`。`cjpm build` 与 `cjpm test` 不受影响。
+>
+> **⚠ 本仓库 vs 制品包（一个容易踩的差别）**：本仓库的 `libs/windows_x86_64/` 里
+> **预置**了产物（二进制入库），所以**在仓库内** Windows 上不装 C 编译器也能构建与
+> check；但 cjpm **从不把二进制打进制品包**，因此**从中心仓取得本库的消费者，在任何
+> 平台都需要 C 编译器**，且必须先 `build` 再 `check`。详见
+> [docs/release.md](docs/release.md)。
 >
 > **预置产物带来的一个代价（如实说明）**：Windows 的 `libdrlibs.a` 是入库的预置产物，
 > 因此改过 `third-party/drlibs_wrapper.c` 之后，必须显式重编译

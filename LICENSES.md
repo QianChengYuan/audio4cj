@@ -16,6 +16,7 @@
 |---|---|
 | 用途 | FLAC / WAV / MP3 的解码内核（经 C 侧薄封装 `third-party/drlibs_wrapper.c`） |
 | 来源 | `third-party/dr_libs/`（含 `dr_flac.h`、`dr_wav.h`、`dr_mp3.h`） |
+| 是否分发 | **部分**：制品包只带上述三个头文件加 `LICENSE`、`README.md`；原仓库的 `tests/` 与 fuzzer 不随包分发（见 `docs/release.md` 的包内容契约） |
 | 许可证 | **双选（任选其一）**：公共领域（Unlicense）**或** MIT No Attribution（MIT-0） |
 | 许可证原文 | `third-party/dr_libs/LICENSE`（已核对，首段即写明"available as a choice of the following licenses"） |
 | 许可风险 | **无**。两者都是最宽松的许可，且允许闭源分发 |
@@ -46,11 +47,11 @@ grep -E '^#define DR(FLAC|WAV|MP3)_VERSION_(MAJOR|MINOR|REVISION)' \
 这些工具**只在本仓库的构建或开发流程中使用**，不会被 audio4cj 的使用者引入，
 因此不受上述"运行时依赖"政策的约束，但**仍需登记**以免日后混淆。
 
-### 2.1 C 编译器（clang / clang-cl / MSVC）
+### 2.1 C 编译器（Linux / macOS 用 clang；Windows 用 MinGW 的 gcc + ar）
 
 | 项 | 内容 |
 |---|---|
-| 用途 | 编译 `third-party/drlibs_wrapper.c` 生成动态库（由 `build.cj` 的 `pre-build` 钩子调用） |
+| 用途 | 编译 `third-party/drlibs_wrapper.c` 生成**静态库**（由 `build.cj` 的 `pre-build` 钩子调用） |
 | 许可证 | 各自的开源许可（LLVM Apache-2.0 with LLVM exception / MSVC 自带许可） |
 | 是否分发 | 否 |
 

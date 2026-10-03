@@ -137,8 +137,8 @@ protected class VorbisPcmDecoder <: Decoder {
 |---|---|
 | `src/probe/magic.cj` | `ogg` 分支的 `supported` 判定增加 `codec == "vorbis"` / `codec == "opus"` |
 | `src/facade/audio_file.cj` | `open()` 的 `case "ogg"` 分支按 codec 分派到新读取器；`readTags` 无需改动（已支持） |
-| `third-party/` | 新增 C 源码（`stb_vorbis.c` / libopus 源码或构建脚本） |
-| `libs/<platform>/` | 新增各平台产物；Windows 仍需 `lib` 前缀双副本方案 |
+| `third-party/` | 新增 C 源码（`stb_vorbis.c` / libopus 源码或构建脚本）；**并同步加进 `cjpm.toml` 的 include 白名单** —— 白名单逐文件列出，漏写会导致消费者现场编译缺文件 |
+| `libs/<platform>/` | 新增各平台产物目录（现已改为**静态库** `libdrlibs.a`，不存在 `lib` 前缀双副本问题） |
 | `cjpm.toml` | `[ffi.c]` 新增条目 |
 | `LICENSES.md` | 新增依赖台账条目与审计记录 |
 | 测试 | `testdata/ogg/` 素材已就绪；新增解码测试 + **纳入 golden 基线的对照**（Vorbis/Opus 为有损，只能做帧数与能量松比对，与 MP3 同等对待） |
@@ -150,9 +150,9 @@ protected class VorbisPcmDecoder <: Decoder {
 | 项 | 现状 | 新增一个 C 库之后 |
 |---|---|---|
 | 运行时 C 依赖数 | 1（dr_libs） | 2（Vorbis）或 3（Vorbis + Opus） |
-| `[ffi.c]` 条目 | 1 | 每条依赖一项，且需要按平台切换产物路径（当前 `[ffi.c]` 路径写死为 `./libs/windows_x86_64/`） |
-| 平台产物目录 | Windows 一套 | 每个依赖 × 每个平台一套（Windows 还需 `lib` 前缀双副本） |
-| CI 矩阵 | Windows 单平台 | 依赖数 × 平台数，且每个平台都要能编译该 C 库 |
+| `[ffi.c]` 条目 | 每个平台一条（`[target.<三元组>.ffi.c]`，共 4 个平台），库为**静态库** `libdrlibs.a` | 每条依赖 × 每个平台一条 |
+| 平台产物目录 | 4 个（`windows_x86_64` / `linux_x86_64` / `macos_aarch64` / `macos_x86_64`），其中仅 Windows **预置（提交）**了产物 | 每个依赖 × 每个平台一套 |
+| CI 矩阵 | Linux / Windows / macOS **三平台** | 依赖数 × 平台数，且每个平台都要能编译该 C 库 |
 | `LICENSES.md` | dr_libs 一条 | 每条依赖的来源、版本锁定方式、审计记录 |
 | 供应链审计 | dr_libs 的 CVE 排查流程已建立 | 每个新库都要走同样的流程（锁 commit、查 CVE、fuzz 回归） |
 
@@ -185,7 +185,7 @@ protected class VorbisPcmDecoder <: Decoder {
 - [ ] stb_vorbis 的当前 commit 是否已修复全部已知 CVE？（需逐条排查，流程同 dr_libs）
 - [ ] libvorbis 的底层合成 API 能否只链 `libvorbis`、免除 `libogg`？（需实测）
 - [ ] libopus 在 Windows / Linux / macOS 三平台的构建能否脚本化到 `build.cj` 的 pre-build 钩子里？
-- [ ] `[ffi.c]` 能否按目标平台切换产物路径？若不能，是否采用"由 `build.cj` 把对应平台产物拷贝到固定路径"的统一方案？
+- [x] `[ffi.c]` 能否按目标平台切换产物路径？—— **已证实可以**：`[target.<三元组>.ffi.c]`（2026-10-03 实测，见 `cjpm.toml` 与 `build.cj` 文件头）。原先的备选方案「由 `build.cj` 把产物拷贝到固定路径」（`libs/current/` 中间层）**已废弃**。
 - [ ] Windows 的 `lib` 前缀双副本方案能否平滑扩展到多个 C 库？
 - [ ] 新增依赖后，项目的"最小依赖足迹"叙事是否还成立？（这是本项目的差异化卖点之一，需权衡）
 
@@ -198,7 +198,7 @@ protected class VorbisPcmDecoder <: Decoder {
 3. **FAAD2 的许可证**：已通过多个独立来源交叉确认其为 **GPL-2.0-or-later**，此条置信度较高。
 4. **stb_vorbis 是否可只链 `libvorbis`**：属推测，需实测。
 5. **各候选库的 CVE 现状**：均未排查，属立项前的必做项。
-6. **三平台的构建可行性**：未实测；当前仓库只有 Windows 版 C 库产物。
+6. **三平台的构建可行性**：**已在三平台 CI 上实测通过**（Linux / Windows / macOS 各处都会执行 `cjpm build` 走 `build.cj`）。仓库仍只**提交**了 Windows 产物 —— 其余平台本机无法交叉编译，产物在 CI 上现场生成。
 
 ## 九、一句话结论
 

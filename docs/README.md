@@ -139,7 +139,7 @@ try (f = AudioFile.open(path)) {
 | **FLAC 的 `PICTURE` 块（封面）** | 未覆盖。原生 FLAC 与 Ogg-FLAC 的封面块均未解析。注意 **MP4 的 `covr` 与 ID3v2 的 `APIC` 已支持** |
 | **MP4 的 `moov` 位于文件中部** | 未覆盖。标签读取覆盖 `moov` 在**文件头**（faststart）与**文件尾**（ffmpeg 默认）两种布局；理论上 `moov` 只会在这两端，但若遇到中间布局的文件则读不到标签 |
 | **APE / WavPack 等容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException` |
-| **Linux / macOS 的 C 库产物** | 仓库只预置了 Windows x86_64 产物。`build.cj` 已能按当前平台**复用预置产物或现场编译**，但 **Linux / macOS 路径未经实测**（命令见 `build.cj` 与 `cjpm.toml` 注释） |
+| **Linux / macOS 的 C 库产物** | 仓库只**预置（提交）**了 Windows x86_64 产物；`build.cj` 已能按当前平台复用预置产物或现场编译，且 **Linux / macOS 路径已在三平台 CI 上实测通过**（CI 各处均实际执行 `cjpm build`），只是产物未入库（本机无法交叉编译） |
 | **实时流传输（RTP / RTSP / WebRTC 等）** | 无任何规划，整个实时协议栈均缺失 |
 
 ## 七、包与导入

@@ -87,12 +87,19 @@ REQUIRED = [
     "cjpm.toml",  # 模块定义（含 [ffi.c] 与 include 白名单）
     "build.cj",  # 构建期装配 C 库的钩子 —— 消费者侧就靠它
     "src/",  # 库源码
-    "third-party/dr_libs/",  # C 库来源，消费者需用它现场编译
     "config/cjlint_rule_list.json",  # 项目级静态检查配置
     "docs/",  # 面向使用者的公开文档
     "LICENSE",
     "NOTICE",
     "README.md",
+    # C 库来源：只需构建真正用到的那几个文件（drlibs_wrapper.c 只 include
+    # 三个单头文件库）。逐文件列出而非整目录 —— 整目录会连 tests/ 与 fuzzer
+    # 一起带上，那些构建用不到（见 cjpm.toml 的 include 注释）。
+    "third-party/drlibs_wrapper.c",
+    "third-party/dr_libs/dr_flac.h",
+    "third-party/dr_libs/dr_mp3.h",
+    "third-party/dr_libs/dr_wav.h",
+    "third-party/dr_libs/LICENSE",
 ]
 
 # 绝不能进入分发包的条目。
