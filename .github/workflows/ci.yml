@@ -153,21 +153,21 @@ jobs:
           version: ${{ env.CANGJIE_VERSION }}
           url-override: ${{ vars.CANGJIE_SDK_URL_WINDOWS }}
 
-      # Windows 侧**无需 C 编译器**：仓库已预置 libs/windows_x86_64/ 的产物，
-      # build.cj 会直接复用（含编译期需要的 lib 前缀双副本）。
-      # 这也是本项目选择"预置产物 + 构建期装配"而非"强制现场编译"的原因。
+      # Windows 侧**无需 C 编译器**：仓库已预置 libs/windows_x86_64/libdrlibs.a，
+      # build.cj 发现产物已存在便直接复用。
       - name: 打印工具链版本
         run: |
           cjc --version
           cjpm --version
 
-      # 同 Linux job：build 必须先于 check（check 不触发构建脚本，
-      # 而 ffi.c 指向的目录由构建脚本装配）
-      - name: cjpm build（同时装配 C 库产物）
+      # Windows 因 libs/windows_x86_64/ 里有入库的预置产物，其实**免疫**
+      # "build 必须先于 check"这条约束；这里仍保持与其它平台相同的顺序，
+      # 只为三平台步骤一致、便于比对。
+      - name: cjpm build（复用预置的 C 静态库）
         run: cjpm build
 
       - name: 确认 C 库产物已就位
-        run: dir libs\current\
+        run: dir libs\windows_x86_64\
 
       - name: cjpm check
         run: cjpm check
