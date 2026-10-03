@@ -2,20 +2,23 @@ package audio4cj.format
 
 import audio4cj.core.*
 import audio4cj.meta.*
-import audio4cj.drlibs.*
 
 /* ============================================================================
- * FLAC demuxer —— 压缩数据经 dr_libs FFI 解码（开发文档 §10 M4）
+ * FLAC demuxer
  *
  * 与 WAV 实现的关键差异：
  *   WAV 是**未压缩**容器，其「解码」本质是位深转换，故 M2 走纯仓颉实现；
- *   FLAC 是**压缩**格式（含 LPC 预测与残差解码等，属浮点 DSP 范畴），
- *   按开发文档 §2.1 的「数据解析自研、浮点 DSP 外包」分工，走 dr_libs FFI。
+ *   FLAC 是**压缩**格式，需真正解码，故经 FlacDecodeKernel 抽象解耦
+ *   （当前生产实现是 dr_libs FFI，纯仓颉实现见 flac_bitstream.cj）。
  *
  * 分工（与 WAV 保持一致）：
- *   本类持有 dr_libs 句柄，负责打开、参数、seek 与分块读取；
+ *   本类持有解码内核，负责打开、参数、seek 与分块读取；
  *   `FlacPcmDecoder` 只把已解码的 f32 字节重解释为 AudioBuffer。
- *   这样 reader 与 decoder 不共享句柄，避免所有权纠缠。
+ *   这样 reader 与 decoder 不共享状态，避免所有权纠缠。
+ *
+ * 【本类不认识 dr_libs】
+ *   自 M7 起本类只依赖 FlacDecodeKernel 接口，换内核不需改这里一行 ——
+ *   这正是抽接口的目的。内核的选取发生在 init 中。
  *
  * 分块策略：每次最多读取 FLAC_CHUNK_FRAMES 帧（f32 交错下约
  *   4 * 声道数 * 16384 字节，立体声约 128 KiB），内存占用与音频总时长无关。
@@ -27,7 +30,7 @@ private let FLAC_CHUNK_FRAMES: Int64 = 16384
 /// FLAC 容器的 FormatReader 实现。
 protected class FlacFormatReader <: FormatReader {
     private let _path: String
-    private let _decoder: DrLibsDecoder
+    private let _kernel: FlacDecodeKernel
 
     private let _sampleRate: Int64
     private let _channels: Int64
@@ -44,14 +47,14 @@ protected class FlacFormatReader <: FormatReader {
     /// 打开文件并读取音频参数。数据损坏或编码不受支持时抛异常。
     public init(path: String) {
         this._path = path
-        this._decoder = DrLibsDecoder(DrLibsFormat.Flac, path)
+        this._kernel = DrLibsFlacKernel(path)
 
-        this._sampleRate = _decoder.sampleRate()
-        this._channels = _decoder.channels()
-        this._bitsPerSample = _decoder.bitsPerSample()
+        this._sampleRate = _kernel.sampleRate()
+        this._channels = _kernel.channels()
+        this._bitsPerSample = _kernel.bitsPerSample()
 
-        // C 侧适配层把「总帧数不可知」统一归零，此处翻译回项目约定的 -1
-        let total = _decoder.totalFrames()
+        // 内核把「总帧数不可知」统一归零，此处翻译回项目约定的 -1
+        let total = _kernel.totalFrames()
         this._totalFrames = if (total > 0) {
             total
         } else {
@@ -59,11 +62,11 @@ protected class FlacFormatReader <: FormatReader {
         }
 
         if (_sampleRate <= 0 || _channels <= 0 || _bitsPerSample <= 0) {
-            // 必须**先释放已打开的 dr_libs 句柄再抛异常**：
+            // 必须**先释放已打开的内核句柄再抛异常**：
             // 构造失败后该对象永远不会被使用者持有，也就没人能再调用 close()，
             // 句柄持有的 FILE* 会随之泄漏。实测表现为：open() 抛异常之后，
             // 该文件无法被删除或移动（Windows 报「文件被其它进程占用」）。
-            _decoder.close()
+            _kernel.close()
             throw CorruptedFileException(
                 "FLAC 参数非法（rate=${_sampleRate}, ch=${_channels}, bits=${_bitsPerSample}）")
         }
@@ -87,7 +90,7 @@ protected class FlacFormatReader <: FormatReader {
         let capacity = FLAC_CHUNK_FRAMES * _channels * 4 // f32 = 4 字节
         let buf = Array<UInt8>(capacity, repeat: 0)
 
-        let frames = _decoder.readF32Into(buf, FLAC_CHUNK_FRAMES)
+        let frames = _kernel.readF32Into(buf, FLAC_CHUNK_FRAMES)
         if (frames <= 0) {
             return None // 流结束，不是错误
         }
@@ -112,9 +115,12 @@ protected class FlacFormatReader <: FormatReader {
     ///
     /// 实现说明（开发文档 §10 M4 的一处**有意偏离**）：文档原定「FLAC 用
     /// SEEKTABLE + 二分」，但 dr_libs 内部已实现该策略并额外处理了无
-    /// SEEKTABLE 时的回退，自行重写既冗余又更易出错。因此此处直接委托
-    /// dr_libs 的原生 seek —— 其成功返回即表示**精确定位到目标帧**，
+    /// SEEKTABLE 时的回退，自行重写既冗余又更易出错。因此定位这件事
+    /// 一律委托给内核 —— 成功返回即表示**精确定位到目标帧**，
     /// 故实际落点等于目标帧。
+    ///
+    /// 抽内核接口后该约定被继承下来：具体策略由内核自理
+    /// （纯仓颉内核见 flac_bitstream.cj 的 seek 说明），本类不关心。
     public func seekTo(timestampMs: Int64): Int64 {
         checkOpen()
 
@@ -129,7 +135,7 @@ protected class FlacFormatReader <: FormatReader {
             targetFrame = 0
         }
 
-        if (!_decoder.seekToFrame(targetFrame)) {
+        if (!_kernel.seekToFrame(targetFrame)) {
             throw SeekNotSupportedException("FLAC 定位失败（目标帧 ${targetFrame}）")
         }
 
@@ -165,11 +171,11 @@ protected class FlacFormatReader <: FormatReader {
         _closed
     }
 
-    /// 释放资源（幂等）：关闭 dr_libs 句柄。
+    /// 释放资源（幂等）：关闭解码内核。
     public func close(): Unit {
         if (!_closed) {
             _closed = true
-            _decoder.close()
+            _kernel.close()
         }
     }
 

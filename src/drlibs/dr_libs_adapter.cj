@@ -233,3 +233,40 @@ protected func reinterpretF32Bytes(bytes: Array<UInt8>): Array<Float32> {
 
     out
 }
+
+/// 把 f32 数组按**位表示**转成小端字节数组（与 `reinterpretF32Bytes` 互逆）。
+///
+/// 【为什么必须用位视角转换，而不是按 IEEE-754 手工构造字节】
+///   手工拆分符号/阶码/尾数需要自己实现舍入。一旦舍入策略与硬件不一致，
+///   结果会出现**最低位不一致** —— 而本项目对纯仓颉实现的判据是
+///   "与 dr_libs 逐位相同"，容差为 0。位视角转换天然一致，没有这个风险。
+///
+/// 【为什么放在本文件】
+///   与 `reinterpretF32Bytes` 同理：本包是库内**唯一**允许触碰 unsafe 的地方
+///   （开发文档 §6.5 的规约），业务层与纯仓颉解码内核都不得直接接触裸指针。
+///   因此这类"同一块内存换一种视角"的操作统一在此提供。
+///
+/// 说明：该转换不含数值运算，因此与原数组的字节序一致（本库目标平台均为小端，
+/// 与既有 WAV/f32 路径一致）。
+protected func f32ToBytes(samples: Array<Float32>): Array<UInt8> {
+    let count = samples.size
+    let bytesPerSample: Int64 = 4
+    let out = Array<UInt8>(count * bytesPerSample, repeat: 0)
+    if (count <= 0) {
+        return out
+    }
+
+    unsafe {
+        let srcRaw = acquireArrayRawData(samples)
+        let dstRaw = acquireArrayRawData(out)
+        let src = CPointer<UInt8>(srcRaw.pointer)
+        let dst = CPointer<UInt8>(dstRaw.pointer)
+        for (i in 0..count * bytesPerSample) {
+            dst.write(i, src.read(i))
+        }
+        releaseArrayRawData(dstRaw)
+        releaseArrayRawData(srcRaw)
+    }
+
+    out
+}
