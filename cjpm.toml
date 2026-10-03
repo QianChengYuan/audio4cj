@@ -17,13 +17,28 @@
   version = "0.1.0"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
-
-  # 中心仓元数据（发布到仓颉中心仓时展示；字段清单见 docs/release.md 引用的官方文档）。
-  # 注意：`license` 取值须遵循 SPDX Identifier 规范。
-  # 这些字段会进入 target/meta-data.json —— 即随制品上传的元数据。
+  # —— 中心仓元数据（发布时展示在制品页；规格与实测依据见 docs/release.md 的「发布元数据」章节）——
+  # 这些字段会进入 target/meta-data.json，即随制品上传、供仓库端入库检查的元数据。
+  authors = ["yuan_1992"]
+  # license 取值须遵循 SPDX Identifier 规范（官方要求）。
   license = ["Apache-2.0"]
-  repository = "https://github.com/QianChengYuan/audio4cj"
+  # repository / homepage 均指向 GitCode：以它为对外主仓。
+  # 本字段**不参与任何构建** —— CI 仍跑在 GitHub，两者互不影响。
+  repository = "https://gitcode.com/yuan_1992/audio4cj"
   homepage = "https://gitcode.com/yuan_1992/audio4cj"
+  # documentation 用**网页视图** /blob/ 而非纯文本 /raw/：官方字段语义是"制品文档页 url"。
+  # 实测 /blob/main/README.md 与 /raw/main/README.md 均返回 200，取前者。
+  documentation = "https://gitcode.com/yuan_1992/audio4cj/blob/main/README.md"
+  # 【tag 上限 5 项】cjpm 内含校验文案 `Error: size of field 'tag' cannot be over ...`
+  # （相邻工程 winsound4cj 实测报错为 "...cannot be over 5"）。本列表恰好 5 项，不可再增。
+  tag = ["audio", "flac", "mp3", "wav", "decoder"]
+  # 【category 取自官方枚举，不是自造词】cjpm 内置该枚举（二进制中可见符号
+  # `cjpm.config.CATEGORY_SET`），"Audio and Video" 是其中一项。
+  # 实测要点：写小写 "audio and video" 同样被接受，cjpm 会**归一化**为该规范写法
+  # （生成的 meta-data.json 里是 "Audio and Video"），故此处直接写规范形式。
+  # 枚举的提取方法与局限见 docs/release.md；合法性最终由 cjpm bundle 兜底校验，
+  # 故不在此重复实现枚举 —— 那会制造第二份真相。
+  category = ["Audio and Video"]
 
   # 打包范围（cjpm 官方机制，见 docs/release.md）。
   #

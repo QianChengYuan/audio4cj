@@ -47,7 +47,8 @@ cjpm 官方支持在 `[package]` 下配置 `include`（指定打包范围）与 
 1. 检查工作区干净 —— `include` 按路径生效，范围内的**未跟踪**文件同样会被打包，
    所以脚本会明确指出「有哪些改动落在打包范围内」；
 2. **在仓库内**执行 `cjpm bundle`（默认还会跑 `cjpm test` 与 `cjlint`）；
-3. 校验产包内容（必需的必须有、禁止的必须没有），任一不满足即退出码非 0；
+3. 校验产包内容（必需的必须有、禁止的必须没有）与**元数据完整性**
+   （`authors` / `tag` / `category` 等不得漏填，见下节），任一不满足即退出码非 0；
 4. 收拢制品到 `target/release-artifacts/`。
 
 > **为什么刻意不做「干净导出」**：本项目一度用 `git archive` 导出到临时目录再打包，
@@ -109,6 +110,67 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 2. **运行期** —— **无额外要求**。C 库是**静态链接**的，直接进可执行文件，
    不需要分发或加载任何动态库。
    实测：消费者产物目录中没有任何 DLL，仅把 SDK 运行期库加入 PATH 即可正常运行。
+
+## 发布元数据（仓颉中心仓）
+
+`[package]` 下与发布相关的元数据，本项目的取值与依据：
+
+| 字段 | 本项目取值 | 必填 | 说明 |
+|---|---|---|---|
+| `authors` | `["yuan_1992"]` | 否 | 制品页展示的作者 ID 列表 |
+| `license` | `["Apache-2.0"]` | 否 | 官方要求取值遵循 [SPDX Identifier](https://spdx.org/licenses/) 规范 |
+| `repository` | GitCode 仓库 url | 否 | 制品代码仓。以 GitCode 为对外主仓；CI 仍跑在 GitHub，**本字段不参与构建** |
+| `homepage` | 同 `repository` | 否 | 制品主页 |
+| `documentation` | `.../blob/main/README.md` | 否 | 制品文档页。用**网页视图** `/blob/` 而非纯文本 `/raw/`（两者均实测返回 200） |
+| `tag` | `["audio", "flac", "mp3", "wav", "decoder"]` | 否 | 制品标签，**上限 5 项**（见下） |
+| `category` | `["Audio and Video"]` | 否 | 必须取自官方枚举，此处为规范写法（见下） |
+
+`organization` 留空即「无组织模块」（官方语义），本项目即如此。
+`name` / `version` / `cjc-version` / `output-type` / `description` 为必填项，见官方字段表。
+
+### 官方约束（来源说明）
+
+官方文档给出了字段清单与必填性，但**未给出** `tag` / `category` 的取值约束 ——
+[制品包发布](https://pkgdocs.cangjie-lang.cn/docs/zh/1.0.0/central-repo/source_zh_cn/client/upload.html)
+与[中心仓元数据规格](https://pkgdocs.cangjie-lang.cn/docs/zh/1.0.0/central-repo/source_zh_cn/appendix/meta_data.html)
+两页均未提及数量上限、字符长度或枚举白名单。以下三条因此来自 **cjpm 自身**：
+
+1. **`tag` 上限 5 项** —— cjpm 内含校验文案 `Error: size of field 'tag' cannot be over ...`；
+   相邻工程 `winsound4cj` 实测报错为 `...cannot be over 5`。
+   本项目列表**恰好 5 项，不可再增**。
+2. **`category` 必须取自官方枚举** —— cjpm 内置该枚举（二进制中可见符号
+   `cjpm.config.CATEGORY_SET`），并同样有长度校验
+   （`Error: size of field 'category' cannot be over ...`）。
+3. **`category` 会被归一化** —— 实测写入小写 `audio and video` 被接受，但生成的
+   `target/meta-data.json` 中为规范写法 `Audio and Video`；故 `cjpm.toml` 直接写规范形式。
+
+> **枚举提取方法的局限（务必知悉）**：`Audio and Video` 是从 `cjpm.exe` 的字符串池里
+> 提取出的候选，与 `video`、`algorithm`、`animation`、`character encoding`、
+> `image processing`、`database framework`、`database driver`、`network`、`security`、
+> `logging`、`developer tools`、`scientific computing` 等约二十余项同处一个聚集区。
+> 该字符串池中**同时混有 cjpm 的选项名与字段名**，因此不能据此宣称拿到了完整枚举。
+>
+> 可靠兜底是 `cjpm bundle` —— 它按官方枚举校验，取值非法会在**打包阶段**直接失败
+> （fail-fast），而不是等到上传。所以本项目**不把枚举抄进脚本**：
+> 那会制造第二份真相，枚举一变就漂移。
+
+### 元数据在何时被校验
+
+| 时机 | 校验者 | 内容 |
+|---|---|---|
+| 打包 | `cjpm bundle` | 官方规则：字段长度上限、`category` 枚举合法性 |
+| 打包后 | `scripts/release_bundle.py` | 项目策略：**是否漏填**（非空断言），**不**重复官方枚举 |
+
+生成物是 `target/meta-data.json`，随制品上传、供仓库端入库检查。
+
+### 为什么"漏填"必须由脚本拦下
+
+`authors` / `tag` / `category` / `license` / `description` 在 cjpm 里**全是可选项** ——
+漏填**不会**导致打包失败。但后果是制品页缺作者、缺标签、检索不到，
+而且这个后果**要到发布之后才会被发现**，那时版本号已被占用
+（中心仓不接受同版本重复发布）。
+
+因此发布脚本对这几项做非空断言：让"忘了填"在本地就被拦下，而不是在发布之后。
 
 ## 发布到仓颉中心仓
 

@@ -19,13 +19,16 @@
                     构建脚本产物目录、**所有二进制文件**
     （最后一条解释了为什么 libs/ 与 tools/Releases/ 下的二进制从不进包。）
 
-【本脚本做两件事】
+【本脚本做三件事】
 
     1. **在仓库内**执行 cjpm bundle —— 刻意不在临时导出目录里打包：
        只有在 开发文档/ 这类目录**确实存在**的地方打包，才能真实检验 include
        白名单是否真的把它们拦住了。换到干净导出目录里打包，等于绕开了待验证的
        机制，只能验证"导出目录很干净"这件理所当然的事。
-    2. 校验产包内容（REQUIRED / FORBIDDEN 两张表），任一不满足即判失败。
+    2. 校验发布元数据是否漏填（METADATA_REQUIRED）：官方把这些字段**全列为可选项**，
+       漏填不会让打包失败 —— 但会造成制品页缺作者、缺标签、检索不到，而这个后果
+       要到发布之后才暴露（中心仓不接受同版本重复发布，届时版本号已被占用）。
+    3. 校验产包内容（REQUIRED / FORBIDDEN 两张表），任一不满足即判失败。
 
 【为什么要求工作区干净】
 
@@ -43,6 +46,7 @@
 """
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -115,6 +119,30 @@ FORBIDDEN = [
     ("libs/", set()),
 ]
 
+# 发布元数据中**必须非空**的字段。
+#
+# 【为什么是"非空断言"，而不是抄一遍官方约束】
+#   官方把 authors / tag / category / license / description 全列为**可选项** ——
+#   漏填**不会**让 cjpm bundle 失败，所以没有任何一步会替我们报警。
+#   但后果要到发布之后才暴露：制品页缺作者、缺标签、检索不到，
+#   而中心仓不接受同版本重复发布，那时版本号已被占用。
+#   故"非空"是本项目自定的发布策略，只能由本脚本断言。
+#
+# 【为什么不在这里校验 category 的取值是否在官方枚举内】
+#   官方枚举内置在 cjpm 里（二进制可见符号 cjpm.config.CATEGORY_SET），
+#   cjpm bundle 已按其校验，取值非法会在打包阶段直接失败。
+#   若在本脚本里再抄一份枚举，就会产生**第二份真相** —— 枚举一变即漂移。
+#   本表只回答"有没有填"，字段规格与依据见 docs/release.md 的「发布元数据」章节。
+METADATA_REQUIRED = [
+    "name",
+    "version",
+    "description",
+    "authors",
+    "license",
+    "tag",
+    "category",
+]
+
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
@@ -170,7 +198,7 @@ def in_packaging_scope(path: str, include) -> bool:
 
 def ensure_clean_tree(include, allow_dirty: bool) -> None:
     """include 按路径生效：范围内的未跟踪文件同样会被打包，故要求工作区干净。"""
-    log("=== 1/3 检查工作区 ===")
+    log("=== 1/4 检查工作区 ===")
     proc = run(
         ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=REPO_ROOT,
@@ -200,7 +228,7 @@ def ensure_clean_tree(include, allow_dirty: bool) -> None:
 def bundle_in_repo(skip_tests: bool) -> Path:
     """在仓库内执行 cjpm bundle —— 让 include 白名单接受真实目录结构的检验。"""
     log()
-    log("=== 2/3 在仓库内执行 cjpm bundle ===")
+    log("=== 2/4 在仓库内执行 cjpm bundle ===")
     log("（刻意不做干净导出：只有在 开发文档/ 等目录确实存在时打包，")
     log("  才能真实检验 include 白名单把它们拦住了。默认还会跑 cjpm test 与 cjlint。）")
 
@@ -233,9 +261,54 @@ def read_entries(cjp: Path):
     return top, [n[len(prefix):] for n in names if n.startswith(prefix)]
 
 
+def read_metadata():
+    """读取 cjpm bundle 生成的 target/meta-data.json —— 随制品上传的元数据。"""
+    path = REPO_ROOT / "target" / "meta-data.json"
+    if not path.exists():
+        raise SystemExit(
+            "找不到 target/meta-data.json —— 它由 cjpm bundle 生成，应在打包之后校验。"
+        )
+    with path.open("rb") as handle:
+        return json.load(handle)
+
+
+def verify_metadata() -> None:
+    """断言发布元数据未漏填 —— 官方视这些字段为可选，漏填不会有任何一步报警。"""
+    log()
+    log("=== 3/4 校验发布元数据 ===")
+    data = read_metadata()
+    problems = []
+
+    for field in METADATA_REQUIRED:
+        if field not in data:
+            problems.append(f"字段缺失：{field}")
+            log(f"    ❌ {field:<14} meta-data.json 中不存在")
+            continue
+        value = data[field]
+        # 字符串按去空白判空，数组按长度判空 —— 两者都是"填了没"的判据
+        filled = bool(value.strip()) if isinstance(value, str) else bool(value)
+        shown = value if isinstance(value, str) else "、".join(str(v) for v in value)
+        if filled:
+            log(f"    ✅ {field:<14} {shown}")
+        else:
+            problems.append(f"字段为空：{field}")
+            log(f"    ❌ {field:<14} 空 —— 发布前必须填写")
+
+    if problems:
+        log()
+        log("发布元数据校验**未通过**：")
+        for item in problems:
+            log(f"    - {item}")
+        log("    字段规格与取值依据见 docs/release.md 的「发布元数据」章节。")
+        raise SystemExit(1)
+
+    log()
+    log("发布元数据校验通过 ✅")
+
+
 def verify_and_report(top: str, entries) -> None:
     log()
-    log(f"=== 3/3 校验包内容（顶层目录：{top}）===")
+    log(f"=== 4/4 校验包内容（顶层目录：{top}）===")
     log(f"条目总数：{len(entries)}")
 
     # 按第一层目录汇总，便于人眼快速核对
@@ -316,6 +389,7 @@ def main() -> int:
 
     ensure_clean_tree(include, args.allow_dirty)
     cjp = bundle_in_repo(args.skip_tests)
+    verify_metadata()
     top, entries = read_entries(cjp)
     verify_and_report(top, entries)
     dest = collect(cjp)
