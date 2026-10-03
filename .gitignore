@@ -30,17 +30,22 @@ target/
 build-script-cache/
 
 # ---------------------------------------------------------------------------
-# build.cj 的 C 库「装配目录」
+# libs/<平台>/ —— C 库的**静态库**产物
 #
-# [ffi.c] 固定指向 libs/current/，其内容由 build.cj 在构建前放入
-# （复用 libs/<平台>/ 的预置产物，或现场编译）。这里忽略其内容，
-# 只保留 .gitkeep —— git 不跟踪空目录，而 [ffi.c] 需要一个存在的路径。
+# cjpm.toml 用 target 级 [ffi.c] 按平台分别指向这里（见该处注释）：
+#     Windows : libs/windows_x86_64/libdrlibs.a
+#     Linux   : libs/linux_x86_64/libdrlibs.a
+#     macOS   : libs/macos_aarch64/libdrlibs.a
 #
-# 注意：各平台的**预置产物**在 libs/<平台>/ 下，那些**必须入库**
-# （否则没装 C 编译器的使用者无法构建）。
+# `libdrlibs.a` 是**预置产物，必须入库**：
+#   - 入库后 Windows 上全新克隆即可直接 `cjpm check`（否则必须先 build）；
+#   - 没装 C 编译器的使用者也能构建（build.cj 发现产物已存在即直接复用）。
+# 注意：cjpm bundle **不会**把二进制打进发布包（它一律跳过二进制），
+# 因此发布包里没有它，消费者仍需自己编译 —— 见 docs/release.md。
+#
+# 编译中间产物（目标文件）不入库，每次构建重新生成。
 # ---------------------------------------------------------------------------
-libs/current/*
-!libs/current/.gitkeep
+libs/*/drlibs.o
 
 # ---------------------------------------------------------------------------
 # tools/ —— cjbind 开发工具（已不使用）

@@ -63,27 +63,37 @@
     "/NOTICE"
   ]
 
-# C 库依赖：dr_libs 的**合并动态库**（dr_wav + dr_flac + dr_mp3 三种实现
-# 置于同一翻译单元，三者符号前缀互不冲突，实测可共存）。
+# C 库依赖：dr_libs 的**静态库**（dr_wav + dr_flac + dr_mp3 三种实现置于同一
+# 翻译单元，三者符号前缀互不冲突，实测可共存）。
 #
-# Windows 前缀规格：
-#   编译期 —— cjpm 按 `-ldrlibs` 查找**带 lib 前缀**的 libdrlibs.dll / libdrlibs.lib
-#   运行期 —— 实测消费者产物的导入表中是 **libdrlibs.dll**（即带前缀那份）：
-#               objdump -p main.exe  →  DLL Name: libdrlibs.dll
-#             只放无前缀那份时，实测裸跑仍报 0xC0000135（STATUS_DLL_NOT_FOUND）。
-#   故 libs/windows_x86_64/ 下两个前缀各留一份，最稳妥。
+# 【为什么改成静态库】
+#   动态库要求**消费者运行期**也能加载到它（Windows 上还要操心 lib 前缀双副本
+#   这类规格问题）。改静态后 C 库直接进可执行文件，运行期不再有额外要求；
+#   代价可忽略 —— 整个 dr_libs 封装静态进来约 225 KB（实测）。
+#   实测依据：ffi 目录里只放 libdrlibs.a、不含任何 DLL 时，消费者构建成功，
+#   bin/ 中无 DLL，程序运行正常。
 #
-# 跨平台：本行**固定指向 libs/current/**，该目录由 build.cj 在构建前准备 ——
-# 「优先复用 libs/<平台>/ 下的预置产物，否则用该平台的工具链现场编译」。
+# 【按平台分别指向：cjpm 的 target 级 [ffi.c]（2026-10-03 实测可用）】
+#   此前这里固定指向 libs/current/，再由 build.cj「按平台把产物拷进去」，
+#   依据是「[ffi.c] 的路径是静态配置、无法按目标平台切换」——**该判断是错的**：
+#   cjpm 支持 [target.<三元组>.ffi.c]，因此中间层与拷贝步骤都不再需要。
+#   三元组取自各平台 `cjc --version` 打印的 Target 行（CI 日志可复核）。
 #
-# 之所以不写死 libs/<平台>/：`[ffi.c]` 的路径是**静态配置**，无法按目标平台切换。
-# 因此把"按平台选产物"这一步搬到了构建脚本里，换来一份配置通吃三平台。
-# 各平台的预置产物仍放在 libs/<平台>/ 下（需要入库），build.cj 会按当前平台取用：
-#   Windows : libs/windows_x86_64/   （含 lib 前缀双副本 + 导入库）
-#   Linux   : libs/linux_x86_64/     （libdrlibs.so）
-#   macOS   : libs/macos_aarch64/ 或 libs/macos_x86_64/（libdrlibs.dylib）
-[ffi.c]
-  drlibs = { path = "./libs/current/" }
+#   这样做的实际收益：Windows 的 libs/windows_x86_64/ 里**预置了产物**（入库），
+#   所以全新克隆后 `cjpm check` 直接通过，不必再「先 build 后 check」。
+#   Linux / macOS 没有预置产物（本机无法交叉编译），仍需 build 在前 ——
+#   要从根上消除，把 CI 在这两个平台编出的产物也入库即可。
+[target.x86_64-w64-mingw32.ffi.c]
+  drlibs = { path = "./libs/windows_x86_64/" }
+
+[target.x86_64-unknown-linux-gnu.ffi.c]
+  drlibs = { path = "./libs/linux_x86_64/" }
+
+[target.aarch64-apple-darwin.ffi.c]
+  drlibs = { path = "./libs/macos_aarch64/" }
+
+[target.x86_64-apple-darwin.ffi.c]
+  drlibs = { path = "./libs/macos_x86_64/" }
 
 # 链接安全加固。
 #

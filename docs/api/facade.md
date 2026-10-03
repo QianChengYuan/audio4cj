@@ -85,9 +85,8 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：`wav` 之外的格式依赖 dr_libs 动态库（`libs/<平台>/` 下的 `drlibs`）。
-> 以库的形式被其他工程引用时，需确保运行期能加载到该动态库
-> （Windows 为无 `lib` 前缀的 `drlibs.dll`）。
+> **依赖提示**：`wav` 之外的格式依赖 dr_libs，它已**静态链接**进产物
+> （`libs/<平台>/libdrlibs.a`），因此运行期不需要分发或加载任何动态库。
 
 ```cangjie
 import audio4cj.facade.AudioFile

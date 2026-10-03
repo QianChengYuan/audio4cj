@@ -97,17 +97,18 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `.github/`、`tools/`、`m0-poc/`、`musics/`、`sctiptr/`、`scripts/`、`testdata/` | 消费者不需要 |
 | `target/`、`libs/` | 构建产物 / 库二进制 |
 
-## 消费者侧的两项要求（已实测）
+## 消费者侧的要求（已实测）
 
 发布包是**纯源码**。消费者拿到后：
 
-1. **构建期** —— 其 `cjpm` 会执行本库的 `build.cj` 钩子来自动装配 C 库
-   （实测：清空 `libs/current/` 后，**只在消费者侧**执行 `cjpm build` 即自动填充完成）。
-   由于包内不含库二进制（cjpm 本就不打包二进制，且仓库也不提交平台产物），
+1. **构建期** —— 其 `cjpm` 会执行本库的 `build.cj` 钩子来准备 C 库
+   （实测：删掉 `libs/` 下的产物后，**只在消费者侧**执行 `cjpm build` 即重新编译完成）。
+   C 库是**静态库**，编译需要该平台的 C 工具链（Linux / macOS 用 clang + ar，
+   Windows 用 MinGW 的 gcc + ar）。由于包内不含库二进制（cjpm 一律不打包二进制），
    消费者**需要 C 编译器**。
-2. **运行期** —— 产物需能加载平台对应的 C 库。Windows 上实测导入表要求的是
-   **`libdrlibs.dll`（带 lib 前缀）**，而非 `drlibs.dll`；同时需要 SDK 运行期库在 PATH 中
-   （`cjpm run` 会自动准备，裸跑则需自行配置）。
+2. **运行期** —— **无额外要求**。C 库是**静态链接**的，直接进可执行文件，
+   不需要分发或加载任何动态库。
+   实测：消费者产物目录中没有任何 DLL，仅把 SDK 运行期库加入 PATH 即可正常运行。
 
 ## 发布到仓颉中心仓
 

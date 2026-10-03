@@ -7,7 +7,7 @@
 #   - Windows x64 (windows-2022)
 #   - macOS arm64 (macos-14, Apple Silicon)
 #
-# 流程：缓存 → 仓颉 SDK → C 编译器检查 → cjpm check/build → cjpm test
+# 流程：缓存 → 仓颉 SDK → C 编译器检查 → cjpm build → cjpm check → cjpm test
 #
 # 【为什么三个平台的步骤几乎一样】
 #   C 库（dr_libs 薄封装）的准备**已经下沉到 build.cj 的 pre-build 钩子**：
@@ -111,17 +111,16 @@ jobs:
           cjc --version
           cjpm --version
 
-      # 顺序很重要：`[ffi.c]` 指向 libs/current/，而该目录由 build.cj 的
-      # pre-build 钩子装配。`cjpm check` 只在配置解析阶段检查 ffi.c 的库是否存在，
-      # **不会触发构建脚本** —— 全新克隆时该目录只有 .gitkeep，
-      # 先跑 check 必然报 "can not find the library 'drlibs'"。
-      # 因此必须 build 在前、check 在后（这是"构建期装配"这一选型的代价，
-      # 换来的是：仓库不必提交任何平台二进制，永远从源码编译）。
-      - name: cjpm build（同时装配 C 库产物）
+      # 顺序：Linux 没有预置产物（本机无法交叉编译），由 build.cj 现场编出
+      # libs/linux_x86_64/libdrlibs.a。`cjpm check` 只在配置解析阶段检查
+      # [ffi.c] 指向的库是否存在、**不会触发构建脚本**，故必须先 build 后 check，
+      # 否则报 "can not find the library 'drlibs'"。
+      # （Windows 因 libs/windows_x86_64/ 里预置了产物而免疫该约束。）
+      - name: cjpm build（同时编译 C 静态库）
         run: cjpm build
 
       - name: 确认 C 库产物已就位
-        run: ls -l libs/current/
+        run: ls -l libs/linux_x86_64/
 
       - name: cjpm check
         run: cjpm check
@@ -214,14 +213,14 @@ jobs:
           cjc --version
           cjpm --version
 
-      # 同 Linux job：build 必须先于 check
-      - name: cjpm build（同时装配 C 库产物）
+      # 同 Linux job：macOS 也没有预置产物，build 必须先于 check
+      - name: cjpm build（同时编译 C 静态库）
         env:
           SDKROOT: ${{ env.SDKROOT }}
         run: cjpm build
 
       - name: 确认 C 库产物已就位
-        run: ls -l libs/current/
+        run: ls -l libs/macos_aarch64/
 
       - name: cjpm check
         run: cjpm check
