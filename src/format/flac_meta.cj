@@ -195,8 +195,11 @@ protected func findFirstFrameOffset(data: Array<UInt8>): Int64 {
 // SEEKTABLE（可选块）
 // ---------------------------------------------------------------------------
 
+/// SEEKTABLE 的块类型号。
+protected let FLAC_BLOCK_SEEKTABLE: Int64 = 3
+
 /// 单个定位点的字节长度。
-private let FLAC_SEEKPOINT_LENGTH: Int64 = 18
+protected let FLAC_SEEKPOINT_LENGTH: Int64 = 18
 
 /// 定位点样本号的"占位"取值（2^64-1）—— 规范用它表示"此处未使用"。
 private let FLAC_SEEKPOINT_PLACEHOLDER: UInt64 = 0xFFFFFFFFFFFFFFFF
@@ -208,7 +211,13 @@ private let FLAC_SEEKPOINT_PLACEHOLDER: UInt64 = 0xFFFFFFFFFFFFFFFF
 /// 里"声明长度远超实际"那类用例防的是同一个问题。
 /// 超出部分直接忽略：SEEKTABLE 是**提示性**数据，缺失只会让 seek 退化为
 /// 从头解码，不影响正确性，因此截断比报错更合适。
-private let FLAC_SEEKTABLE_MAX_POINTS: Int64 = 65536
+protected let FLAC_SEEKTABLE_MAX_POINTS: Int64 = 65536
+
+/// 读取 SEEKTABLE 块体时最多读入的字节数（= 上限点数 × 单点长度）。
+///
+/// 供流式层在"从文件读块体"时限制读取量：块长度字段不可信，
+/// 按它直接分配会中招（见上面 FLAC_SEEKTABLE_MAX_POINTS 的说明）。
+protected let FLAC_SEEKTABLE_MAX_BYTES: Int64 = FLAC_SEEKPOINT_LENGTH * FLAC_SEEKTABLE_MAX_POINTS
 
 /// SEEKTABLE 中的一个定位点。字段语义见文件头注释。
 protected class FlacSeekPoint {

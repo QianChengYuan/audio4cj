@@ -4,6 +4,7 @@ import audio4cj.core.ClosedResourceException
 import audio4cj.core.CorruptedFileException
 import audio4cj.core.DecodeException
 import audio4cj.pcm.f32ToBytes
+import std.collection.ArrayList
 import std.fs.*
 
 /* ============================================================================
@@ -162,6 +163,19 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 首个音频帧的字节偏移（seek 回退时用）。
     private let _firstFrameOffset: Int64
 
+    /// SEEKTABLE 给出的定位点（按样本号升序；**可能为空** —— 该块是可选的）。
+    ///
+    /// 为空时 seek 退化为"重开 + 从头向前解码"，与接 SEEKTABLE 之前完全一致，
+    /// 正确性不受影响：该块只影响 seek 要解码多少帧。
+    private var _seekPoints: ArrayList<FlacSeekPoint>
+
+    /// 自上次定位（打开文件或 seek）以来已解码的帧数。
+    ///
+    /// 【为什么需要这个计数】SEEKTABLE 的全部作用是**少解码几帧**，
+    /// 而这从解码结果上完全看不出来（两条路径必须给出同样的音频）。
+    /// 没有它，"接了 SEEKTABLE"与"接了但从未生效"在测试里无法区分。
+    private var _framesSinceReposition: Int64 = 0
+
     /// 已交付（或已跳过）的样本数（每声道计时）。seek 与结束判断都用它。
     private var _deliveredFrames: Int64 = 0
 
@@ -175,11 +189,12 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     protected init(path: String) {
         this._path = path
         let file = File(path, Read)
-        let (info, firstFrameOffset) = PureFlacKernel.readMetadata(file)
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(file)
 
         this._info = info
         this._file = file
         this._firstFrameOffset = firstFrameOffset
+        this._seekPoints = seekPoints
         this._cursor = firstFrameOffset
         this._windowFileOffset = firstFrameOffset
         this._worstFrameBytes = worstCaseFrameBytes(info)
@@ -192,9 +207,11 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     // 元数据：流式解析（不把整个头部载入内存 —— 封面块可达 MB 级）
     // ------------------------------------------------------------------
 
-    /// 解析元数据块链，返回 (STREAMINFO, 首帧字节偏移)。
+    /// 解析元数据块链，返回 (STREAMINFO, 首帧字节偏移, SEEKTABLE 定位点)。
     /// 返回时文件位置恰好落在首帧起点。
-    private static func readMetadata(file: File): (FlacStreamInfo, Int64) {
+    ///
+    /// SEEKTABLE 是可选块：没有时返回空列表，seek 退化为从头解码（正确性不受影响）。
+    private static func readMetadata(file: File): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
         // 标记 + 首块头（复用经过测试的 parseStreamInfo，故按它期望的布局拼接）
         let prefix = ffReadExact(file, FLAC_MARKER_SIZE + 4)
         let firstLen = (Int64(prefix[FLAC_MARKER_SIZE + 1]) << 16) | (Int64(prefix[FLAC_MARKER_SIZE + 2]) << 8) | Int64(prefix[FLAC_MARKER_SIZE +
@@ -217,7 +234,8 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         }
         let info = parseStreamInfo(assembled)
 
-        // 跳过其余元数据块
+        // 跳过其余元数据块；其中 SEEKTABLE（类型 3）要读出来供 seek 使用
+        var seekPoints = ArrayList<FlacSeekPoint>()
         var isLast = (Int64(prefix[FLAC_MARKER_SIZE]) & 0x80) != 0
         var offset = FLAC_MARKER_SIZE + 4 + firstLen
         var guard: Int64 = 0
@@ -228,11 +246,30 @@ protected class PureFlacKernel <: FlacDecodeKernel {
             }
             let h = ffReadExact(file, 4)
             isLast = (Int64(h[0]) & 0x80) != 0
+            let blockType = Int64(h[0]) & 0x7F
             let len = (Int64(h[1]) << 16) | (Int64(h[2]) << 8) | Int64(h[3])
-            ffSkip(file, len)
+
+            if (blockType == FLAC_BLOCK_SEEKTABLE && len > 0) {
+                // 【只读入上限内的部分】块长度是文件里的 24 位字段、未经验证，
+                // 按它直接分配会中招（与 cve_regression_test 防的是同一类问题）。
+                // 且截断必须**对齐到 18 的整数倍**：否则解析器会看到"长度非整数倍"
+                // 而判为损坏 —— 那是我们自己截断造成的，不该报成文件损坏。
+                let capped = if (len > FLAC_SEEKTABLE_MAX_BYTES) {
+                    FLAC_SEEKTABLE_MAX_BYTES
+                } else {
+                    len
+                }
+                let want = (capped / FLAC_SEEKPOINT_LENGTH) * FLAC_SEEKPOINT_LENGTH
+                if (want > 0) {
+                    seekPoints = parseSeekTable(ffReadExact(file, want))
+                }
+                ffSkip(file, len - want)
+            } else {
+                ffSkip(file, len)
+            }
             offset += 4 + len
         }
-        (info, offset)
+        (info, offset, seekPoints)
     }
 
     // ------------------------------------------------------------------
@@ -333,6 +370,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         let frame = decodeFrame(_reader, _info)
 
         verifyFrameCrc(startInWindow, frame.headerEndByte, frame.frameEndByte)
+        _framesSinceReposition += 1
 
         // 游标推进到帧尾（帧体在 CRC-16 前已按规范字节对齐，这里再向上取整保险）
         let endBit = _reader.bitPosition()
@@ -489,16 +527,40 @@ protected class PureFlacKernel <: FlacDecodeKernel {
             return false
         }
 
-        // 回退需要重开文件：窗口只前向回填，文件流也不支持后退
-        // （待办：有 SEEKTABLE 时应从中定位，当前一律重开并向前解码）
-        if (index < _deliveredFrames) {
-            if (!rewind()) {
-                return false
+        _framesSinceReposition = 0
+
+        // 定位策略：能用 SEEKTABLE 就用它。
+        //
+        // 定位点记的是"该帧第一个样本号"与"相对**首帧**的字节偏移"，
+        // 因此落点是 文件偏移 = 首帧偏移 + 点偏移、样本位置 = 点的样本号；
+        // 之后仍要逐帧前进到目标（目标通常落在定位点之后）。
+        //
+        // 【只在确实能少解码时才用】否则"向前 seek一小段"反而会白白重开文件：
+        //   - 目标在当前样本位置**之前**：本来就必须重开（窗口只前向回填，
+        //     文件流也不支持后退），此时用最近的定位点比回到首帧划算；
+        //   - 定位点在当前样本位置**之后**：它比我们更接近目标，跳过去更省。
+        let point = seekPointAtOrBefore(index)
+        var repositioned = false
+        if (let Some(p) <- point) {
+            if (p.sampleNumber > _deliveredFrames || index < _deliveredFrames) {
+                if (!repositionTo(p.streamOffset, p.sampleNumber)) {
+                    return false
+                }
+                repositioned = true
             }
-        } else {
-            // 即使向前，也要清掉 pending，避免交付错位的样本
-            _pending = Array<Float32>(0, repeat: 0.0)
-            _pendingRead = 0
+        }
+
+        if (!repositioned) {
+            if (index < _deliveredFrames) {
+                // 回退需要重开文件：窗口只前向回填，文件流也不支持后退
+                if (!rewind()) {
+                    return false
+                }
+            } else {
+                // 即使向前，也要清掉 pending，避免交付错位的样本
+                _pending = Array<Float32>(0, repeat: 0.0)
+                _pendingRead = 0
+            }
         }
 
         // 逐帧前进到目标：目标可能落在帧中间，此时把该帧的尾部留作 pending。
@@ -559,19 +621,82 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         (_cursor, _windowFileOffset, _valid, _firstFrameOffset, _deliveredFrames)
     }
 
+    /// 解析到的 SEEKTABLE 定位点数（0 = 该文件没有这个可选块）。
+    protected func seekPointCount(): Int64 {
+        _seekPoints.size
+    }
+
+    /// 自上次 seek 以来已解码的帧数。
+    ///
+    /// 供测试证明 SEEKTABLE **确实被用上**：定位点命中时这个数应远小于
+    /// "从头解码到目标"所需的帧数，而解码结果两者必须完全一致。
+    protected func framesSinceReposition(): Int64 {
+        _framesSinceReposition
+    }
+
     // ------------------------------------------------------------------
     // 内部辅助
     // ------------------------------------------------------------------
+
+    /// 找出样本号 ≤ `index` 的最后一个定位点（表为空、或没有这样的点则为 None）。
+    ///
+    /// 定位点在解析时已校验为按样本号升序，故用二分查找。
+    private func seekPointAtOrBefore(index: Int64): ?FlacSeekPoint {
+        var lo: Int64 = 0
+        var hi: Int64 = _seekPoints.size
+        while (lo < hi) {
+            let mid = (lo + hi) / 2
+            if (_seekPoints[mid].sampleNumber <= index) {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        if (lo == 0) {
+            return None
+        }
+        Some(_seekPoints[lo - 1])
+    }
+
+    /// 重开文件、跳到"首帧偏移 + 定位点偏移"处，并把样本位置设为该点的样本号。
+    ///
+    /// 【为什么是重开而不是移动文件指针】与 rewind 同理：窗口只前向回填，
+    /// 文件流也不支持后退，而定位点可能落在当前读取位置之前。
+    ///
+    /// 【为什么还要把文件跳过相应字节】重开后文件位置在**首帧**，
+    /// 而游标要指向定位点。若只改游标不动文件位置，下次回填就会从首帧读数据、
+    /// 却按定位点记账 —— 结果是静默的错位音频（本文件其它地方踩过同类坑）。
+    private func repositionTo(offsetFromFirstFrame: Int64, sampleNumber: Int64): Bool {
+        _file.close()
+        _file = File(_path, Read)
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_file)
+        if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
+            .channels) {
+            return false // 文件在两次打开之间被替换
+        }
+
+        ffSkip(_file, offsetFromFirstFrame)
+        _seekPoints = seekPoints
+        _deliveredFrames = sampleNumber
+        _cursor = firstFrameOffset + offsetFromFirstFrame
+        _windowFileOffset = _cursor
+        _valid = 0
+        _pending = Array<Float32>(0, repeat: 0.0)
+        _pendingRead = 0
+        _reader.limitTo(0)
+        true
+    }
 
     /// 重开文件并回到首帧（同时清空窗口与 pending 状态）。
     private func rewind(): Bool {
         _file.close()
         _file = File(_path, Read)
-        let (info, firstFrameOffset) = PureFlacKernel.readMetadata(_file)
+        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_file)
         if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
             .channels) {
             return false // 文件在两次打开之间被替换
         }
+        _seekPoints = seekPoints
         _windowFileOffset = firstFrameOffset
         _cursor = firstFrameOffset
         _valid = 0
