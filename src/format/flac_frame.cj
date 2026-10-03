@@ -44,18 +44,28 @@ protected class FlacFrameHeader {
     /// 帧体（第一个子帧）的起始位偏移 —— 供调用方重试与诊断使用。
     protected let bodyStartBit: Int64
 
+    /// 帧头末尾的**字节**偏移（窗口相对），即 CRC-8 那个字节**之后**的位置。
+    ///
+    /// 供流式层重算帧头 CRC-8 用：需要覆盖的区间是
+    /// `[帧起点, headerEndByte - 1)`，而 CRC 字节本身在 `headerEndByte - 1`。
+    /// 帧头必然是整数字节（同步码 14 位 + 保留 2 位 = 2 字节，其余字段皆整字节），
+    /// 故这里可以直接用整除以 8 得到。
+    protected let headerEndByte: Int64
+
     protected init(
         blockSize: Int64,
         channelAssignment: Int64,
         channels: Int64,
         bitsPerSample: Int64,
-        bodyStartBit: Int64
+        bodyStartBit: Int64,
+        headerEndByte: Int64
     ) {
         this.blockSize = blockSize
         this.channelAssignment = channelAssignment
         this.channels = channels
         this.bitsPerSample = bitsPerSample
         this.bodyStartBit = bodyStartBit
+        this.headerEndByte = headerEndByte
     }
 }
 
@@ -74,16 +84,34 @@ protected class FlacFrame {
     /// 每声道一个数组，长度均为 blockSize。
     protected let samples: ArrayList<Array<Int64>>
 
+    /// 本帧末尾的**字节**偏移（窗口相对），即 CRC-16 那两个字节**之后**的位置。
+    ///
+    /// 供流式层重算帧尾 CRC-16 用：需要覆盖的区间是
+    /// `[帧起点, frameEndByte - 2)`，CRC 两字节在 `frameEndByte - 2` 起
+    /// （大端存放）。帧尾在 CRC-16 之前已按规范对齐到字节边界，故可用整除以 8。
+    protected let frameEndByte: Int64
+
+    /// 帧头末尾的**字节**偏移（窗口相对），与 `FlacFrameHeader.headerEndByte` 同义。
+    ///
+    /// 【为什么帧上也要带一份】流式层做 CRC 校验时只拿得到 `FlacFrame`，
+    /// 拿不到内部的 `FlacFrameHeader`（帧头在 decodeFrame 内部就消费掉了）。
+    /// 校验需要两个区间，故把帧头末尾一并带出来。
+    protected let headerEndByte: Int64
+
     protected init(
         blockSize: Int64,
         channels: Int64,
         channelAssignment: Int64,
-        samples: ArrayList<Array<Int64>>
+        samples: ArrayList<Array<Int64>>,
+        frameEndByte: Int64,
+        headerEndByte: Int64
     ) {
         this.blockSize = blockSize
         this.channels = channels
         this.channelAssignment = channelAssignment
         this.samples = samples
+        this.frameEndByte = frameEndByte
+        this.headerEndByte = headerEndByte
     }
 }
 
@@ -188,7 +216,14 @@ protected func parseFrameHeader(reader: BitReader, info: FlacStreamInfo): FlacFr
         throw CorruptedFileException("FLAC 块大小 ${blockSize} 非法")
     }
 
-    FlacFrameHeader(blockSize, channelAssignment, channels, bitsPerSample, reader.bitPosition())
+    FlacFrameHeader(
+        blockSize,
+        channelAssignment,
+        channels,
+        bitsPerSample,
+        reader.bitPosition(), // 帧体起始位（= CRC-8 之后）
+        reader.bitPosition() / 8 // 帧头末尾字节偏移（供流式层重算 CRC-8）
+    )
 }
 
 /// 读掉采样率编码带来的扩展位（取值本身以 STREAMINFO 为准）。
@@ -565,11 +600,20 @@ protected func decodeFrame(reader: BitReader, info: FlacStreamInfo): FlacFrame {
     reader.alignToByte()
 
     // 帧尾 CRC-16（2 字节）。**必须读掉**，否则下一帧会从错的位开始解析。
-    // 【本版未校验】，理由与帧头 CRC-8 相同（见 parseFrameHeader 的说明）。
+    // 【校验由流式层完成】重算需要帧的原始字节，本函数只持有位读取器；
+    // 这里只把帧尾的字节偏移报出去（见 FlacFrame.frameEndByte）。
     let _ = reader.readBits(16)
+    let frameEndByte = reader.bitPosition() / 8
 
     let samples = applyChannelDecorrelation(raw, header)
-    FlacFrame(header.blockSize, header.channels, header.channelAssignment, samples)
+    FlacFrame(
+        header.blockSize,
+        header.channels,
+        header.channelAssignment,
+        samples,
+        frameEndByte,
+        header.headerEndByte
+    )
 }
 
 /// 声道去相关：把帧内存储的（可能是 mid/side 等）通道还原为左右声道。

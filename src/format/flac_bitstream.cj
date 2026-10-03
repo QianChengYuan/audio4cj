@@ -332,10 +332,52 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         _reader.seekToBit(startInWindow * 8)
         let frame = decodeFrame(_reader, _info)
 
+        verifyFrameCrc(startInWindow, frame.headerEndByte, frame.frameEndByte)
+
         // 游标推进到帧尾（帧体在 CRC-16 前已按规范字节对齐，这里再向上取整保险）
         let endBit = _reader.bitPosition()
         _cursor = _windowFileOffset + (endBit + 7) / 8
         frame
+    }
+
+    /// 校验刚解出的一帧的帧头 CRC-8 与帧尾 CRC-16。
+    ///
+    /// 【为什么在流式层做，而不是帧解码器里】
+    ///   重算 CRC 需要帧的**原始字节**，而帧解码器只持有位读取器。
+    ///   这里是唯一同时握有窗口字节、帧起点偏移与位读取器位置的地方 ——
+    ///   这也是 flac_frame.cj 里那句"将在流式内核中接入"所指向的落点。
+    ///
+    /// 【为什么两个都校验】
+    ///   帧头 CRC-8 覆盖 `[帧起点, CRC 字节之前)`；帧尾 CRC-16 覆盖**整帧**
+    ///   （含帧头及其 CRC-8）。参考实现两者都校验，补齐后才算检测能力不下降：
+    ///   损坏的文件必须在此明确抛错，而不是产出听起来"差不多"的样本。
+    ///
+    /// 【越界即异常】帧尾超出窗口有效长度说明解析位置已经错了，
+    ///   此时若照常算 CRC 会读到窗口尾部的**上一轮残留字节**（见 BitReader
+    ///   对 _bitLimit 的说明），算出个看似合理的值反而更难查。
+    private func verifyFrameCrc(frameStartByte: Int64, headerEndByte: Int64, frameEndByte: Int64): Unit {
+        let where_ = "文件偏移 ${_windowFileOffset + frameStartByte} 处"
+
+        if (headerEndByte > _valid || frameEndByte > _valid) {
+            throw CorruptedFileException(
+                "FLAC 帧超出窗口有效长度（${where_}：帧头止于 ${headerEndByte}、帧尾止于 ${frameEndByte}，有效 ${_valid}）")
+        }
+
+        // ---- 帧头 CRC-8：CRC 字节紧跟在被覆盖区间之后 ----
+        let crc8Expected = crc8Of(_window, frameStartByte, headerEndByte - 1)
+        let crc8Actual = _window[headerEndByte - 1]
+        if (crc8Expected != crc8Actual) {
+            throw CorruptedFileException(
+                "FLAC 帧头 CRC-8 校验失败（${where_}：计算 ${crc8Expected}，文件记录 ${crc8Actual}）")
+        }
+
+        // ---- 帧尾 CRC-16：大端两字节，紧跟在被覆盖区间之后 ----
+        let crc16Expected = crc16Of(_window, frameStartByte, frameEndByte - 2)
+        let crc16Actual = (UInt16(_window[frameEndByte - 2]) << 8) | UInt16(_window[frameEndByte - 1])
+        if (crc16Expected != crc16Actual) {
+            throw CorruptedFileException(
+                "FLAC 帧尾 CRC-16 校验失败（${where_}：计算 ${crc16Expected}，文件记录 ${crc16Actual}）")
+        }
     }
 
     // ------------------------------------------------------------------
