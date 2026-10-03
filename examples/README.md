@@ -65,3 +65,4 @@ if (fmt.container == "ogg" && fmt.codec == "flac") {
 - [快速上手](../docs/quickstart.md)
 - [API 参考](../docs/README.md)
 - [发布打包](../docs/release.md)
+- [解码 → 播放（Windows）](windows_playback/README.md) —— 独立模块，用 winsound4cj 把解码结果真正放出来

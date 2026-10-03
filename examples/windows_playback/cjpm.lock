@@ -1,0 +1,4 @@
+version = 0
+
+[requires]
+  winsound4cj = {version = "0.1.2"}

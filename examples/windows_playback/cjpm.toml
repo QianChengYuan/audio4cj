@@ -1,0 +1,21 @@
+# ============================================================================
+# 解码 → 播放 演示（Windows）
+#
+# 刻意做成**独立模块**（而不是并进 examples/）：
+#   winsound4cj 是 Windows 专属库，若并进 examples/，则 examples 整体
+#   都会依赖它 —— Linux / macOS 上就构建不了了。
+# ============================================================================
+
+[package]
+  name = "audio4cj_play"
+  cjc-version = "1.2.0"
+  version = "0.0.1"
+  output-type = "executable"
+  description = "audio4cj 解码 + winsound4cj 播放"
+
+[dependencies]
+  # 仓库根目录的 audio4cj（相对本文件所在目录）
+  audio4cj = { path = "../.." }
+
+  # 来自仓颉中心仓的版本依赖（实测 0.1.2 可解析；非 path，故别人克隆后可用）
+  winsound4cj = "0.1.2"
