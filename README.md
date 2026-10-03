@@ -96,6 +96,7 @@ cjpm check      # 依赖与编译顺序校验（须在 build 之后，原因见�
 - [快速上手](docs/quickstart.md) —— 环境要求、可运行示例、异常处理范式
 - API 参考：[`core`](docs/api/core.md) · [`pcm`](docs/api/pcm.md) · [`meta`](docs/api/meta.md) · [`stream`](docs/api/stream.md) · [`facade`](docs/api/facade.md)
 - [OGG / AAC 解码扩展可行性评估](docs/codec-expansion-assessment.md) —— 候选库、许可证、构建代价与立项建议
+- [发布打包](docs/release.md) —— 为什么不能直接用 `cjpm bundle`，以及包内容契约
 
 > **关于源码注释里的「开发文档 §X」**：阅读源码时会看到这类指向（例如
 > `src/core/exception.cj` 的「开发文档 §4.1」）。那指的是项目的**内部设计留痕**

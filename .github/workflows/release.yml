@@ -1,0 +1,83 @@
+# ============================================================
+# audio4cj 发布打包 —— 干净导出 → 校验 → 上传制品
+# ------------------------------------------------------------
+# 触发：手动 workflow_dispatch，或推送 v* 标签。
+#
+# 【为什么不能直接用 cjpm bundle】
+#   `cjpm bundle` 打包的是**文件系统**而非 git 索引，.gitignore 对它无效。
+#   实测直接在主工作区 bundle，制品包里会出现内部设计留痕 开发文档/、
+#   已废弃的 tools/cjbind/、m0-poc/、musics/ 等（共 736 个条目）。
+#   因此这里跑 scripts/release_bundle.py：它先用 `git archive HEAD` 导出
+#   **被跟踪**文件作为打包源，再校验包内容（必需的必须有、禁止的必须没有）。
+#   完整说明见 docs/release.md。
+#
+# 【为什么要装 clang】
+#   发布包不含 C 库二进制（cjpm 会跳过二进制，这也是设计使然：仓库不提交
+#   平台二进制）。导出目录里没有 libs/<平台>/ 预置产物，因此 build.cj 会
+#   现场编译 —— 与 ci.yml 的 Linux job 同理。
+#
+# 【为什么在 Linux 上打包】
+#   包本身与平台无关（纯源码 + 配置）。选 Linux 是因为它本就依赖现场编译
+#   链路，最能暴露「包内容是否自洽」——包内那 176 个用例会真实跑一遍。
+# ------------------------------------------------------------
+
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  # 与 cjpm.toml 的 cjc-version 保持一致
+  CANGJIE_VERSION: "1.2.0"
+
+jobs:
+  bundle:
+    name: 打包并校验
+    timeout-minutes: 40
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装仓颉 SDK ${{ env.CANGJIE_VERSION }}
+        uses: ./.github/actions/setup-cangjie
+        with:
+          os: linux
+          version: ${{ env.CANGJIE_VERSION }}
+          url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
+
+      # 发布包不含库二进制，消费者与打包机都依赖现场编译
+      - name: 确保 C 编译器可用
+        run: |
+          if ! command -v clang >/dev/null 2>&1; then
+            echo "clang 缺失，尝试安装"
+            sudo apt-get update && sudo apt-get install -y clang
+          fi
+          clang --version
+
+      # 工作区干净是硬要求：git archive 导出的是 HEAD，
+      # 脏工作区意味着制品与你看到的代码不一致（脚本会拒绝执行）
+      - name: 确认工作区干净
+        run: |
+          git status --porcelain
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::工作区有未提交改动，拒绝打包"
+            exit 1
+          fi
+
+      - name: 生成发布包（含包内容校验）
+        run: python3 scripts/release_bundle.py
+
+      # 制品先留在 Actions 里人工核对，再由维护者执行 cjpm publish
+      # （publish 不可逆，刻意不放进 CI）
+      - name: 上传制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio4cj-cjp
+          path: target/release-artifacts/*.cjp
+          if-no-files-found: error

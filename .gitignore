@@ -121,9 +121,17 @@ tools/
 # 【本地文件仍然保留】删除它会丢掉 M0 的决策留痕，故只取消跟踪。
 #
 # 【注意：本规则管不住 cjpm bundle】
-#   `cjpm bundle` 打包的是**文件系统**而非 git 索引，.gitignore 对它无效
-#   （实测：bundle 会把 m0-poc/ 一并打进制品包）。若将来要发布到中心仓，
-#   必须改用 cjpm.toml 的 include/exclude 来控制包内容 —— 两套机制互不相干。
+#   `cjpm bundle` 打包的是**文件系统**而非 git 索引，.gitignore 对它无效。
+#   实测（直接在主工作区 bundle）：制品包里出现了 736 个条目，其中含
+#   m0-poc/、tools/、musics/、以及内部设计留痕 开发文档/ —— 而
+#   `cjpm bundle` 本身**没有任何** include/exclude 选项
+#   （实测仅有 --skip-test / --skip-lint / -V）。
+#
+#   ⇒ 因此发布不走「直接 bundle」，而走 scripts/release_bundle.py：
+#     它先用 `git archive HEAD` 导出**被跟踪**的文件作为打包源，使
+#     **本文件成为包内容的唯一真相来源** —— 这里加一条规则，发布包自动
+#     跟着排除，不会再出现"某处清单忘了同步"的漂移。
+#     流程与包内容契约见 docs/release.md。
 # ---------------------------------------------------------------------------
 m0-poc/
 
