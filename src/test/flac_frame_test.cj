@@ -92,7 +92,7 @@ class FlacFrameTest {
             return
         }
 
-        // (素材, golden 基准, 期望帧数)。期望帧数来自素材规格（见 sctiptr 的 DUR_*）。
+        // (素材, golden 基准, 期望帧数)。期望帧数来自素材规格（见 scripts/gen_testdata.sh 的 DUR_*）。
         let fixtures = [
             ("testdata/flac/flac_s16_44100_stereo.flac", "sine_44100_stereo_s16.f32le", 44100),
             ("testdata/flac/flac_s16_44100_mono.flac", "sine_44100_mono_s16.f32le", 44100),

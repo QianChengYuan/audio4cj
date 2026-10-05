@@ -4,6 +4,10 @@
 gen_golden.py
 用 ffmpeg 把可解码素材解成 f32le 参考 PCM，作为 golden 比对基准。
 
+【历史实现 —— 现行来源是 scripts/gen_testdata.sh 与 scripts/gen_testdata.ps1】
+  golden 基准现在由那两个脚本**与素材一并生成**（见其 "golden 基准" 一节）。
+  本脚本保留供溯源与独立复核。
+
 用法:
     python3 gen_golden.py                     # 输出到 <仓库根>/testdata/golden
     python3 gen_golden.py --ffmpeg-dir DIR

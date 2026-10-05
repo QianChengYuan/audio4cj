@@ -42,7 +42,7 @@ private let GT_DATA_ROOT: String = "testdata"
 /// 基准所在目录。
 private let GT_GOLDEN_DIR: String = "testdata/golden"
 
-/// 素材 → 基准的映射表（由 sctiptr/gen_golden.py 生成）。
+/// 素材 → 基准的映射表（由 scripts/gen_testdata.sh 或 .ps1 生成）。
 private let GT_MANIFEST: String = "testdata/golden/GOLDEN.tsv"
 
 /// 与 ffmpeg 基准比对的逐样本容差。

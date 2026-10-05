@@ -13,7 +13,7 @@ import std.collection.ArrayList
  * 素材识别矩阵 —— 覆盖探测层对全部 testdata 素材的判定
  *
  * 【对照基准从哪来】
- *   testdata/MANIFEST.tsv 由 sctiptr/gen_audio_fixtures.py 生成，其中每行的
+ *   testdata/MANIFEST.tsv 由 scripts/gen_testdata.sh 或 .ps1 生成，其中每行的
  *   「容器 / 子编码」是那个脚本用 Python 的 sniff() **独立**识别出来的。
  *   本测试用仓颉的探测层判定同一批文件，两边必须一致 —— 这是两套独立实现的
  *   交叉检查，而不是"用被测对象验证被测对象"。
@@ -40,7 +40,7 @@ import std.collection.ArrayList
  *   这个下限。
  * ========================================================================== */
 
-/// 素材识别基准（由 sctiptr/gen_audio_fixtures.py 生成）。
+/// 素材识别基准（由 scripts/gen_testdata.sh 或 .ps1 生成）。
 private let PM_MANIFEST: String = "testdata/MANIFEST.tsv"
 
 /// 素材根目录。

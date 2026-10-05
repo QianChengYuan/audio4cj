@@ -68,12 +68,12 @@
 
 | 项 | 内容 |
 |---|---|
-| 用途 | 1) 生成测试素材（`sctiptr/gen_audio_fixtures.py`）；2) 生成 golden PCM 比对基准（`sctiptr/gen_golden.py`） |
+| 用途 | 1) 生成测试素材；2) 生成 golden PCM 比对基准。现行脚本是 `scripts/gen_testdata.sh` 与 `scripts/gen_testdata.ps1`（两者产出同一套，随制品包分发）；`sctiptr/*.py` 是**历史实现**，仅作溯源 |
 | 许可证 | 依构建配置而定（默认 LGPL-2.1+；Gyan 的 full build 启用了 GPL 组件） |
 | 是否分发 | **否**。ffmpeg **不是**本库的依赖，不被链接，也不随库分发 |
 | 对本项目许可的影响 | **无**。仅在开发机上作为"独立裁判"生成基准文件 |
 | 测试是否依赖它 | **否**。基准与素材已随仓库入库，`cjpm test` 不需要装 ffmpeg |
-| 产出的素材可再分发吗 | **可以**。`testdata/` 下的 61 个文件全部由 **ffmpeg 从合成信号**（lavfi 正弦等）编码而来，**不含任何第三方录音、音乐或版权内容**；生成脚本 `sctiptr/gen_audio_fixtures.py` 随仓库入库，任何人可复现。这些素材随**仓库**分发（供跑全部 206 条用例），但**不随制品包分发**（`cjpm bundle` 不打包二进制文件，详见 [docs/release.md](docs/release.md)） |
+| 产出的素材可再分发吗 | **可以**。`testdata/` 下的 61 个文件全部由 **ffmpeg 从合成信号**（lavfi 正弦等）编码而来，**不含任何第三方录音、音乐或版权内容**；生成脚本 `scripts/gen_testdata.sh` 与 `scripts/gen_testdata.ps1` 随**制品包**分发，任何人可复现（原 `sctiptr/gen_audio_fixtures.py` 为历史实现，仍在仓库中供溯源）。这些素材随**仓库**分发（供跑全部 206 条用例），但**不随制品包分发**（`cjpm bundle` 不打包二进制文件，详见 [docs/release.md](docs/release.md)） |
 
 ## 三、已评估但**未采纳**的依赖
 

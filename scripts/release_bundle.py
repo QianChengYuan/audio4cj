@@ -88,6 +88,9 @@ REQUIRED = [
     "src/",  # 库源码
     "config/cjlint_rule_list.json",  # 项目级静态检查配置
     "docs/",  # 面向使用者的公开文档
+    "src/test/",  # 测试源码：随包分发，使包内可自证验证（与下方两个生成脚本成对）
+    "scripts/gen_testdata.sh",  # 素材生成脚本（POSIX），随包分发
+    "scripts/gen_testdata.ps1",  # 素材生成脚本（PowerShell），随包分发
     "LICENSE",
     "NOTICE",
     "README.md",
@@ -112,10 +115,20 @@ FORBIDDEN = [
     ("tools/", set()),  # 已废弃的 cjbind 开发工具
     ("m0-poc/", set()),  # M0 历史验证工程
     ("musics/", set()),  # 本机测试素材
-    ("sctiptr/", set()),  # 素材生成脚本（依赖 ffmpeg）
-    ("scripts/", set()),  # 本发布脚本自身
+    ("sctiptr/", set()),  # 历史素材生成脚本（Python）；现行来源是 scripts/gen_testdata.{sh,ps1}，二者都不随包
+    ("scripts/", {"gen_testdata.sh", "gen_testdata.ps1"}),  # 仅放行这两个素材生成脚本；release_bundle.py 等开发者脚本不进包
     ("examples/", set()),  # 示例工程（独立模块，消费者按需从仓库取）
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
+    # --- 测试源码：**随包分发**（此处曾有 ("src/test/", set()) 的禁止项，决策已翻转）---
+    #   为什么翻转：把测试排除在包外并不能解决"功能无法在目标系统上验证"，反而让
+    #   官方退回条款「功能性测试未通过（无效三方库）」更成立 —— 包里连可运行的
+    #   验证都没有。现行做法是让 src/test 与 scripts/gen_testdata.{sh,ps1} **成对入包**：
+    #   拿到包的人先跑生成脚本（包内没有 testdata/，因为 cjpm 不打包二进制），
+    #   再跑 cjpm test，即可在包内得到 206 通过 / 0 失败。
+    #   正向断言改由 REQUIRED 的 "src/test/" 承担：白名单若漏掉 /src/test 会立刻报警，
+    #   不必再用禁止项去钉。
+    #   另：素材整体缺失时测试会**明确跳过而非失败**（见 src/test/golden_support_test.cj
+    #   的 gsSkipIfNoFixtures），所以"只解包、不生成素材"不会是一片红。
     # --- 构建产物 ---
     ("target/", set()),
     # --- C 依赖遗留：整体移除后不应再出现（防御性断言，防止将来无意带回）---
@@ -331,10 +344,17 @@ def verify_and_report(top: str, entries) -> None:
 
     log("— 禁止项检查 —")
     for rule, allowed in FORBIDDEN:
+        prefix = rule.rstrip("/")
         hits = [
             n
             for n in entries
-            if (n == rule.rstrip("/") or n.startswith(rule))
+            if (n == prefix or n.startswith(rule))
+            # 目录条目本身**不算内容**：例外只约束"目录里的东西"，而被放行的文件
+            # 必然伴随它所在的目录条目。旧写法把目录条目也算作混入，于是
+            # 「只放行某目录下两个文件」这类规则永远无法通过 —— 白名单首次放行
+            # scripts/ 下的两个生成脚本时就撞上了（实测报"禁止项混入：scripts/"）。
+            # 注意这不会削弱规则：该目录下的**其他文件**仍会被逐项拦下。
+            and n != prefix
             and not any(n.endswith(suffix) for suffix in allowed)
         ]
         note = f"（允许 {'/'.join(sorted(allowed))}）" if allowed else ""

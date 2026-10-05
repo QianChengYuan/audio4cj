@@ -4,6 +4,15 @@
 gen_audio_fixtures.py
 生成 audio4cj 的测试素材矩阵（固定测试资产，纳入版本控制）
 
+【历史实现 —— 现行来源是 scripts/gen_testdata.sh 与 scripts/gen_testdata.ps1】
+  本脚本是素材生成的**最初实现**，保留在仓库中供溯源：它含按信号/容器分组的 REFSPECS
+  规格表，若干测试注释以它为规格依据。
+  **但现行流程不再跑它**：制品包随发 scripts/gen_testdata.sh（POSIX）与
+  scripts/gen_testdata.ps1（Windows），两者产出与 testdata/ 已入库版本**逐项同构**
+  （实测：文件清单一致、54 个音频的编码/声道/采样率/时长零差异、两个 TSV 与
+  5 个 golden 基准逐字节相同）。
+  因此改动素材规格时**必须同时改这三处**（本文件 + 两份新脚本），否则必然漂移。
+
 用法:
     python3 gen_audio_fixtures.py                     # 输出到 <仓库根>/testdata
     python3 gen_audio_fixtures.py ./testdata

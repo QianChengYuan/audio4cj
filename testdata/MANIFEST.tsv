@@ -1,6 +1,6 @@
 # path	container	codec
-# 由 gen_audio_fixtures.py 生成，作为探测层识别矩阵测试的对照基准。
-# container/codec 由本脚本的 sniff() 独立识别，与仓颉探测层互为交叉检查。
+# 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，作为探测层识别矩阵测试的对照基准。
+# container/codec 由本脚本按扩展名与文件名保守识别；权威值与原 sctiptr/gen_audio_fixtures.py 的 sniff() 一致（只有 Ogg 才带子编码）。
 aac/aac_adts_128k.aac	aac	
 aac/aac_adts_256k.aac	aac	
 aac/aac_adts_64k.aac	aac	

@@ -2,7 +2,9 @@
 # audio4cj CodeQL —— 安全扫描
 # ------------------------------------------------------------
 # 覆盖：
-#   - Python（sctiptr/*.py）：测试素材与 golden 基准的生成脚本
+#   - Python（sctiptr/*.py）：测试素材与 golden 基准的生成脚本 —— 它们是**历史实现**，
+#     现行来源是 scripts/gen_testdata.sh 与 scripts/gen_testdata.ps1（shell / PowerShell，
+#     CodeQL 不覆盖这两种语言）；扫描 sctiptr/ 是因为那是仓库里仅有的 Python
 #
 # 不覆盖：
 #   - 仓颉 .cj：CodeQL 不支持该语言，由 cjlint 替代（见 ci-lint.yml）

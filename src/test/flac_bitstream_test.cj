@@ -23,7 +23,7 @@ import std.collection.ArrayList
  * 【为什么 fixture 表里带"期望帧数"而不是只带基准名】
  *   基准只覆盖素材的一部分（见下表注释），且"解码器提前停下"这种失效必须能被
  *   发现 —— 只比对基准前缀会漏掉它。期望帧数由素材生成参数推出（见
- *   sctiptr/gen_audio_fixtures.py 的 DUR_* 常量），属规格侧的事实。
+ *   scripts/gen_testdata.sh 的 DUR_* 常量），属规格侧的事实。
  *
  * 【本文件的写法本身就是一次验证】`fbDecodeAll` 的参数类型是 `FlacDecodeKernel`
  *   接口 —— 同一段驱动代码服务于任何内核实现。

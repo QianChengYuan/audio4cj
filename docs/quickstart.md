@@ -59,10 +59,21 @@ cjpm clean          # 清理构建产物
 > 环境变量**都不再存在**。）
 
 > 测试套件**不依赖 ffmpeg**（基准与素材已随仓库入库），也不需要联网下载任何东西。
-> ⚠ 但 `testdata/` **不随制品包分发**（`cjpm bundle` 不打包二进制文件），因此从中心仓
-> 取得的包内跑 `cjpm test` 会**跳过 41 条依赖素材的用例**（其余约 165 条照常运行，
-> 其中包含不依赖任何素材的真实解码）。详见 [发布打包](release.md) 的
-> 「测试素材不随包分发」一节。
+> ⚠ `testdata/` **不随制品包分发**（二进制，`cjpm bundle` 本就不打包），但包内**带**
+> `src/test/` 与两份素材生成脚本。因此在包内跑 `cjpm test` 有两条路：
+>
+> - **不生成素材**：约 165 条照常通过（含不依赖素材的端到端解码），41 条依赖素材的
+>   **明确跳过**、不判失败；
+> - **生成素材后再跑**：先执行随包的生成脚本（需要 ffmpeg），它会就地重建
+>   `testdata/`，再 `cjpm test`：
+>
+> ```bash
+> bash scripts/gen_testdata.sh                              # Linux / macOS / Git Bash
+> powershell -ExecutionPolicy Bypass -File scripts\gen_testdata.ps1   # Windows
+> cjpm test                                                 # 实测 206 / 206 全通过
+> ```
+>
+> 详见 [发布打包](release.md) 的「测试素材不随包分发，以及包内如何跑通全量测试」一节。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例

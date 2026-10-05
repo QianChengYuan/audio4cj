@@ -21,7 +21,7 @@
 [package]
   name = "audio4cj"
   cjc-version = "1.2.0"
-  version = "0.1.0"
+  version = "0.1.1"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
   # —— 中心仓元数据（发布时展示在制品页；规格与实测依据见 docs/release.md 的「发布元数据」章节）——
@@ -58,7 +58,7 @@
   # 【为什么需要它：.gitignore 管不住 cjpm bundle】
   #   bundle 打包的是文件系统而非 git 索引。实测未配置本字段时，制品包里
   #   出现了 736 个条目，其中含内部设计留痕 开发文档/、已废弃的 tools/cjbind/、
-  #   m0-poc/、musics/ 等。加上白名单后为 111 条目，且经脚本逐项校验。
+  #   m0-poc/、musics/ 等。加上白名单后为 114 条目，且经脚本逐项校验。
   #
   # 【官方默认规则（与本字段无关）】
   #   默认必打包：根目录的 cjpm.toml、README.md、README_zh.md
@@ -80,9 +80,46 @@
   #   （共 112 项）—— 只因它们的目录名也叫 src。
   #   加前导斜杠后锚定到根目录，只匹配根下的同名项。
   include = [
-    "/src",           # 库源码
+    # 【为什么 /src 仍逐子包列出，而不是一句 "/src" 了事】
+    #   逐项列出本身就有价值：这是 fail-closed 的 —— 将来 src/ 下新增子包时，
+    #   它不会自动被发布出去（与"只用白名单"的既定理由一致，见 scripts/release_bundle.py）。
+    #
+    # 【一处已被推翻的取舍，记在这里避免重走】
+    #   曾一度刻意**不含** "/src/test"，理由是"包内没有 testdata/（cjpm 不打包二进制），
+    #   带上测试只会让审核方看到失败"。但那只解决了一半：测试源码不随包，恰恰让官方
+    #   退回条款「功能性测试未通过（无效三方库）／功能无法在目标系统上验证」更成立 ——
+    #   包里连可运行的验证都没有。
+    #   现行做法是**把可验证性一起带上**：/src/test 与下方的素材生成脚本成对入包，
+    #   拿到包的人先跑生成脚本、再跑测试，即可在包内得到 206 通过 / 0 失败。
+    #
+    # 【src/ 根必须保留】cjpm 要求所有父包（直到根包）都直接含至少一个 .cj 文件，
+    #   否则整个 src/ 的子目录都不被扫描（见 src/audio4cj.cj 文件头实测记录）。
+    "/src/*.cj",      # 根包文件（少一个都不行）
+    "/src/codec",     # 各功能子包，逐包列出
+    "/src/core",
+    "/src/facade",
+    "/src/format",
+    "/src/meta",
+    "/src/pcm",
+    "/src/probe",
+    "/src/stream",
+    # 【/src/test 随包：这是"包内可自证验证"的一半】
+    #   只带测试源码是不够的 —— 包内没有 testdata/，直接跑会成片失败，那比不带更糟。
+    #   因此它与下方两个生成脚本必须**成对出现**：先生成素材，再跑测试。
+    #   测试里已有守卫：素材整体缺失时明确跳过而非失败（判据见
+    #   src/test/golden_support_test.cj 的 gsSkipIfNoFixtures），所以"只解包、不生成素材"
+    #   也不会是一片红。仓库内 src/test 照常全量运行（testdata/ 已入库）。
+    "/src/test",
     "/config",        # 项目级 cjlint 规则集
     "/docs",          # 面向使用者的公开文档
+    # 【随包分发的素材生成脚本】制品包不含 testdata/（cjpm 不打包二进制），
+    #   包内 `cjpm test` 因此会成片跳过依赖素材的用例。这两个脚本让使用者/评审方
+    #   自己用 ffmpeg 把素材就地生成出来，从而在包内跑通全量测试 —— 把
+    #   "功能无法在目标系统上验证"这个退回条件从根上消掉。
+    #   刻意**逐文件列出**（而非整个 /scripts）：/scripts 下还有发布脚本等
+    #   仅开发者需要的内容，不应进包。
+    "/scripts/gen_testdata.sh",
+    "/scripts/gen_testdata.ps1",
     "/LICENSE",
     "/LICENSES.md",
     "/NOTICE"

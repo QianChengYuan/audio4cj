@@ -66,7 +66,7 @@ main() {
 
 ```bash
 cjpm build      # 构建（纯仓颉，不需要任何 C 工具链）
-cjpm test       # 206 个用例（源码仓库内；制品包内会跳过 41 条，见下方说明）
+cjpm test       # 206 个用例（源码仓库内，testdata/ 已入库）
 cjpm check      # 依赖与配置校验
 ```
 
@@ -94,16 +94,28 @@ cjpm check      # 依赖与配置校验
 测试套件**不依赖 ffmpeg**（基准与素材已随仓库入库），也不需要联网下载任何东西。
 但有一处**由分发方式带来的差别**，随包的使用者应当知道：
 
-> **从中心仓取得的制品包内不含 `testdata/`** —— `cjpm bundle` 不打包二进制文件
-> （这是平台行为，白名单改不动它）。于是包内跑 `cjpm test` 时：
+> **制品包内不含 `testdata/`**（`cjpm bundle` 不打包二进制文件，平台行为），
+> 但包内**带** `src/test/` 与两份素材生成脚本 —— 因此**不装 ffmpeg 也不会看到失败**：
+> 约 165 条用例照常运行并真实通过（含**不依赖任何素材**的端到端解码：内存中合成 WAV、
+> 落盘、经 `AudioFile.open()` 解码并逐样本比对，见 `src/test/async_frame_stream_test.cj`），
+> 41 条依赖素材的用例**明确跳过**（原因用 `cjpm test --show-all-output` 查看 —— 框架
+> 默认捕获用例输出，不加这个参数看不到）。
 >
-> - **41 条依赖素材的用例会跳过**（不判失败）：跳过原因逐条可查，用
->   `cjpm test --show-all-output`（框架默认捕获用例输出，不加这个参数看不到）；
-> - **其余约 165 条照常运行并通过**，其中包含**不依赖任何素材**的用例 ——
->   最直接的一条是在内存中合成 WAV、落盘后经 `AudioFile.open()` 完整解码并逐样本
->   比对（见 `src/test/async_frame_stream_test.cj`），因此"功能可验证"这件事在包内
->   依然成立；
-> - 要跑**全部 206 条**，请从源码仓库获取（`testdata/` 已入库），而不是从制品包。
+> **想在包内跑通全部 206 条**：先执行随包分发的素材生成脚本（只需要 ffmpeg），
+> 它会就地重建 `testdata/`，然后 `cjpm test`：
+>
+> ```bash
+> # Linux / macOS / Git Bash
+> bash scripts/gen_testdata.sh
+> # Windows PowerShell
+> powershell -ExecutionPolicy Bypass -File scripts\gen_testdata.ps1
+>
+> cjpm test      # 实测 206 / 206 全通过
+> ```
+>
+> 生成脚本产出的素材全部由**合成信号**编码而来（封面图也由 ffmpeg 现造），
+> 不含任何第三方版权内容。不装 ffmpeg 也不影响使用本库 —— 那只是跑不了这些测试而已。
+> 要跑全部 206 条而不装 ffmpeg，请从**源码仓库**获取（`testdata/` 已入库）。
 
 ## 文档
 
