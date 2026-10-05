@@ -87,12 +87,17 @@ REQUIRED = [
     "cjpm.toml",  # 模块定义（含 include 白名单）
     "src/",  # 库源码
     "docs/",  # 面向使用者的公开文档
-    "src/test/",  # 测试源码：随包分发，且**自足**（见下方 FORBIDDEN 的说明）
     "LICENSE",
     "LICENSES.md",
     "NOTICE",
     "README.md",
 ]
+
+# 【刻意不列入 REQUIRED 的两项，理由在此】
+#   src/test/ —— 测试源码**不随包**：制品只交付可直接构建的产品代码，使用者
+#     不会拿到 fuzz / 长跑 / 依赖外部素材的用例，构建输出也不受测试告警影响。
+#     配套的反向断言见下方 FORBIDDEN 的 "src/test/"。
+#   config/   —— cjlint 规则集只服务于仓库侧 CI，消费者不需要。
 
 # 【曾经还有 build.cj 与 third-party 下的 6 个 C 文件】它们服务于"消费者现场编译
 #   C 库"这条链路。C 依赖整体移除后，包内不应再出现任何 C 源码或构建脚本 ——
@@ -120,28 +125,16 @@ FORBIDDEN = [
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     ("docs/release.md", set()),  # 发布流程：内部工程文档
     ("docs/codec-expansion-assessment.md", set()),  # 编解码扩展评估：内部工程文档
-    # --- 依赖仓库语料（testdata/ + ffmpeg 基准）的用例：不随包 ---
-    #   包内测试必须**自足**。cjpm 不打包二进制素材，而这些用例依赖它，随包只会
-    #   得到跑不起来的死用例 —— 早先的写法是"素材缺失就静默跳过"，代价是包内
-    #   一片**假绿**：包内报"206 通过"，而其中 42 个用例一行都没执行
-    #   （守卫静默 return，测试框架照样计为通过）。
-    #   现行做法：它们留在仓库、由仓库侧全量运行（testdata/ 已入库）；
-    #   包内的功能验证由自足用例承担（src/test/selfcontained_*_test.cj），
-    #   后者在仓颉里现场构造输入，不需要任何外部素材与外部工具。
-    ("src/test/bench_decode_test.cj", set()),
-    ("src/test/facade_format_test.cj", set()),
-    ("src/test/flac_bitstream_test.cj", set()),
-    ("src/test/flac_crc_test.cj", set()),
-    ("src/test/flac_frame_test.cj", set()),
-    ("src/test/flac_meta_test.cj", set()),
-    ("src/test/flac_seektable_test.cj", set()),
-    ("src/test/golden_support_test.cj", set()),
-    ("src/test/golden_test.cj", set()),
-    ("src/test/long_run_test.cj", set()),
-    ("src/test/mp4_tags_test.cj", set()),
-    ("src/test/ogg_crc_test.cj", set()),
-    ("src/test/ogg_tags_test.cj", set()),
-    ("src/test/probe_matrix_test.cj", set()),
+    # --- 测试源码：整目录不随包 ---
+    #   制品包是**源码包**，使用者会直接 `cjpm build` 它。把测试发出去有三重代价：
+    #     ① 测试代码经 @Test 宏展开会产生大量 unreachable / unused 告警
+    #        （本地实测 341 条，其中 unreachable 168 条），淹没使用者构建输出里的
+    #        真实告警；
+    #     ② fuzz、长跑、依赖外部素材的用例本就不该交付给消费者；
+    #     ③ 体积与构建时间全部转嫁给使用者。
+    #   这些用例留在仓库，由仓库侧 `cjpm test` 全量运行（testdata/ 已入库）；
+    #   制品包只交付产品代码与公开文档。
+    ("src/test/", set()),
     # --- 构建产物 ---
     ("target/", set()),
     # --- C 依赖遗留：整体移除后不应再出现（防御性断言，防止将来无意带回）---

@@ -14,6 +14,12 @@
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
 
+  # unused 组警告的官方抑制开关（cjc 在每个该组告警下都会提示 `-Woff unused`）。
+  # 测试代码经 @Test 宏展开后会产生大量 "unreachable block in 'if' expression"
+  # 与 unused 变量/导入告警（本地实测 341 条），会把真实告警淹没。此类告警不改变
+  # 产物语义，故统一关闭；产品代码在本开关前后均为零告警（实测）。
+  compile-option = "-Woff unused"
+
   # —— 中心仓元数据（随 meta-data.json 上架展示）——
   authors = ["yuan_1992"]
   license = ["Apache-2.0"]                                    # 须为 SPDX Identifier
@@ -26,6 +32,9 @@
   # —— 打包范围：白名单（fail-closed）——
   # 规则须用前导斜杠锚定到仓库根目录：不带斜杠的规则在任意层级生效，
   # 会把 tools/*/src/ 这类同名目录一并捞进制品包（实测教训）。
+  #
+  # 只交付**产品代码 + 公开文档 + 许可证**。制品包是源码包，使用者会直接构建它，
+  # 因此包里不该出现：测试源码、fuzz 与长跑用例、仓库侧门禁配置、内部工程文档。
   include = [
     "/src/*.cj",      # 根包文件（有子包时，各父包都必须直接含 .cj 文件）
     "/src/codec",
@@ -36,34 +45,19 @@
     "/src/pcm",
     "/src/probe",
     "/src/stream",
-    "/src/test",      # 测试源码：包内用例**自足**，不依赖任何外部素材
-    "/docs",          # 面向使用者的公开文档
-    # 注：/config（cjlint 规则集）**不随包** —— 它只服务于仓库侧 CI，
-    # 与四个已上架同类包的形态一致（它们也都只有 src + 文档 + 许可证）。
+    "/docs",          # 面向使用者的公开文档（仓库内部文档见 exclude）
     "/LICENSE",
     "/LICENSES.md",
     "/NOTICE"
   ]
 
   # —— 不随包分发 ——
-  # 下列用例依赖仓库内的 testdata/ 语料与外部基准（cjpm 不打包二进制素材），
-  # 随包只会变成跑不起来的用例。它们仍留在仓库中，由仓库侧的 cjpm test 全量运行；
-  # 包内的功能验证由自足用例承担（src/test/selfcontained_*_test.cj）。
   exclude = [
-    "/src/test/bench_decode_test.cj",
-    "/src/test/facade_format_test.cj",
-    "/src/test/flac_bitstream_test.cj",
-    "/src/test/flac_crc_test.cj",
-    "/src/test/flac_frame_test.cj",
-    "/src/test/flac_meta_test.cj",
-    "/src/test/flac_seektable_test.cj",
-    "/src/test/golden_support_test.cj",
-    "/src/test/golden_test.cj",
-    "/src/test/long_run_test.cj",
-    "/src/test/mp4_tags_test.cj",
-    "/src/test/ogg_crc_test.cj",
-    "/src/test/ogg_tags_test.cj",
-    "/src/test/probe_matrix_test.cj",
+    # 测试源码整体不进包：制品不含测试、不含重型用例与外部素材，
+    # 使用者的构建输出不会受测试代码影响。仓库侧 `cjpm test` 仍全量运行它们。
+    "/src/test",
+    # 仓库侧静态检查配置（cjlint 规则集）只服务于 CI，与已上架同类包形态一致。
+    "/config",
     # 内部工程文档（发布流程、编解码扩展评估）：保留在仓库，不发往制品页。
     "/docs/release.md",
     "/docs/codec-expansion-assessment.md",
