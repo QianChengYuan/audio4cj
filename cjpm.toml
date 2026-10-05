@@ -10,7 +10,7 @@
 [package]
   name = "audio4cj"
   cjc-version = "1.2.0"
-  version = "0.1.1"
+  version = "0.1.2"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
 
@@ -37,8 +37,9 @@
     "/src/probe",
     "/src/stream",
     "/src/test",      # 测试源码：包内用例**自足**，不依赖任何外部素材
-    "/config",        # 项目级 cjlint 规则集
     "/docs",          # 面向使用者的公开文档
+    # 注：/config（cjlint 规则集）**不随包** —— 它只服务于仓库侧 CI，
+    # 与四个已上架同类包的形态一致（它们也都只有 src + 文档 + 许可证）。
     "/LICENSE",
     "/LICENSES.md",
     "/NOTICE"

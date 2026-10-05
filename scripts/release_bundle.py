@@ -86,7 +86,6 @@ ALWAYS_PACKED = ["cjpm.toml", "README.md", "README_zh.md"]
 REQUIRED = [
     "cjpm.toml",  # 模块定义（含 include 白名单）
     "src/",  # 库源码
-    "config/cjlint_rule_list.json",  # 项目级静态检查配置
     "docs/",  # 面向使用者的公开文档
     "src/test/",  # 测试源码：随包分发，且**自足**（见下方 FORBIDDEN 的说明）
     "LICENSE",
@@ -116,6 +115,7 @@ FORBIDDEN = [
     ("musics/", set()),  # 本机测试素材
     ("sctiptr/", set()),  # 历史素材生成脚本（Python）
     ("scripts/", set()),  # 开发者脚本（打包、素材生成、发布）一律不进包
+    ("config/", set()),  # cjlint 规则集：只服务于仓库侧 CI，消费者不需要（同类已上架包均无此目录）
     ("examples/", set()),  # 示例工程（独立模块，消费者按需从仓库取）
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     ("docs/release.md", set()),  # 发布流程：内部工程文档

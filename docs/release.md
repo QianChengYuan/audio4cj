@@ -93,7 +93,6 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 |---|---|
 | `cjpm.toml` | 模块定义（含 include 白名单） |
 | `src/` | 库源码，**含 `src/test/` 的自足子集** —— 包内用例不依赖任何外部素材（见「测试素材」一节） |
-| `config/cjlint_rule_list.json` | 项目级静态检查配置 |
 | `docs/`、`README.md`、`LICENSE`、`LICENSES.md`、`NOTICE` | 文档与许可证 |
 
 > **这里曾列出 `build.cj` 与 third-party 下的 6 个 C 文件**（薄封装 + 三个单头文件库
@@ -111,6 +110,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `.codebuddy/` | 本机助手工作数据 |
 | `.github/`、`tools/`、`m0-poc/`、`musics/`、`sctiptr/` | 消费者不需要 |
 | `scripts/` | 开发者脚本（打包 / 素材生成 / 发布）一律不进包 |
+| `config/` | cjlint 规则集：只服务于仓库侧 CI，消费者不需要 |
 | `testdata/` | **测试素材不随包分发**（`cjpm bundle` 不打包二进制，机制上做不到；详见下节） |
 | `docs/release.md`、`docs/codec-expansion-assessment.md` | 内部工程文档（发布流程、编解码扩展评估）：留在仓库，不发往制品页 |
 | `src/test/` 下 14 个依赖语料的用例 | 它们需要 `testdata/` 与 ffmpeg 基准，随包只会变成跑不起来的死用例（见下节） |
