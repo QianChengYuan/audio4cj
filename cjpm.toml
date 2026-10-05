@@ -46,7 +46,7 @@
   ]
 
   # —— 不随包分发 ——
-  # 下列用例依赖仓库内的 testdata/ 语料与 ffmpeg 基准（cjpm 不打包二进制素材），
+  # 下列用例依赖仓库内的 testdata/ 语料与外部基准（cjpm 不打包二进制素材），
   # 随包只会变成跑不起来的用例。它们仍留在仓库中，由仓库侧的 cjpm test 全量运行；
   # 包内的功能验证由自足用例承担（src/test/selfcontained_*_test.cj）。
   exclude = [

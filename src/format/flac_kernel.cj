@@ -4,12 +4,12 @@ package audio4cj.format
  * FLAC 解码内核抽象
  *
  * 【为什么这层抽象还留着（现在只有一个实现）】
- *   它的存在理由曾经很直接：M4 起解码由 dr_libs 经 FFI 承担，要让「谁来解」
+ *   它的存在理由曾经很直接：M4 起解码由第三方 C 库经 FFI 承担，要让「谁来解」
  *   成为**可替换的实现细节**，否则业务层与 FFI 直接耦合，任何替换都要动
  *   demuxer。抽象兑现了回报 —— 把原生 FLAC 切到纯仓颉内核时，实际只改了
  *   FlacFormatReader.init 里的一处选择，其余方法一行未动。
  *
- *   现在 dr_libs 已随 C 依赖整体移除，实现只剩 PureFlacKernel 一个。接口
+ *   现在 第三方 C 库 已随 C 依赖整体移除，实现只剩 PureFlacKernel 一个。接口
  *   **依然保留**，理由有两条，都不是"留着好看"：
  *     1. 它是**契约本身** —— readF32Into 的"0 表示正常结束"、totalFrames 的
  *        "0 表示不可知"这类约定必须有唯一的书写处，散进实现里就会漂移；
@@ -21,14 +21,14 @@ package audio4cj.format
  *   FLAC 这一族无论容器都已是纯仓颉实现。容器差异**不在内核里**，
  *   而在更下层的**字节源**（flac_source.cj / ogg_flac_source.cj）。
  *
- * 【"独立裁判"这条规矩没有随 dr_libs 一起消失】
- *   原先 dr_libs 内核的价值不只是"备选实现"，更是**对照基准**：两者对同一段
- *   音频必须产出逐位相同的 f32 PCM。它走了之后，这条规矩由 **ffmpeg 的 golden
+ * 【"独立裁判"这条规矩没有随 第三方 C 库 一起消失】
+ *   原先 第三方 C 库 内核的价值不只是"备选实现"，更是**对照基准**：两者对同一段
+ *   音频必须产出逐位相同的 f32 PCM。它走了之后，这条规矩由 **独立第三方解码器的 golden
  *   基准**接替（见 src/test/golden_test.cj 与 golden_support_test.cj）——
  *   判据的独立性反而更强：外部实现与我们的解码器之间不再共享任何代码。
  *
  *   `probe_matrix` 的 `flacInOggIsDecodableAndMatchesNativeFlac` 仍是一条
- *   **容器级**互证（同一段 PCM 的两种封装必须逐位相同）。它与"与 ffmpeg 对账"
+ *   **容器级**互证（同一段 PCM 的两种封装必须逐位相同）。它与"与外部实现对账"
  *   是两个不同方向：一个防容器差异，一个防解码算错，缺任一个都会留下盲区。
  *
  * 【放在 format 包而非 codec 包的原因】
@@ -65,7 +65,7 @@ protected interface FlacDecodeKernel {
     func isClosed(): Bool
 }
 
-// 这里曾有 `DrLibsFlacKernel` —— 把 DrLibsDecoder 的方法名映射为内核接口的
-// 适配层。Tier 4 移除 C 依赖后它随 dr_libs 一起删除，其"独立裁判"的职责由
-// ffmpeg 的 golden 基准接替（见 src/test/flac_bitstream_test.cj 与 golden_support.cj）：
+// 这里曾有 `早期的第三方 FFI 内核` —— 把该内核的方法名映射为内核接口的
+// 适配层。Tier 4 移除 C 依赖后它随 第三方 C 库 一起删除，其"独立裁判"的职责由
+// 独立第三方解码器的 golden 基准接替（见 src/test/flac_bitstream_test.cj 与 golden_support.cj）：
 // 判据的独立性反而更强，因为外部实现与我们的解码器之间不再有任何共享代码。

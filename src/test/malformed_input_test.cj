@@ -6,65 +6,46 @@ import std.fs.*
 import std.collection.ArrayList
 
 /* ============================================================================
- * CVE 同类攻击面回归样本 —— 开发文档 §10 M5「fuzz 测试 + CVE 回归样本」
+ * 畸形输入回归 —— 开发文档 §10 M5「fuzz 测试 + 畸形输入回归」
  *
- * 【诚实声明（请勿在后续维护中改写为「CVE 复现」）】
- *   本文件**不是**两个 CVE 的 PoC 复现，原因有二：
+ * 【这一组用例压的是什么】
+ *   面向**不可信输入**的健壮性：把「声明长度远超实际数据」「块链永不结束」
+ *   「容器参数取极端值」这类畸形字段喂进探测层、标签解析器与打开链路，
+ *   断言口径是「**不崩溃 + 异常落在预期集合内**」。
  *
- *   1. 本项目引入的 dr_libs 是**已修复的版本**：
- *        CVE-2025-14369 —— dr_flac 整数溢出致 DoS，受影响 <= 0.13.2；
- *        CVE-2026-29022 —— dr_wav 堆缓冲区溢出，受影响 <= 0.14.4。
- *      两者在仓库中的头文件里均已修复，因此「复现」在定义上就不成立。
- *   2. 漏洞作者使用的精确字节序列（公开 PoC）未获取到。本文件构造的是
- *      **同类攻击面**的畸形输入 —— 即触发该类漏洞的那类字段（声明长度
- *      远超实际数据、块链永不结束、参数取极端值），而非具体 PoC。
+ *   它们针对的是**我们自己的解析器**（纯仓颉）：WAV、FLAC（含帧头 CRC-8、
+ *   帧尾 CRC-16）、Ogg 封装的 FLAC（页重组 + 页 CRC-32），以及 ID3 标签解析。
+ *   本库不依赖任何第三方解码实现，因此这些用例是「敢不敢说自己健壮」的直接依据。
  *
- *   因此本文件的定位是**回归防线**：确保今后任何改动都不会让这些畸形输入
- *   重新变成崩溃或挂起。断言口径是「不崩溃 + 异常落在预期集合内」。
- *
- * 【哪些用例真的走到了 C 代码】（本节已按"MP3 解码移出范围"更新）
- *   - **现在没有任何用例走到 C 代码**：MP3 解码已移出本版本范围
- *     （`AudioFile.open` 在探测层就抛 FormatNotSupportedException，够不到任何
- *     解码器），FLAC 全族与 WAV 都是纯仓颉实现。
- *   - 因此下面两个 MP3 用例如今压的是 **ID3 解析器**（仍是纯仓颉、仍在能力内），
- *     不是 C 解码器 —— 它们原先那句 `cveOpenAndDrain` 断言已因恒真而移除。
- *   - FLAC（**原生与 Ogg 封装**）：解码都走**纯仓颉内核** —— 含帧头 CRC-8、
- *     帧尾 CRC-16，Ogg 侧还有页级重组与页 CRC-32 校验，均不经 dr_flac。
- *     相应用例针对的是**我们自己的解码器**，覆盖同类攻击面。
- *   - WAV：解码走**纯仓颉**实现，不经 dr_wav，故 CVE-2026-29022 在本项目的
- *     解码路径上并不适用。WAV 用例针对的是**我们自己的解析器**，覆盖同类
- *     攻击面（长度字段与实际数据严重不符）。
- *
- *   ⚠ 供应链侧已经收尾：dr_libs 的代码**已不在制品内**（C 依赖整体移除），
- *     那两条 CVE（dr_flac / dr_wav）的暴露面归零，清单可以就此关闭
- *     （见 LICENSES.md 第一节的留痕）。
- *     但**同类攻击面的回归不能停** —— 下面这些用例现在压的是我们自己的解析器，
- *     它们恰恰是"去掉 C 之后还敢不敢说自己健壮"的依据。
+ * 【为什么反复测这几类字段】
+ *   它们是解析器最容易写错、也最容易被恶意构造的地方：长度字段参与内存分配与
+ *   读取窗口计算、块链决定循环能否终止、容器参数决定后续按位/按字节的解释方式。
+ *   一旦某个改动让这类输入重新变成崩溃或挂起，本文件会立刻变红。
  * ========================================================================== */
 
 // ---------------------------------------------------------------------------
 // 辅助
 // ---------------------------------------------------------------------------
 
-private func cveAppendAscii(out: ArrayList<UInt8>, s: String): Unit {
+private func mfAppendAscii(out: ArrayList<UInt8>, s: String): Unit {
     for (b in s.toArray()) {
         out.add(b)
     }
 }
 
-private func cveAppendUInt16LE(out: ArrayList<UInt8>, v: Int64): Unit {
+private func mfAppendUInt16LE(out: ArrayList<UInt8>, v: Int64): Unit {
     out.add(UInt8(v & 0xFF))
     out.add(UInt8((v >> 8) & 0xFF))
 }
 
-private func cveAppendUInt32LE(out: ArrayList<UInt8>, v: Int64): Unit {
+private func mfAppendUInt32LE(out: ArrayList<UInt8>, v: Int64): Unit {
     out.add(UInt8(v & 0xFF))
     out.add(UInt8((v >> 8) & 0xFF))
     out.add(UInt8((v >> 16) & 0xFF))
     out.add(UInt8((v >> 24) & 0xFF))
 }
 
-private func cveWrite(name: String, bytes: Array<UInt8>): String {
+private func mfWrite(name: String, bytes: Array<UInt8>): String {
     File.writeTo(name, bytes)
     name
 }
@@ -74,7 +55,7 @@ private func cveWrite(name: String, bytes: Array<UInt8>): String {
 /// 只接受两种结局：正常完成，或抛出库内异常 / 文件系统异常。
 /// 其它异常（数组越界、空指针、类型转换失败等）会向上传播并使用例失败 ——
 /// 那正是我们想要暴露的缺陷。返回 true 仅表示「结局在预期集合内」。
-private func cveOpenAndDrain(path: String): Bool {
+private func mfOpenAndDrain(path: String): Bool {
     var graceful = true
 
     try (f = AudioFile.open(path)) {
@@ -108,7 +89,7 @@ private func cveOpenAndDrain(path: String): Bool {
 }
 
 /// 仅读标签（不要求可解码）：同样只接受正常返回或预期异常。
-private func cveReadTagsOnly(path: String): Bool {
+private func mfReadTagsOnly(path: String): Bool {
     var graceful = true
 
     try {
@@ -128,15 +109,15 @@ private func cveReadTagsOnly(path: String): Bool {
 // ---------------------------------------------------------------------------
 
 @Test
-class CveRegressionTest {
+class MalformedInputTest {
     /// FLAC：元数据块声明长度 0xFFFFFF（约 16 MB），实际仅 8 字节
     ///
-    /// 这是 CVE-2025-14369 的同类攻击面 —— 该漏洞正是由"声明长度"参与
-    /// 整数运算时溢出引发的。
+    /// 压的是「声明长度参与范围与偏移计算」这一类畸形输入：长度字段必须被
+    /// 当作不可信值 —— 任何按它分配内存或计算读取窗口的做法都会在这里暴露。
     @TestCase
     func flacBlockLengthFarExceedsFile() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "fLaC")
+        mfAppendAscii(out, "fLaC")
         out.add(0x80u8) // isLast = 1、类型 0（STREAMINFO）
         out.add(0xFFu8) // 声明长度 0xFFFFFF
         out.add(0xFFu8)
@@ -145,9 +126,9 @@ class CveRegressionTest {
             out.add(0u8)
         }
 
-        let path = cveWrite("a4cj_cve_flac_huge.flac", out.toArray())
-        @Assert(cveOpenAndDrain(path))
-        @Assert(cveReadTagsOnly(path))
+        let path = mfWrite("a4cj_mf_flac_huge.flac", out.toArray())
+        @Assert(mfOpenAndDrain(path))
+        @Assert(mfReadTagsOnly(path))
         remove(path)
     }
 
@@ -158,7 +139,7 @@ class CveRegressionTest {
     @TestCase
     func flacUnterminatedBlockChain() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "fLaC")
+        mfAppendAscii(out, "fLaC")
 
         // 首个块：非最后一块、类型 0、长度 34（合法的 STREAMINFO 长度）
         out.add(0x00u8)
@@ -179,9 +160,9 @@ class CveRegressionTest {
             i += 1
         }
 
-        let path = cveWrite("a4cj_cve_flac_chain.flac", out.toArray())
-        @Assert(cveOpenAndDrain(path))
-        @Assert(cveReadTagsOnly(path))
+        let path = mfWrite("a4cj_mf_flac_chain.flac", out.toArray())
+        @Assert(mfOpenAndDrain(path))
+        @Assert(mfReadTagsOnly(path))
         remove(path)
     }
 
@@ -193,7 +174,7 @@ class CveRegressionTest {
     @TestCase
     func flacAbsurdStreamInfoIsHandled() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "fLaC")
+        mfAppendAscii(out, "fLaC")
         out.add(0x80u8)
         out.add(0u8)
         out.add(0u8)
@@ -205,40 +186,40 @@ class CveRegressionTest {
             out.add(0xAAu8)
         }
 
-        let path = cveWrite("a4cj_cve_flac_zero.flac", out.toArray())
-        @Assert(cveOpenAndDrain(path))
-        @Assert(cveReadTagsOnly(path))
+        let path = mfWrite("a4cj_mf_flac_zero.flac", out.toArray())
+        @Assert(mfOpenAndDrain(path))
+        @Assert(mfReadTagsOnly(path))
         remove(path)
     }
 
     /// WAV：RIFF 长度与 data 长度都被谎报为极大值
     ///
-    /// 注意：这些样本针对的是**纯仓颉的 WAV 解析器**（本项目解码 WAV 不经
-    /// dr_wav），覆盖"长度字段远超实际数据"这一类攻击面。
+    /// 这些样本针对的是**我们自己的 WAV 解析器**，覆盖「长度字段远超实际数据」
+    /// 这一类畸形输入；断言口径是不崩溃、不挂起、异常落在预期集合内。
     @TestCase
     func wavOversizedLengthFields() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "RIFF")
-        cveAppendUInt32LE(out, 0xFFFFFFFF) // RIFF 长度谎报
-        cveAppendAscii(out, "WAVE")
+        mfAppendAscii(out, "RIFF")
+        mfAppendUInt32LE(out, 0xFFFFFFFF) // RIFF 长度谎报
+        mfAppendAscii(out, "WAVE")
 
-        cveAppendAscii(out, "fmt ")
-        cveAppendUInt32LE(out, 16)
-        cveAppendUInt16LE(out, 1) // PCM
-        cveAppendUInt16LE(out, 1) // 单声道
-        cveAppendUInt32LE(out, 44100)
-        cveAppendUInt32LE(out, 88200)
-        cveAppendUInt16LE(out, 2)
-        cveAppendUInt16LE(out, 16)
+        mfAppendAscii(out, "fmt ")
+        mfAppendUInt32LE(out, 16)
+        mfAppendUInt16LE(out, 1) // PCM
+        mfAppendUInt16LE(out, 1) // 单声道
+        mfAppendUInt32LE(out, 44100)
+        mfAppendUInt32LE(out, 88200)
+        mfAppendUInt16LE(out, 2)
+        mfAppendUInt16LE(out, 16)
 
-        cveAppendAscii(out, "data")
-        cveAppendUInt32LE(out, 0xFFFFFFF0) // data 长度谎报（约 4 GB）
+        mfAppendAscii(out, "data")
+        mfAppendUInt32LE(out, 0xFFFFFFF0) // data 长度谎报（约 4 GB）
         for (i in 0..32) { // 实际只有 32 字节
             out.add(0u8)
         }
 
-        let path = cveWrite("a4cj_cve_wav_huge.wav", out.toArray())
-        @Assert(cveOpenAndDrain(path))
+        let path = mfWrite("a4cj_mf_wav_huge.wav", out.toArray())
+        @Assert(mfOpenAndDrain(path))
         remove(path)
     }
 
@@ -246,40 +227,40 @@ class CveRegressionTest {
     @TestCase
     func wavAbsurdFormatFields() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "RIFF")
-        cveAppendUInt32LE(out, 36)
-        cveAppendAscii(out, "WAVE")
+        mfAppendAscii(out, "RIFF")
+        mfAppendUInt32LE(out, 36)
+        mfAppendAscii(out, "WAVE")
 
-        cveAppendAscii(out, "fmt ")
-        cveAppendUInt32LE(out, 16)
-        cveAppendUInt16LE(out, 1) // PCM
-        cveAppendUInt16LE(out, 0) // 声道数 0（非法）
-        cveAppendUInt32LE(out, 44100)
-        cveAppendUInt32LE(out, 0) // 平均字节率 0
-        cveAppendUInt16LE(out, 0) // block align 0
-        cveAppendUInt16LE(out, 0) // 位深 0（非法）
+        mfAppendAscii(out, "fmt ")
+        mfAppendUInt32LE(out, 16)
+        mfAppendUInt16LE(out, 1) // PCM
+        mfAppendUInt16LE(out, 0) // 声道数 0（非法）
+        mfAppendUInt32LE(out, 44100)
+        mfAppendUInt32LE(out, 0) // 平均字节率 0
+        mfAppendUInt16LE(out, 0) // block align 0
+        mfAppendUInt16LE(out, 0) // 位深 0（非法）
 
-        cveAppendAscii(out, "data")
-        cveAppendUInt32LE(out, 4)
+        mfAppendAscii(out, "data")
+        mfAppendUInt32LE(out, 4)
         for (i in 0..4) {
             out.add(0u8)
         }
 
-        let path = cveWrite("a4cj_cve_wav_fmt.wav", out.toArray())
-        @Assert(cveOpenAndDrain(path))
+        let path = mfWrite("a4cj_mf_wav_fmt.wav", out.toArray())
+        @Assert(mfOpenAndDrain(path))
         remove(path)
     }
 
     /// MP3：ID3v2 头声明 synchsafe 最大长度（约 256 MB），实际不足 140 字节
     ///
     /// 【重点变了】解码路径已不在范围内，`AudioFile.open` 在探测层就被拦下、
-    /// 够不到任何解码器 —— 原先那句 `cveOpenAndDrain` 断言现在**恒真**，
+    /// 够不到任何解码器 —— 原先那句 `mfOpenAndDrain` 断言现在**恒真**，
     /// 留着只会让人以为这里还在验 C 路径。真正仍有价值的是 **ID3 解析器**：
-    /// 它仍是纯仓颉、仍在本版本能力内，`cveReadTagsOnly` 正是压它的那条。
+    /// 它仍是纯仓颉、仍在本版本能力内，`mfReadTagsOnly` 正是压它的那条。
     @TestCase
     func mp3OversizedId3Tag() {
         let out = ArrayList<UInt8>()
-        cveAppendAscii(out, "ID3")
+        mfAppendAscii(out, "ID3")
         out.add(3u8)
         out.add(0u8)
         out.add(0u8)
@@ -291,8 +272,8 @@ class CveRegressionTest {
             out.add(0x55u8)
         }
 
-        let path = cveWrite("a4cj_cve_mp3_id3.mp3", out.toArray())
-        @Assert(cveReadTagsOnly(path))
+        let path = mfWrite("a4cj_mf_mp3_id3.mp3", out.toArray())
+        @Assert(mfReadTagsOnly(path))
         remove(path)
     }
 
@@ -311,8 +292,8 @@ class CveRegressionTest {
             out.add(UInt8(i & 0xFF))
         }
 
-        let path = cveWrite("a4cj_cve_mp3_garbage.mp3", out.toArray())
-        @Assert(cveReadTagsOnly(path))
+        let path = mfWrite("a4cj_mf_mp3_garbage.mp3", out.toArray())
+        @Assert(mfReadTagsOnly(path))
         remove(path)
     }
 }

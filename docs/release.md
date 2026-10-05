@@ -72,7 +72,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 
 > **素材生成脚本不随包**（`scripts/gen_testdata.sh` / `.ps1`）：它们服务于**仓库侧**的
 > 全量测试（`testdata/` 已入库，需要重建时才跑）。包内的功能验证走另一条路 ——
-> **自足用例**：输入在仓颉里现场构造，不需要素材，也不需要 ffmpeg（见「测试素材」一节）。
+> **自足用例**：输入在仓颉里现场构造，不需要素材，也不需要任何外部工具（见「测试素材」一节）。
 
 ## 包内容契约
 
@@ -138,7 +138,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 
 | 项 | 实情 |
 |---|---|
-| 包内 `cjpm test` | **143 条全部真实执行**（`PASSED=143, SKIPPED=0, ERROR=0, FAILED=0`），**不需要 ffmpeg、不需要素材、不需要联网**。实测：解包到干净目录直接 `cjpm test` |
+| 包内 `cjpm test` | **143 条全部真实执行**（`PASSED=143, SKIPPED=0, ERROR=0, FAILED=0`），**不需要任何外部工具、不需要素材、不需要联网**。实测：解包到干净目录直接 `cjpm test` |
 | 输入从哪来 | 现场构造：WAV（RIFF + PCM）、FLAC（**verbatim 子帧** + 规范 CRC-8/CRC-16）、Ogg 页（映射头 + 跨页续传 + 页 CRC-32）、MP4 box 树、ID3v1/v2 与 Vorbis comment。见 `src/test/selfcontained_test.cj` |
 | 判据从哪来 | 由构造式给出：期望 PCM 就是构造时写入的样本（FLAC）；Ogg 封装后的解码结果必须与原生 FLAC **逐位相同** |
 | 负向用例 | 两组"改坏一个字节必须报错"：FLAC 帧 CRC-16、Ogg 页 CRC-32。它们与正向用例同等重要 —— 对"损坏被静默接受"是盲的测试等于没有 |

@@ -264,7 +264,7 @@ class FlacDecodeTest {
             @Assert(buf.channels == 1)
             @Assert(buf.sampleRate == 44100)
 
-            // 归一化：v / 32768.0（与 ffmpeg 一致）
+            // 归一化：v / 32768.0（与主流解码器口径一致）
             @Assert(buf.samples[0] == -1.0)
             @Assert(buf.samples[1] == -0.5)
             @Assert(buf.samples[2] == -0.25)

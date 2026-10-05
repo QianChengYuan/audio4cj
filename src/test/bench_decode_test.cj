@@ -36,7 +36,7 @@ import audio4cj.format.PureFlacKernel
 private let BD_WAV_16: String = "testdata/wav/wav_s16_44100_stereo.wav"
 private let BD_FLAC_16: String = "testdata/flac/flac_s16_44100_stereo.flac"
 private let BD_FLAC_24: String = "testdata/flac/flac_s24_44100_stereo.flac"
-// 这里曾有 BD_MP3 及其基准。MP3 解码已移出本版本范围（它依赖 C 库 dr_mp3，
+// 这里曾有 BD_MP3 及其基准。MP3 解码已移出本版本范围（它依赖第三方 C 库，
 // 而带 C 的制品包在中心仓审核中被退回），故相应基准与健全性断言一并移除。
 
 /// 累加器：让基准体的计算结果"有去处"，避免被优化掉。

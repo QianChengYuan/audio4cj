@@ -135,7 +135,7 @@ public func pcmToF32(data: Array<UInt8>, bitsPerSample: Int64): Array<Float32>
 
 **返回值**：f32 交错样本数组。位深不受支持时返回空数组。
 
-**归一化规则**（与 ffmpeg 一致）：
+**归一化规则**（与主流解码器口径一致）：
 
 | 位深 | 数据类型 | 归一化公式 |
 |---|---|---|

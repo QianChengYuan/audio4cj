@@ -76,7 +76,7 @@ public static func open(path: String): AudioFile
 |---|---|---|
 | `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深转换） | `fmt` 中的真实位深（8 / 16 / 24 / 32） |
 | `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
-| `mp3` | **不在解码范围内**（其解码曾用 dr_libs FFI，已移出本版本）—— `open()` 会抛 `FormatNotSupportedException`，但标签仍可用 `readTags` 读取 | ——（无解码输出） |
+| `mp3` | **不在解码范围内**（其解码曾用 第三方 C 库 FFI，已移出本版本）—— `open()` 会抛 `FormatNotSupportedException`，但标签仍可用 `readTags` 读取 | ——（无解码输出） |
 | `ogg` + `flac` | **纯仓颉**（`PureFlacKernel` + `OggFlacByteSource`）—— Ogg 容器先被重建成一条与原生 FLAC 逐字节等同的流（页体重组 + 页 CRC-32 校验），再交给同一套解码逻辑 | `STREAMINFO` 中的真实位深 |
 
 其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，

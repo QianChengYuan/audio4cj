@@ -17,8 +17,8 @@ import audio4cj.meta.*
  *     FileByteSource    ← 原生：字节就是文件本身
  *     OggFlacByteSource ← Ogg ：字节是各页页体重建出来的流
  *   内核因此只需被告知"字节流是不是 Ogg 重建出来的"（即 `oggWrapped`）。
- *   解码内核只此一个（PureFlacKernel）；曾经的 DrLibsFlacKernel 已随 C 依赖
- *   整体移除，它的"独立裁判"职责现由 **ffmpeg 的 golden 基准**接替 ——
+ *   解码内核只此一个（PureFlacKernel）；早期的第三方 FFI 内核已随 C 依赖
+ *   整体移除，它的"独立裁判"职责现由 **独立第三方解码器的 golden 基准**接替 ——
  *   判据的独立性反而更强：外部实现与我们的解码器之间不再有任何共享代码。
  *
  * 分工（与 WAV 保持一致）：
@@ -28,7 +28,7 @@ import audio4cj.meta.*
  *
  * 【本类不认识任何具体内核】
  *   自 M7 起本类只依赖 FlacDecodeKernel 接口，换内核不需改这里一行 ——
- *   这正是抽接口的目的：把原生 FLAC 从 dr_libs 换成纯仓颉内核时，确实只动了
+ *   这正是抽接口的目的：把原生 FLAC 从第三方 C 库换成纯仓颉内核时，确实只动了
  *   init 中的一处选择，其余方法一行未改。内核的选取发生在 init 中，
  *   依据是调用方传入的容器信息（不在这里重新识别容器）。
  *
@@ -68,7 +68,7 @@ protected class FlacFormatReader <: FormatReader {
         this._path = path
 
         // 唯一的生产内核。此处曾是一个 if/else 在两个内核间二选一
-        // （原生走纯仓颉、Ogg 走 dr_libs）；Ogg 源落地后收敛为一处 ——
+        // （原生走纯仓颉、Ogg 走第三方 C 库）；Ogg 源落地后收敛为一处 ——
         // 容器差异已经下沉到字节源，本层不再需要分支。
         this._kernel = PureFlacKernel(path, oggWrapped)
 
@@ -137,7 +137,7 @@ protected class FlacFormatReader <: FormatReader {
     /// 按毫秒寻址，返回**实际落点毫秒**。
     ///
     /// 实现说明（开发文档 §10 M4 的一处**有意偏离**）：文档原定「FLAC 用
-    /// SEEKTABLE + 二分」，但当时代码走 dr_libs，其内部已实现该策略并额外处理了
+    /// SEEKTABLE + 二分」，但当时代码走第三方 C 库，其内部已实现该策略并额外处理了
     /// 无 SEEKTABLE 时的回退，自行重写既冗余又更易出错，故定位一律委托给内核。
     ///
     /// 该约定在换内核后依然成立，且**偏离本身已经消失**：纯仓颉内核现已自行实现

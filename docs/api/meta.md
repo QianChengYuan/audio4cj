@@ -241,7 +241,7 @@ func dumpExtras(tag: Tag): Unit {
 - **Speex 注释头未覆盖**：Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03"vorbis"` / `"OpusTags"`）都不同，因此对 Speex 返回**空 `Tag`**（不报错）；
 - **FLAC 的 `PICTURE` 块未覆盖**（原生 FLAC 与 Ogg-FLAC 均如此）。注意 **MP4 的 `covr` 与 ID3v2 的 `APIC` 已支持封面**；
 - **Vorbis comment 的 `METADATA_BLOCK_PICTURE` 被显式跳过**：解析它需要 base64 解码，尚未实现。跳过而不是放进 `extra`，是为了避免把数十至数百 KB 的 base64 文本灌进 `Tag`；
-- **MP4 的 `moov` 只覆盖文件头与文件尾两种布局**：先查头部窗口（faststart），未命中再查尾部窗口（ffmpeg 默认）。理论上 `moov` 只在这两端，若遇到中间布局的文件则读不到标签；
+- **MP4 的 `moov` 只覆盖文件头与文件尾两种布局**：先查头部窗口（faststart），未命中再查尾部窗口（主流封装工具的默认行为）。理论上 `moov` 只在这两端，若遇到中间布局的文件则读不到标签；
 - **OGG 只取首个逻辑流的注释头**：Ogg 允许一个文件内复用多条逻辑流（音视频复用即为典型），本实现只解析**首个带 BOS 标志**的流，不把不同 serial 的包混拼；
 - **不解析 ID3v2 的扩展头内容**：仅跳过，不影响标签字段；
 - **同一字段多次出现时后者覆盖前者**：标签中出现重复帧属异常，取最后一个作为确定行为；

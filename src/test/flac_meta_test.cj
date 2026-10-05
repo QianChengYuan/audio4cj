@@ -12,7 +12,7 @@ import std.fs.*
  * 【本文件的核心验证策略：与素材规格对照】
  *   解析出的参数必须与**生成素材时要求的参数**一致（见 scripts/gen_testdata.sh 的
  *   DUR_* 常量，以及原 sctiptr/gen_audio_fixtures.py 的 REFSPECS —— 后者为历史实现）
- *   与各 ffmpeg 调用）。这条判据原先是"与 dr_libs 报告的参数完全一致"，
+ *   与各 独立第三方解码器 调用）。这条判据原先是"与 dr_libs 报告的参数完全一致"，
  *   换成规格后其实**更独立**：dr_libs 与我们的解析器同属"读同一个 STREAMINFO"，
  *   而素材规格来自我们之外的第三方工具。
  *
@@ -44,16 +44,16 @@ class FlacMetaTest {
     //
     // 【判据换了，但要求没降】原先是"纯仓颉解析出的参数必须与 dr_libs 报的完全
     //   一致"；现在改为"必须与生成素材时要求的参数一致"。后者其实**更独立** ——
-    //   dr_libs 与我们的解析器同属"读同一个 STREAMINFO"，而素材规格来自 ffmpeg 的
+    //   dr_libs 与我们的解析器同属"读同一个 STREAMINFO"，而素材规格来自 独立第三方解码器 的
     //   编码参数（scripts/gen_testdata.sh / .ps1，原为 sctiptr/gen_audio_fixtures.py），
     //   是我们之外的第三方事实。
     // ------------------------------------------------------------------
 
     /// 各素材的参数必须与生成规格一致。
     ///
-    /// 采样率 / 声道 / 位深取自 `scripts/gen_testdata.sh` 的 ffmpeg 调用与 `DUR_*` 常量，
+    /// 采样率 / 声道 / 位深取自 `scripts/gen_testdata.sh` 的 独立第三方解码器 调用与 `DUR_*` 常量，
     /// 与原 `sctiptr/gen_audio_fixtures.py` 的 REFSPECS 表一致（后者为历史实现）。
-    /// 注意 44.1k 立体声那条用的是 `-sample_fmt s32`：ffmpeg 据此写出 **24 位**
+    /// 注意 44.1k 立体声那条用的是 `-sample_fmt s32`：独立第三方解码器 据此写出 **24 位**
     /// （FLAC 没有 32 位整型），故期望位深是 24 —— 这一处最容易照名字想当然
     /// （名字叫 s24，参数却是 s32），测试把它固定下来。
     @TestCase

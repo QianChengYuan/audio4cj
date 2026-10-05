@@ -12,13 +12,13 @@ import std.fs.*
  *
  * 【为什么单独有这一组】
  *   仓库侧的测试分两类：
- *     · 依赖 testdata/ 语料与 ffmpeg 基准的用例（golden 比对、probe_matrix、
+ *     · 依赖 testdata/ 语料与外部基准的用例（golden 比对、probe_matrix、
  *       各格式的真实文件用例）—— 它们验证"链路通"与"与外部实现逐样本一致"；
  *     · 自足用例 —— 在仓颉里现场构造输入，不依赖任何外部素材。
  *   而 cjpm 官方规则明确"**所有二进制文件**默认不打包"，因此第一类在制品包内
  *   没有意义（包内没有 testdata/）。制品包内的功能验证由本文件承担：
  *   所有输入都在运行时构造，解包后 `cjpm test` 即可完整跑通 ——
- *   不需要 ffmpeg、不需要任何素材、不需要联网。
+ *   不需要任何外部工具、不需要任何素材、不需要联网。
  *
  * 【构造原则：能造的都造，且期望值由构造式给出】
  *   WAV  —— RIFF 头 + PCM 样本，直接写。
@@ -1125,7 +1125,7 @@ class SelfContainedMp4Test {
         remove(path)
     }
 
-    /// moov 在文件末尾（ffmpeg 默认布局）：mdat 里夹入 "moov" 干扰字样，
+    /// moov 在文件末尾（主流封装工具的默认布局）：mdat 里夹入 "moov" 干扰字样，
     /// 验证定位靠长度关系而不是搜字符串。
     @TestCase
     func trailingMoovIsFound() {

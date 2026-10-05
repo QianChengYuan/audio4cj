@@ -9,7 +9,7 @@ import audio4cj.pcm.AudioBuffer
  *
  * 解码器统一接口：一编码一实现，注册即用。
  * 本版本各实现均为纯仓颉（WAV / FLAC / Ogg-FLAC）。
- * （历史上 FLAC 等曾由 dr_libs 的 FFI 适配层实现，那层须与 FFI 声明同包 ——
+ * （历史上 FLAC 等曾由第三方 C 库的 FFI 适配层实现，那层须与 FFI 声明同包 ——
  * 因 foreign 函数无法带访问修饰符、父包访问不到子包的 internal 声明；
  * 这套约束已随 C 依赖整体移除。）
  *

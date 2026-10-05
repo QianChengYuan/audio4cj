@@ -36,7 +36,7 @@ import std.collection.*
  * 【输入约定】
  *   `parseMp4Tags` 接收文件的一段字节与其中 `moov` box 的**起始下标**。
  *   之所以由调用方给出 moov 位置：`moov` 既可能在文件头部（做过 faststart
- *   优化），也可能在**文件末尾**（ffmpeg 的默认行为）—— 后者要用"尾部窗口 +
+ *   优化），也可能在**文件末尾**（主流封装工具的默认行为）—— 后者要用"尾部窗口 +
  *   尾部对齐"定位，属 I/O 侧的职责（见 file_tags.cj）。
  * ========================================================================== */
 
@@ -418,7 +418,7 @@ private func mp4FindIlst(data: Array<UInt8>, moovStart: Int64): ?(Int64, Int64) 
 ///
 /// 层级缺失、结构非法、没有标签 —— 一律返回**空 Tag**，绝不抛异常：
 /// 「没有标签」不是错误（§4.1 铁律 1）。而 `moov` 的位置由调用方给出，
-/// 是因为它可能位于文件头（faststart）或文件尾（ffmpeg 默认）。
+/// 是因为它可能位于文件头（faststart）或文件尾（主流封装工具的默认行为）。
 protected func parseMp4Tags(data: Array<UInt8>, moovStart: Int64): Tag {
     let tag = Tag()
 

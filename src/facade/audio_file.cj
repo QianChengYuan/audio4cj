@@ -30,7 +30,7 @@ import std.collection.*
  * 当前可解码范围（与 probe 层的 supported 字段保持一致）：
  *   WAV、**FLAC**、**Ogg 封装的 FLAC** —— 三者均为纯仓颉实现。
  *
- * 【MP3：自本版本起不在解码范围内】它曾是唯一依赖 C 库（dr_mp3）的格式，
+ * 【MP3：自本版本起不在解码范围内】它曾是唯一依赖 C 库的格式，
  *   而"制品包里带 C"正是中心仓审核退回的原因。但 MP3 **仍可被识别、标签仍可读**
  *   （见 readTags），故它不是"完全不支持"，而是"只支持标签"。
  *   取舍的完整记录见 docs/codec-expansion-assessment.md。

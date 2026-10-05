@@ -150,7 +150,7 @@ class FacadeFormatTest {
         @Expect(message.contains("readTags"), true)
 
         // 4) 标签读取完全不受影响。这部分是本条用例最实在的收获：
-        //    它是**第一个**读真实 ffmpeg 产出 MP3 的标签用例
+        //    它是**第一个**读真实 独立第三方解码器 产出 MP3 的标签用例
         //    （read_tags_test 用的是手工构造的字节，压边界；两者互补）。
         let tag = AudioFile.readTags(path)
         @Expect(tag.hasNoStandardFields(), false)

@@ -20,7 +20,7 @@ import std.fs.*
  *
  * 本层只负责**识别**，不负责解码。「是否可解码」由 supported 字段如实标注：
  * 目前 WAV / FLAC / **Ogg 封装的 FLAC** 为 true（三者都是本库的纯仓颉实现）；
- * **MP3 自本版本起为 false**（它能被识别、标签也能读，但解码曾依赖 C 库 dr_mp3，
+ * **MP3 自本版本起为 false**（它能被识别、标签也能读，但解码曾依赖第三方 C 库，
  * 已移出范围 —— 取舍记录见 docs/codec-expansion-assessment.md）；
  * 其余容器（Ogg/Vorbis、Ogg/Opus、MP4、APE、WMA 等）同样会被准确
  * 识别、同样给出子编码，只是 supported 为 false。这样做的目的是让
@@ -115,7 +115,7 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
         let codec = detectOggCodec(head)
         // Ogg 封装的 FLAC 是**可解码的**：本库有它自己的纯仓颉实现 —— 先把各页
         // 页体重建成一条与原生 FLAC 逐字节等同的流，再走同一套解码逻辑
-        // （见 format/ogg_flac_source.cj）。这一点起初是借 dr_flac 对 Ogg 的
+        // （见 format/ogg_flac_source.cj）。这一点起初是借第三方实现对 Ogg 的
         // transparent 支持接出来的，现已不依赖任何 C 实现。
         // 其余 Ogg 子编码（Vorbis / Opus / Speex）当前没有可用解码器。
         return ProbeResult("ogg", "audio/ogg", codec == "flac", codec: codec)
@@ -143,7 +143,7 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
 
     // ---- ID3v2 标记的 MP3 ----
     // 【supported = false 的确切含义】容器识别照旧（仍返回 container="mp3"），
-    // 但**解码不受支持** —— MP3 解码曾依赖 C 库 dr_mp3，已移出本版本范围。
+    // 但**解码不受支持** —— MP3 解码曾依赖第三方 C 库，已移出本版本范围。
     // 标签读取不受影响：readTags 走的是与 supported 无关的另一条分派。
     if (matchAt(head, 0, ascii("ID3"))) {
         return ProbeResult("mp3", "audio/mpeg", false)
