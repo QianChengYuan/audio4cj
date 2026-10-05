@@ -58,22 +58,12 @@ cjpm clean          # 清理构建产物
 > `AUDIO4CJ_FORCE_C_BUILD=1` 强制重编译。C 依赖整体移除后，这些机制、产物目录与那个
 > 环境变量**都不再存在**。）
 
-> 测试套件**不依赖 ffmpeg**（基准与素材已随仓库入库），也不需要联网下载任何东西。
-> ⚠ `testdata/` **不随制品包分发**（二进制，`cjpm bundle` 本就不打包），但包内**带**
-> `src/test/` 与两份素材生成脚本。因此在包内跑 `cjpm test` 有两条路：
+> 测试套件**不依赖 ffmpeg**，也不需要联网下载任何东西。
+> ⚠ `testdata/` **不随制品包分发**（二进制，`cjpm bundle` 本就不打包），因此依赖素材的
+> 用例不随包；包内另有一套**自足用例**（输入在仓颉里现场构造），解包后直接
+> `cjpm test` 即为 **143 条全部真实执行、零跳过**（含"改坏一个字节必须报错"的负向用例）。
 >
-> - **不生成素材**：约 165 条照常通过（含不依赖素材的端到端解码），41 条依赖素材的
->   **明确跳过**、不判失败；
-> - **生成素材后再跑**：先执行随包的生成脚本（需要 ffmpeg），它会就地重建
->   `testdata/`，再 `cjpm test`：
->
-> ```bash
-> bash scripts/gen_testdata.sh                              # Linux / macOS / Git Bash
-> powershell -ExecutionPolicy Bypass -File scripts\gen_testdata.ps1   # Windows
-> cjpm test                                                 # 实测 206 / 206 全通过
-> ```
->
-> 详见 [发布打包](release.md) 的「测试素材不随包分发，以及包内如何跑通全量测试」一节。
+> 想跑包含语料与 ffmpeg 基准的全量 **222 条**，请从**源码仓库**获取（`testdata/` 已入库）。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例

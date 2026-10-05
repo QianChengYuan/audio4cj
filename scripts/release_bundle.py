@@ -88,10 +88,9 @@ REQUIRED = [
     "src/",  # 库源码
     "config/cjlint_rule_list.json",  # 项目级静态检查配置
     "docs/",  # 面向使用者的公开文档
-    "src/test/",  # 测试源码：随包分发，使包内可自证验证（与下方两个生成脚本成对）
-    "scripts/gen_testdata.sh",  # 素材生成脚本（POSIX），随包分发
-    "scripts/gen_testdata.ps1",  # 素材生成脚本（PowerShell），随包分发
+    "src/test/",  # 测试源码：随包分发，且**自足**（见下方 FORBIDDEN 的说明）
     "LICENSE",
+    "LICENSES.md",
     "NOTICE",
     "README.md",
 ]
@@ -115,20 +114,34 @@ FORBIDDEN = [
     ("tools/", set()),  # 已废弃的 cjbind 开发工具
     ("m0-poc/", set()),  # M0 历史验证工程
     ("musics/", set()),  # 本机测试素材
-    ("sctiptr/", set()),  # 历史素材生成脚本（Python）；现行来源是 scripts/gen_testdata.{sh,ps1}，二者都不随包
-    ("scripts/", {"gen_testdata.sh", "gen_testdata.ps1"}),  # 仅放行这两个素材生成脚本；release_bundle.py 等开发者脚本不进包
+    ("sctiptr/", set()),  # 历史素材生成脚本（Python）
+    ("scripts/", set()),  # 开发者脚本（打包、素材生成、发布）一律不进包
     ("examples/", set()),  # 示例工程（独立模块，消费者按需从仓库取）
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
-    # --- 测试源码：**随包分发**（此处曾有 ("src/test/", set()) 的禁止项，决策已翻转）---
-    #   为什么翻转：把测试排除在包外并不能解决"功能无法在目标系统上验证"，反而让
-    #   官方退回条款「功能性测试未通过（无效三方库）」更成立 —— 包里连可运行的
-    #   验证都没有。现行做法是让 src/test 与 scripts/gen_testdata.{sh,ps1} **成对入包**：
-    #   拿到包的人先跑生成脚本（包内没有 testdata/，因为 cjpm 不打包二进制），
-    #   再跑 cjpm test，即可在包内得到 206 通过 / 0 失败。
-    #   正向断言改由 REQUIRED 的 "src/test/" 承担：白名单若漏掉 /src/test 会立刻报警，
-    #   不必再用禁止项去钉。
-    #   另：素材整体缺失时测试会**明确跳过而非失败**（见 src/test/golden_support_test.cj
-    #   的 gsSkipIfNoFixtures），所以"只解包、不生成素材"不会是一片红。
+    ("docs/release.md", set()),  # 发布流程：内部工程文档
+    ("docs/codec-expansion-assessment.md", set()),  # 编解码扩展评估：内部工程文档
+    # --- 依赖仓库语料（testdata/ + ffmpeg 基准）的用例：不随包 ---
+    #   包内测试必须**自足**。cjpm 不打包二进制素材，而这些用例依赖它，随包只会
+    #   得到跑不起来的死用例 —— 早先的写法是"素材缺失就静默跳过"，代价是包内
+    #   一片**假绿**：包内报"206 通过"，而其中 42 个用例一行都没执行
+    #   （守卫静默 return，测试框架照样计为通过）。
+    #   现行做法：它们留在仓库、由仓库侧全量运行（testdata/ 已入库）；
+    #   包内的功能验证由自足用例承担（src/test/selfcontained_*_test.cj），
+    #   后者在仓颉里现场构造输入，不需要任何外部素材与外部工具。
+    ("src/test/bench_decode_test.cj", set()),
+    ("src/test/facade_format_test.cj", set()),
+    ("src/test/flac_bitstream_test.cj", set()),
+    ("src/test/flac_crc_test.cj", set()),
+    ("src/test/flac_frame_test.cj", set()),
+    ("src/test/flac_meta_test.cj", set()),
+    ("src/test/flac_seektable_test.cj", set()),
+    ("src/test/golden_support_test.cj", set()),
+    ("src/test/golden_test.cj", set()),
+    ("src/test/long_run_test.cj", set()),
+    ("src/test/mp4_tags_test.cj", set()),
+    ("src/test/ogg_crc_test.cj", set()),
+    ("src/test/ogg_tags_test.cj", set()),
+    ("src/test/probe_matrix_test.cj", set()),
     # --- 构建产物 ---
     ("target/", set()),
     # --- C 依赖遗留：整体移除后不应再出现（防御性断言，防止将来无意带回）---

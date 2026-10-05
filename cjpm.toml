@@ -1,21 +1,10 @@
 # ============================================================================
 # audio4cj —— 仓颉统一音频解析库
-# 文档：docs/README.md
-# 许可证：Apache-2.0（见 LICENSE / NOTICE / LICENSES.md）
+#   文档：docs/quickstart.md、docs/api/      许可证：Apache-2.0（见 LICENSE / NOTICE）
 #
-# 解码实现分工（**全部为纯仓颉实现 —— 本库不依赖任何 C 代码**）：
-#   WAV             —— 未压缩容器，其「解码」本质是位深转换，不含浮点 DSP
-#   FLAC            —— 帧解码 + CRC-8/CRC-16 校验 + SEEKTABLE 定位
-#                      （见 src/format/flac_bitstream.cj）
-#   Ogg 封装的 FLAC —— 页级重组 + 页 CRC-32 校验，把 Ogg 重建成一条与原生 FLAC
-#                      逐字节等同的流（见 src/format/ogg_flac_source.cj）
-#   MP3             —— **不在解码范围内**：容器仍被识别、ID3 标签仍可读
-#                      （见 src/meta/file_tags.cj），但不解码
-#
-# 【本库曾长期依赖 C 库 dr_libs（经 FFI），现已整体移除。原因】制品包在中心仓
-#   审核被退回，而"包内带 C 源码 + 构建期调用外部 C 编译器"是最可疑的特征。
-#   移除之后：包内不再有任何 C 源码、不再需要 [ffi.c]、消费者侧也不再需要
-#   C 工具链。取舍的完整记录见 docs/codec-expansion-assessment.md。
+#   解码全部为纯仓颉实现：WAV（位深转换）、FLAC（帧解码 + CRC-8/16 + SEEKTABLE）、
+#   Ogg 封装的 FLAC（页重组 + 页 CRC-32）。MP3 不在解码范围内 —— 容器仍可识别、
+#   ID3 标签仍可读，但不解码。
 # ============================================================================
 
 [package]
@@ -24,78 +13,22 @@
   version = "0.1.1"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
-  # —— 中心仓元数据（发布时展示在制品页；规格与实测依据见 docs/release.md 的「发布元数据」章节）——
-  # 这些字段会进入 target/meta-data.json，即随制品上传、供仓库端入库检查的元数据。
+
+  # —— 中心仓元数据（随 meta-data.json 上架展示）——
   authors = ["yuan_1992"]
-  # license 取值须遵循 SPDX Identifier 规范（官方要求）。
-  license = ["Apache-2.0"]
-  # repository / homepage 均指向 GitCode：以它为对外主仓。
-  # 本字段**不参与任何构建** —— CI 仍跑在 GitHub，两者互不影响。
+  license = ["Apache-2.0"]                                    # 须为 SPDX Identifier
   repository = "https://gitcode.com/yuan_1992/audio4cj"
   homepage = "https://gitcode.com/yuan_1992/audio4cj"
-  # documentation 用**网页视图** /blob/ 而非纯文本 /raw/：官方字段语义是"制品文档页 url"。
-  # 实测 /blob/main/README.md 与 /raw/main/README.md 均返回 200，取前者。
   documentation = "https://gitcode.com/yuan_1992/audio4cj/blob/main/README.md"
-  # 【tag 上限 5 项】cjpm 内含校验文案 `Error: size of field 'tag' cannot be over ...`
-  # （相邻工程 winsound4cj 实测报错为 "...cannot be over 5"）。本列表恰好 5 项，不可再增。
-  tag = ["audio", "flac", "mp3", "wav", "decoder"]
-  # 【category 取自官方枚举，不是自造词】cjpm 内置该枚举（二进制中可见符号
-  # `cjpm.config.CATEGORY_SET`），"Audio and Video" 是其中一项。
-  # 实测要点：写小写 "audio and video" 同样被接受，cjpm 会**归一化**为该规范写法
-  # （生成的 meta-data.json 里是 "Audio and Video"），故此处直接写规范形式。
-  # 枚举的提取方法与局限见 docs/release.md；合法性最终由 cjpm bundle 兜底校验，
-  # 故不在此重复实现枚举 —— 那会制造第二份真相。
-  category = ["Audio and Video"]
+  tag = ["audio", "flac", "mp3", "wav", "decoder"]            # 上限 5 项
+  category = ["Audio and Video"]                              # 取自 cjpm 内置枚举
 
-  # 打包范围（cjpm 官方机制，见 docs/release.md）。
-  #
-  # 【为什么只用 include 白名单，不用 exclude 黑名单】
-  #   两者都是 gitignore 格式的规则数组，但失效方向相反：
-  #     黑名单漏一项 ⇒ 多打包 ⇒ **危险**（可能把不该发布的发布出去）
-  #     白名单漏一项 ⇒ 少打包 ⇒ 安全（fail-closed）
-  #   最典型的场景：将来新增一个顶层目录时，白名单不会自动把它发布出去。
-  #
-  # 【为什么需要它：.gitignore 管不住 cjpm bundle】
-  #   bundle 打包的是文件系统而非 git 索引。实测未配置本字段时，制品包里
-  #   出现了 736 个条目，其中含内部设计留痕 开发文档/、已废弃的 tools/cjbind/、
-  #   m0-poc/、musics/ 等。加上白名单后为 114 条目，且经脚本逐项校验。
-  #
-  # 【官方默认规则（与本字段无关）】
-  #   默认必打包：根目录的 cjpm.toml、README.md、README_zh.md
-  #   默认不打包：根目录的 cjpm.lock、cangjie-repo.toml、编译产物目录、
-  #               构建脚本产物目录、**所有二进制文件**
-  #   （后者解释了 libs/ 与 tools/Releases/ 下的二进制从不进包。）
-  #
-  # 【曾经还有一批与 C 依赖有关的条目】
-  #   这里曾列出 /build.cj 与 third-party 下的 6 个文件（C 薄封装 + 三个单头文件库
-  #   + LICENSE + README.md）—— 它们存在的唯一目的是让消费者现场编译 C 库。
-  #   C 依赖整体移除后这些路径已不存在于仓库中，条目也一并删除。
-  #   之所以不能"反正也打不进包就留着"：include 指向不存在的路径**不会报错**，
-  #   留着只会让"白名单里有它"变成一句空话，日后无人能判断它是否还有意义。
-  #
-  # 【规则必须用前导斜杠锚定到仓库根目录】
-  #   include/exclude 遵循 gitignore 匹配语义，而 gitignore 中**不带斜杠**的
-  #   规则会在任意层级生效。实测教训：规则写成 "src" 时，
-  #   tools/cjbind/cjbind/cjbind/src/ 与 m0-poc/src/ 被一并捞进了制品包
-  #   （共 112 项）—— 只因它们的目录名也叫 src。
-  #   加前导斜杠后锚定到根目录，只匹配根下的同名项。
+  # —— 打包范围：白名单（fail-closed）——
+  # 规则须用前导斜杠锚定到仓库根目录：不带斜杠的规则在任意层级生效，
+  # 会把 tools/*/src/ 这类同名目录一并捞进制品包（实测教训）。
   include = [
-    # 【为什么 /src 仍逐子包列出，而不是一句 "/src" 了事】
-    #   逐项列出本身就有价值：这是 fail-closed 的 —— 将来 src/ 下新增子包时，
-    #   它不会自动被发布出去（与"只用白名单"的既定理由一致，见 scripts/release_bundle.py）。
-    #
-    # 【一处已被推翻的取舍，记在这里避免重走】
-    #   曾一度刻意**不含** "/src/test"，理由是"包内没有 testdata/（cjpm 不打包二进制），
-    #   带上测试只会让审核方看到失败"。但那只解决了一半：测试源码不随包，恰恰让官方
-    #   退回条款「功能性测试未通过（无效三方库）／功能无法在目标系统上验证」更成立 ——
-    #   包里连可运行的验证都没有。
-    #   现行做法是**把可验证性一起带上**：/src/test 与下方的素材生成脚本成对入包，
-    #   拿到包的人先跑生成脚本、再跑测试，即可在包内得到 206 通过 / 0 失败。
-    #
-    # 【src/ 根必须保留】cjpm 要求所有父包（直到根包）都直接含至少一个 .cj 文件，
-    #   否则整个 src/ 的子目录都不被扫描（见 src/audio4cj.cj 文件头实测记录）。
-    "/src/*.cj",      # 根包文件（少一个都不行）
-    "/src/codec",     # 各功能子包，逐包列出
+    "/src/*.cj",      # 根包文件（有子包时，各父包都必须直接含 .cj 文件）
+    "/src/codec",
     "/src/core",
     "/src/facade",
     "/src/format",
@@ -103,41 +36,44 @@
     "/src/pcm",
     "/src/probe",
     "/src/stream",
-    # 【/src/test 随包：这是"包内可自证验证"的一半】
-    #   只带测试源码是不够的 —— 包内没有 testdata/，直接跑会成片失败，那比不带更糟。
-    #   因此它与下方两个生成脚本必须**成对出现**：先生成素材，再跑测试。
-    #   测试里已有守卫：素材整体缺失时明确跳过而非失败（判据见
-    #   src/test/golden_support_test.cj 的 gsSkipIfNoFixtures），所以"只解包、不生成素材"
-    #   也不会是一片红。仓库内 src/test 照常全量运行（testdata/ 已入库）。
-    "/src/test",
+    "/src/test",      # 测试源码：包内用例**自足**，不依赖任何外部素材
     "/config",        # 项目级 cjlint 规则集
     "/docs",          # 面向使用者的公开文档
-    # 【随包分发的素材生成脚本】制品包不含 testdata/（cjpm 不打包二进制），
-    #   包内 `cjpm test` 因此会成片跳过依赖素材的用例。这两个脚本让使用者/评审方
-    #   自己用 ffmpeg 把素材就地生成出来，从而在包内跑通全量测试 —— 把
-    #   "功能无法在目标系统上验证"这个退回条件从根上消掉。
-    #   刻意**逐文件列出**（而非整个 /scripts）：/scripts 下还有发布脚本等
-    #   仅开发者需要的内容，不应进包。
-    "/scripts/gen_testdata.sh",
-    "/scripts/gen_testdata.ps1",
     "/LICENSE",
     "/LICENSES.md",
     "/NOTICE"
-    ]
+  ]
 
-# 这里曾有四节 `[target.<三元组>.ffi.c]`，把各平台的 dr_libs 静态库路径告诉 cjpm。
-# 随 C 依赖一起删除。连带消失的还有两个长期困扰：
-#   · 「先 cjpm build 再 cjpm check」的顺序约束 —— 成因是 [ffi.c] 在配置解析阶段
-#     校验库是否存在、而不触发构建脚本；没有了 ffi 声明，这条约束不复存在；
-#   · 「仓库内 check 通过 ≠ 包内 check 通过」这个容易踩的差别 —— 成因是 cjpm
-#     从不打包二进制，而包内 [ffi.c] 仍指着它。同样不复存在。
+  # —— 不随包分发 ——
+  # 下列用例依赖仓库内的 testdata/ 语料与 ffmpeg 基准（cjpm 不打包二进制素材），
+  # 随包只会变成跑不起来的用例。它们仍留在仓库中，由仓库侧的 cjpm test 全量运行；
+  # 包内的功能验证由自足用例承担（src/test/selfcontained_*_test.cj）。
+  exclude = [
+    "/src/test/bench_decode_test.cj",
+    "/src/test/facade_format_test.cj",
+    "/src/test/flac_bitstream_test.cj",
+    "/src/test/flac_crc_test.cj",
+    "/src/test/flac_frame_test.cj",
+    "/src/test/flac_meta_test.cj",
+    "/src/test/flac_seektable_test.cj",
+    "/src/test/golden_support_test.cj",
+    "/src/test/golden_test.cj",
+    "/src/test/long_run_test.cj",
+    "/src/test/mp4_tags_test.cj",
+    "/src/test/ogg_crc_test.cj",
+    "/src/test/ogg_tags_test.cj",
+    "/src/test/probe_matrix_test.cj",
+    # 内部工程文档（发布流程、编解码扩展评估）：保留在仓库，不发往制品页。
+    "/docs/release.md",
+    "/docs/codec-expansion-assessment.md",
+    "*.bak",          # 防御性：备份、编译中间产物与动态库一律不进包
+    "*.cjo",
+    "*.dll",
+    "*.so",
+    "*.dylib"
+  ]
 
-# 链接安全加固。
-#
-# 注意：`-z noexecstack -z relro -z now` 是 Linux/ELF 专有选项，
-# Windows 的 lld 链接 PE 目标时不支持 -z 参数，若写在 [package] 里全局生效
-# 会导致 Windows 构建直接失败（lld: error: unknown argument: -z）。
-# 因此平台相关链接选项必须放进对应的 [target] 节。
-# （实测教训：写进 [package] 后 Windows 构建直接失败。）
+# Linux/ELF 专有的链接加固选项。必须放在 [target] 节：写进 [package] 会让
+# Windows 的链接器直接报 `unknown argument: -z`（实测教训）。
 [target.x86_64-unknown-linux-gnu]
   link-option = "-z noexecstack -z relro -z now"

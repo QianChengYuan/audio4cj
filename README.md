@@ -66,7 +66,7 @@ main() {
 
 ```bash
 cjpm build      # 构建（纯仓颉，不需要任何 C 工具链）
-cjpm test       # 206 个用例（源码仓库内，testdata/ 已入库）
+cjpm test       # 222 个用例（源码仓库内）
 cjpm check      # 依赖与配置校验
 ```
 
@@ -74,9 +74,8 @@ cjpm check      # 依赖与配置校验
 > `cjpm build` / `cjpm test` / `cjpm check` 都不需要 C 编译器，
 > 且 `check` 与 `build` 的先后随意。
 >
-> （此前版本依赖 C 库 dr_libs，因而要求"先 `cjpm build` 再 `cjpm check`"，
-> 并需要预置各平台的静态库产物。该依赖已**整体移除** —— 见
-> [docs/codec-expansion-assessment.md](docs/codec-expansion-assessment.md) 的取舍记录。）
+> （此前版本依赖 C 库 dr_libs，因而要求"先 `cjpm build` 再 `cjpm check`"并预置
+> 各平台的静态库产物。该依赖已**整体移除**，其留痕与取舍见 [LICENSES.md](LICENSES.md)。）
 
 ## 质量保障
 
@@ -91,40 +90,26 @@ cjpm check      # 依赖与配置校验
 | **长时运行与并发** | 帧数守恒、无句柄泄漏、多线程并行解码与串行结果逐位一致 |
 | **静态检查** | `cjfmt` 格式门禁 + 项目级 `cjlint` 规则集（`src/` 实测 0 条告警） |
 
-测试套件**不依赖 ffmpeg**（基准与素材已随仓库入库），也不需要联网下载任何东西。
-但有一处**由分发方式带来的差别**，随包的使用者应当知道：
+测试套件**不依赖 ffmpeg**，也不需要联网下载任何东西。分发方式带来一处差别，
+随包的使用者应当知道：
 
 > **制品包内不含 `testdata/`**（`cjpm bundle` 不打包二进制文件，平台行为），
-> 但包内**带** `src/test/` 与两份素材生成脚本 —— 因此**不装 ffmpeg 也不会看到失败**：
-> 约 165 条用例照常运行并真实通过（含**不依赖任何素材**的端到端解码：内存中合成 WAV、
-> 落盘、经 `AudioFile.open()` 解码并逐样本比对，见 `src/test/async_frame_stream_test.cj`），
-> 41 条依赖素材的用例**明确跳过**（原因用 `cjpm test --show-all-output` 查看 —— 框架
-> 默认捕获用例输出，不加这个参数看不到）。
+> 因此**依赖素材的用例不随包** —— 它们留在源码仓库，由仓库侧的 `cjpm test` 全量运行。
 >
-> **想在包内跑通全部 206 条**：先执行随包分发的素材生成脚本（只需要 ffmpeg），
-> 它会就地重建 `testdata/`，然后 `cjpm test`：
+> 包内自带一套**自足用例**（`src/test/selfcontained_test.cj`）：所有输入都在仓颉里
+> 现场构造 —— 内存中合成 WAV、FLAC 的 verbatim 帧、Ogg 页（含页 CRC-32）、
+> MP4 box 树与 ID3 / Vorbis 标签 —— 不依赖任何素材，也不需要 ffmpeg。
+> 解包后直接 `cjpm test`，实测 **143 条全部真实执行**（0 跳过、0 空转），
+> 其中包含两组负向用例：**改坏一个字节必须报错**（FLAC 帧 CRC-16、Ogg 页 CRC-32）。
 >
-> ```bash
-> # Linux / macOS / Git Bash
-> bash scripts/gen_testdata.sh
-> # Windows PowerShell
-> powershell -ExecutionPolicy Bypass -File scripts\gen_testdata.ps1
->
-> cjpm test      # 实测 206 / 206 全通过
-> ```
->
-> 生成脚本产出的素材全部由**合成信号**编码而来（封面图也由 ffmpeg 现造），
-> 不含任何第三方版权内容。不装 ffmpeg 也不影响使用本库 —— 那只是跑不了这些测试而已。
-> 要跑全部 206 条而不装 ffmpeg，请从**源码仓库**获取（`testdata/` 已入库）。
+> 想跑包含语料与 ffmpeg 基准的**全量 222 条**，请从**源码仓库**获取
+> （`testdata/` 已入库）。
 
 ## 文档
 
 - **[文档总览与核心契约](docs/README.md)** —— 强烈建议先读这一篇
 - [快速上手](docs/quickstart.md) —— 环境要求、可运行示例、异常处理范式
 - API 参考：[`core`](docs/api/core.md) · [`pcm`](docs/api/pcm.md) · [`meta`](docs/api/meta.md) · [`stream`](docs/api/stream.md) · [`facade`](docs/api/facade.md)
-- [OGG / AAC 解码扩展可行性评估](docs/codec-expansion-assessment.md) —— 候选库、许可证、构建代价与立项建议
-- [发布打包](docs/release.md) —— 打包范围白名单、包内容契约、发布元数据与消费者侧要求
-
 > **关于源码注释里的「开发文档 §X」**：阅读源码时会看到这类指向（例如
 > `src/core/exception.cj` 的「开发文档 §4.1」）。那指的是项目的**内部设计留痕**
 > —— 设计文档与可行性评估，记录的是决策过程与取舍理由，**不随本仓库分发**。
@@ -144,9 +129,8 @@ cjpm check      # 依赖与配置校验
 > 经 FFI 静态链接。随着各格式陆续改为纯仓颉实现、以及 MP3 解码移出范围，它已被
 > **整体移除**（连同 `third-party/`、`build.cj` 与 `cjpm.toml` 的 `[ffi.c]`）——
 > 因此本库现在既没有运行时第三方依赖，也没有构建期 C 工具链要求。
-> 移除原因与取舍记录见 [docs/codec-expansion-assessment.md](docs/codec-expansion-assessment.md)，
-> 依赖台账见 [LICENSES.md](LICENSES.md)。
+> 依赖台账（含它的移除留痕）见 [LICENSES.md](LICENSES.md)。
 
 > 本项目只接受**宽许可**依赖（公共领域 / MIT / BSD / Apache-2.0），
 > 且不引入专利费。GPL 系与专有许可一律不可用 —— 这也是 AAC 解码
-> 至今未立项的原因（无许可干净的候选，详见可行性评估）。
+> 至今未立项的原因（无许可干净的候选）。

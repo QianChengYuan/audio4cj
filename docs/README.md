@@ -51,7 +51,6 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
   - [`audio4cj.meta`](api/meta.md) —— 统一标签模型 `Tag` 与各体系解析器
   - [`audio4cj.stream`](api/stream.md) —— `FrameStream` 同步流式读取、`AsyncFrameStream` 异步背压、协作式取消
   - [`audio4cj.facade`](api/facade.md) —— `AudioFile` 门面（主入口）
-- **[OGG / AAC 解码扩展可行性评估](codec-expansion-assessment.md)** —— 候选库、许可证、构建代价、接入点与立项建议
 - **[依赖许可证台账](../LICENSES.md)** —— 第三方依赖的来源、许可证与审计流程
 
 ## 四、六条核心契约
@@ -125,12 +124,10 @@ try (f = AudioFile.open(path)) {
 > ——仓颉 std 是否提供内存统计 API 尚未核实。未测项不写成已测项。
 >
 > **诚实标注 2**：测试套件**不依赖 ffmpeg**（golden 基准已随仓库入库，无损互证本身不需要外部工具），
-> 因此**在源码仓库内**可完整运行（206 / 206）。
-> ⚠ 制品包内不含 `testdata/`（二进制，`cjpm bundle` 本就不打包），但包内**带**
-> `src/test/` 与两份素材生成脚本：未生成素材时约 165 条照常通过、41 条依赖素材的
-> **明确跳过**（不判失败）；想跑通全部 206 条，就先执行 `scripts/gen_testdata.sh`
-> （或 `.ps1`）用 ffmpeg 就地重建 `testdata/` 再测试 —— 详见 [发布打包](release.md) 的
-> 「测试素材不随包分发」一节。
+> 因此**在源码仓库内**可完整运行（**222 / 222**）。
+> ⚠ 制品包内不含 `testdata/`（二进制，`cjpm bundle` 本就不打包），依赖素材的用例因此不随包；
+> 包内另有一套**自足用例**（输入在仓颉里现场构造：WAV / FLAC / Ogg 页 / MP4 box / 标签），
+> 解包后 `cjpm test` 实测 **143 条全部真实执行、零跳过**。详见 README 的「质量保障」一节。
 
 ## 六、尚未实现
 
@@ -139,7 +136,7 @@ try (f = AudioFile.open(path)) {
 | 能力 | 现状 |
 |---|---|
 | **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / Ogg 封装的 FLAC**；**MP3 可识别、标签可读，但不可解码** |
-| **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。可行性结论见[评估报告](codec-expansion-assessment.md)：现有依赖政策下**无许可干净的候选库**（FAAD2 是 GPL、libfdk-aac 是专有许可） |
+| **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。结论：在只接受宽许可依赖的前提下**无许可干净的候选库**（FAAD2 是 GPL、libfdk-aac 是专有许可） |
 | **32-bit float PCM** | `isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`，暂不支持 |
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
 | **标签写入** | 无，只做读取 |
