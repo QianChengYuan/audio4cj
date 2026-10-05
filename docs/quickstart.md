@@ -45,7 +45,7 @@ import audio4cj.core.Audio4CjException
 
 ```bash
 cjpm build          # 构建
-cjpm test           # 运行全部单元测试
+cjpm test           # 运行全部单元测试（源码仓库内；包内见下方说明）
 cjpm test --filter "Wav*.*"       # 只跑 WAV 相关用例
 cjpm test --parallel 4            # 并行执行
 cjpm clean          # 清理构建产物
@@ -58,7 +58,11 @@ cjpm clean          # 清理构建产物
 > `AUDIO4CJ_FORCE_C_BUILD=1` 强制重编译。C 依赖整体移除后，这些机制、产物目录与那个
 > 环境变量**都不再存在**。）
 
-> 测试套件**不依赖 ffmpeg**（golden 基准已随仓库入库），也不需要下载任何素材。
+> 测试套件**不依赖 ffmpeg**（基准与素材已随仓库入库），也不需要联网下载任何东西。
+> ⚠ 但 `testdata/` **不随制品包分发**（`cjpm bundle` 不打包二进制文件），因此从中心仓
+> 取得的包内跑 `cjpm test` 会**跳过 41 条依赖素材的用例**（其余约 165 条照常运行，
+> 其中包含不依赖任何素材的真实解码）。详见 [发布打包](release.md) 的
+> 「测试素材不随包分发」一节。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例

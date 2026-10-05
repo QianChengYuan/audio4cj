@@ -80,6 +80,10 @@ class OggCrcTest {
     /// 这类错误（段数可变，payload 起点不能写死）。
     @TestCase
     func realPagesMatchStoredValues() {
+        if (gsSkipIfNoFixtures("realPagesMatchStoredValues")) {
+            return
+        }
+
         var totalPages: Int64 = 0
 
         for (path in OC_FIXTURES) {
@@ -135,6 +139,10 @@ class OggCrcTest {
     /// 任何字段，包括 CRC 字段本身），于是重算值与存储值必然不同。
     @TestCase
     func corruptedPageIsRejected() {
+        if (gsSkipIfNoFixtures("corruptedPageIsRejected")) {
+            return
+        }
+
         let data = ocReadWhole("testdata/ogg/ogg_flac.oga")
         @Assert(data.size > 100)
 

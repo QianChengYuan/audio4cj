@@ -179,6 +179,10 @@ class FlacCrcTest {
     /// 代价是必须把整个文件解完才能撞上（最后一帧才校验失败）。
     @TestCase
     func trailingByteCorruptionFailsCrc16(): Unit {
+        if (gsSkipIfNoFixtures("trailingByteCorruptionFailsCrc16")) {
+            return
+        }
+
         let bytes = crcReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         @Assert(bytes.size > 0)
         bytes[bytes.size - 1] = bytes[bytes.size - 1] ^ 0xFF
@@ -199,6 +203,10 @@ class FlacCrcTest {
     /// （非库内异常会让本用例以异常形式失败 —— 那是对"错误语义"的额外要求。）
     @TestCase
     func bodyCorruptionIsRejected(): Unit {
+        if (gsSkipIfNoFixtures("bodyCorruptionIsRejected")) {
+            return
+        }
+
         let bytes = crcReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         @Assert(bytes.size > 2000)
         let mid = bytes.size / 2
@@ -214,6 +222,10 @@ class FlacCrcTest {
     /// 没有它，上面两个用例在实现彻底崩坏时也会通过。
     @TestCase
     func intactFileStillDecodesCleanly(): Unit {
+        if (gsSkipIfNoFixtures("intactFileStillDecodesCleanly")) {
+            return
+        }
+
         @Assert(crcDecodePure("testdata/flac/flac_s16_44100_stereo.flac") == None)
     }
 }

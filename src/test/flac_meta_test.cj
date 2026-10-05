@@ -55,6 +55,10 @@ class FlacMetaTest {
     /// （名字叫 s24，参数却是 s32），测试把它固定下来。
     @TestCase
     func streamInfoMatchesFixtureSpec() {
+        if (gsSkipIfNoFixtures("streamInfoMatchesFixtureSpec")) {
+            return
+        }
+
         let specs = [
             ("testdata/flac/flac_s16_44100_stereo.flac", 44100, 2, 16),
             ("testdata/flac/flac_s16_44100_mono.flac", 44100, 1, 16),
@@ -80,6 +84,10 @@ class FlacMetaTest {
     /// 解码改用纯仓颉内核（原先用 FFI 内核，那只是驱动手段，换掉不改变本断言的含义）。
     @TestCase
     func totalSamplesAgreesWithDecodedFrameCount() {
+        if (gsSkipIfNoFixtures("totalSamplesAgreesWithDecodedFrameCount")) {
+            return
+        }
+
         let path = "testdata/flac/flac_s16_44100_stereo.flac"
         let info = parseStreamInfo(fmReadHead(path, 64))
 
@@ -106,6 +114,10 @@ class FlacMetaTest {
     /// 缺少 "fLaC" 标记 -> 不是 FLAC 流。
     @TestCase
     func rejectsMissingMarker() {
+        if (gsSkipIfNoFixtures("rejectsMissingMarker")) {
+            return
+        }
+
         let data = fmRealHeader()
         data[0] = 0x00 // 破坏 "f" 字节
         @AssertThrows[FormatNotSupportedException](parseStreamInfo(data))
@@ -121,6 +133,10 @@ class FlacMetaTest {
     /// 首个元数据块不是 STREAMINFO（规范要求必须首块）。
     @TestCase
     func rejectsNonStreamInfoFirstBlock() {
+        if (gsSkipIfNoFixtures("rejectsNonStreamInfoFirstBlock")) {
+            return
+        }
+
         let data = fmRealHeader()
         // byte[4] 低 7 位是块类型；保留 last 标志，把类型改成 1（PADDING）
         data[4] = 0x81
@@ -130,6 +146,10 @@ class FlacMetaTest {
     /// STREAMINFO 块长度不是 34 -> 结构非法。
     @TestCase
     func rejectsWrongStreamInfoLength() {
+        if (gsSkipIfNoFixtures("rejectsWrongStreamInfoLength")) {
+            return
+        }
+
         let data = fmRealHeader()
         // byte[5..7] 是 24 位块长度，改成 33
         data[5] = 0
@@ -144,6 +164,10 @@ class FlacMetaTest {
     /// 否则采样率 0 会在后续产生除零。
     @TestCase
     func rejectsZeroSampleRate() {
+        if (gsSkipIfNoFixtures("rejectsZeroSampleRate")) {
+            return
+        }
+
         let data = fmRealHeader()
         var i: Int64 = 8 // 块体起点
         while (i < 42) {
@@ -160,6 +184,10 @@ class FlacMetaTest {
     /// 因此这里直接改真实文件的对应位段。
     @TestCase
     func acceptsMinimumLegalBitDepth() {
+        if (gsSkipIfNoFixtures("acceptsMinimumLegalBitDepth")) {
+            return
+        }
+
         // 真实文件的位深是 16 或 24，均远高于下限；
         // 这里只验证解析器不会对合法值报错（下限校验见实现）
         let info = parseStreamInfo(fmRealHeader())

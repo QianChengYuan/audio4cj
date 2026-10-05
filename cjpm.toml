@@ -58,7 +58,7 @@
   # 【为什么需要它：.gitignore 管不住 cjpm bundle】
   #   bundle 打包的是文件系统而非 git 索引。实测未配置本字段时，制品包里
   #   出现了 736 个条目，其中含内部设计留痕 开发文档/、已废弃的 tools/cjbind/、
-  #   m0-poc/、musics/ 等。加上白名单后为 130+ 条目，且经脚本逐项校验。
+  #   m0-poc/、musics/ 等。加上白名单后为 111 条目，且经脚本逐项校验。
   #
   # 【官方默认规则（与本字段无关）】
   #   默认必打包：根目录的 cjpm.toml、README.md、README_zh.md

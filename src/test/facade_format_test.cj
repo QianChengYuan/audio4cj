@@ -18,6 +18,10 @@ class FacadeFormatTest {
     /// 各容器的 format() 取值。
     @TestCase
     func reportsContainerAndCodec(): Unit {
+        if (gsSkipIfNoFixtures("reportsContainerAndCodec")) {
+            return
+        }
+
         ffCheck("testdata/wav/wav_s16_44100_stereo.wav", "wav", "", "wav")
         ffCheck("testdata/flac/flac_s16_44100_stereo.flac", "flac", "", "flac")
         // 这里曾有 ffCheck("testdata/mp3/mp3_cbr_128k.mp3", "mp3", ...)。
@@ -33,6 +37,10 @@ class FacadeFormatTest {
     /// 轨道信息：当前所有受支持容器均为单轨。
     @TestCase
     func reportsTracks(): Unit {
+        if (gsSkipIfNoFixtures("reportsTracks")) {
+            return
+        }
+
         try (f = AudioFile.open("testdata/flac/flac_s16_44100_stereo.flac")) {
             let tracks = f.tracks()
             @Expect(tracks.size, 1)
@@ -48,6 +56,10 @@ class FacadeFormatTest {
     /// 一旦哪天被改成"每次向 reader 现查"，这条用例会立刻变红 —— 那正是它存在的意义。
     @TestCase
     func formatSurvivesClose(): Unit {
+        if (gsSkipIfNoFixtures("formatSurvivesClose")) {
+            return
+        }
+
         let f = AudioFile.open("testdata/flac/flac_tagged.flac")
         let before = f.format().codecId
 
@@ -63,6 +75,10 @@ class FacadeFormatTest {
     /// 说明"关闭后仍可读"是有边界的 —— 仅限格式这类已固化的元信息。
     @TestCase
     func dataMethodsFailAfterClose(): Unit {
+        if (gsSkipIfNoFixtures("dataMethodsFailAfterClose")) {
+            return
+        }
+
         let f = AudioFile.open("testdata/wav/wav_s16_44100_stereo.wav")
         f.close()
 
@@ -80,6 +96,10 @@ class FacadeFormatTest {
     /// 此时异常信息里会写明编码级标识（这正是探测能力在失败路径上的体现）。
     @TestCase
     func unsupportedFormatStillThrowsWithCodec(): Unit {
+        if (gsSkipIfNoFixtures("unsupportedFormatStillThrowsWithCodec")) {
+            return
+        }
+
         var message = ""
         try {
             AudioFile.open("testdata/ogg/ogg_vorbis_q4.ogg")
@@ -102,6 +122,10 @@ class FacadeFormatTest {
     /// MP3 是"识别得出、**标签还完全可用**"，两者不是一回事。
     @TestCase
     func mp3IsIdentifiableAndTagReadableButNotDecodable(): Unit {
+        if (gsSkipIfNoFixtures("mp3IsIdentifiableAndTagReadableButNotDecodable")) {
+            return
+        }
+
         let path = "testdata/mp3/mp3_id3v23.mp3"
 
         // 1) 仍被识别为 mp3（而不是 unknown），且没有子编码

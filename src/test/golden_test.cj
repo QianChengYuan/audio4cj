@@ -209,6 +209,10 @@ class GoldenTest {
     /// 让人误以为是解码出了问题。这里先把定位问题的那句话说出来。
     @TestCase
     func manifestEntriesResolve() {
+        if (gsSkipIfNoFixtures("manifestEntriesResolve")) {
+            return
+        }
+
         let rows = gtLoadManifest()
         @Assert(rows.size > 0)
 
@@ -234,6 +238,10 @@ class GoldenTest {
     /// 外部工具，因此是无 ffmpeg 环境下的主力防线。
     @TestCase
     func losslessCrossContainerIsBitIdentical() {
+        if (gsSkipIfNoFixtures("losslessCrossContainerIsBitIdentical")) {
+            return
+        }
+
         let bad = ArrayList<String>()
 
         for (pair in GT_LOSSLESS_PAIRS) {
@@ -258,6 +266,10 @@ class GoldenTest {
     /// 与 ffmpeg 基准逐样本比对（沿用映射表里的 samples 模式项）
     @TestCase
     func ffmpegGoldenMatchesSampleBySample() {
+        if (gsSkipIfNoFixtures("ffmpegGoldenMatchesSampleBySample")) {
+            return
+        }
+
         let rows = gtLoadManifest()
         let bad = ArrayList<String>()
         var checked: Int64 = 0

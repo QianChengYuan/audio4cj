@@ -372,6 +372,10 @@ class Mp4TagsTest {
     /// 真实素材：两种 moov 布局都能读出标签（这是本轮最容易漏的一条路径）
     @TestCase
     func realFixturesWithBothMoovLayouts() {
+        if (gsSkipIfNoFixtures("realFixturesWithBothMoovLayouts")) {
+            return
+        }
+
         let root = "testdata/mp4"
 
         // (a) ffmpeg 默认布局：moov 在**文件末尾**

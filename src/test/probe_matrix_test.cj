@@ -18,11 +18,20 @@ import std.collection.ArrayList
  *   本测试用仓颉的探测层判定同一批文件，两边必须一致 —— 这是两套独立实现的
  *   交叉检查，而不是"用被测对象验证被测对象"。
  *
- * 【为什么素材缺失要判失败】
+ * 【为什么素材缺失要判失败 —— 但"制品包内"是例外，两者必须分开】
  *   testdata/ 是随仓库分发的固定测试资产（由 ffmpeg 从合成信号生成，无版权
- *   问题），不是可选的本地素材。缺失说明仓库不完整，应当立即暴露，
- *   因此这里**不做"缺失则跳过"**（与本项目的真实歌曲素材策略相反 —— 那些
- *   是第三方版权内容，不入库，见 long_run_test.cj）。
+ *   问题），不是可选的本地素材。**在仓库内**缺失说明仓库不完整，应当立即暴露，
+ *   因此这里不做"缺了就跳过"（与本项目的真实歌曲素材策略相反 —— 那些是第三方
+ *   版权内容，不入库，见 long_run_test.cj）。
+ *
+ *   **但在制品包内是另一回事**：cjpm bundle 不打包二进制文件，所以 testdata/
+ *   下的音频素材**根本不会随包分发**（实测：61 个素材一个都没进包，只有两个
+ *   .tsv 文本文件进去了）。那不是"仓库不完整"，而是分发方式的必然结果 ——
+ *   而一个"解压后跑测试就成片失败"的包，等于主动展示自己坏掉了。
+ *   故守卫按**根目录是否整体存在**区分两种场景：
+ *     根目录缺失（= 包内）  → gsSkipIfNoFixtures 打印原因并跳过；
+ *     个别素材缺失（仓库内）→ 仍然判失败，即本段原本的意图，未被削弱。
+ *   判据的实现与完整理由见 golden_support_test.cj 的 gsSkipIfNoFixtures。
  *
  * 【本文件覆盖的一类真实缺陷】
  *   探测层原只读文件头 16 字节，而 Ogg 的子编码标识位于**首个页面的 payload**
@@ -180,6 +189,10 @@ class ProbeMatrixTest {
     /// 识别矩阵：每个素材的容器与子编码都必须与基准一致
     @TestCase
     func everyFixtureMatchesManifest() {
+        if (gsSkipIfNoFixtures("everyFixtureMatchesManifest")) {
+            return
+        }
+
         let rows = pmLoadManifest()
 
         // 基准文件缺失或为空说明仓库不完整，立即失败（不静默跳过）
@@ -203,6 +216,10 @@ class ProbeMatrixTest {
     /// 每类素材的可解码性与预期一致
     @TestCase
     func decodableSetMatchesExpectation() {
+        if (gsSkipIfNoFixtures("decodableSetMatchesExpectation")) {
+            return
+        }
+
         let rows = pmLoadManifest()
         @Assert(rows.size > 0)
 
@@ -227,6 +244,10 @@ class ProbeMatrixTest {
     /// 该换成什么，而"ogg/opus 不支持"是可处置的信息。
     @TestCase
     func unsupportedFixturesReportPreciseEncoding() {
+        if (gsSkipIfNoFixtures("unsupportedFixturesReportPreciseEncoding")) {
+            return
+        }
+
         // (素材路径, 错误信息中必须出现的格式标签)
         let cases = [
             ("${PM_ROOT}/ogg/ogg_vorbis_q4.ogg", "ogg/vorbis"),
@@ -294,7 +315,7 @@ class ProbeMatrixTest {
     ///
     /// 同时做一次**无损互证**：同一参考信号分别以原生 FLAC 与 Ogg/FLAC 两种
     /// 封装编码，两者都是无损的，解码输出必须**逐位相同**。这条不需要任何
-    /// 外部工具（不依赖 ffmpeg），因此在任何环境下都能跑。
+    /// 外部工具（不依赖 ffmpeg），因此在任何有素材的环境都能跑（**包内无素材，本用例会跳过** —— 见文件头说明）。
     ///
     /// 【它现在验的是什么，不要与另一条混淆】两条路径如今都走同一个纯仓颉内核，
     /// 所以本条验的是"**两种容器**的解码结果一致"（页重组有没有把音频弄错）；
@@ -303,6 +324,10 @@ class ProbeMatrixTest {
     /// 一个是自洽对照、一个是外部裁判，缺任一个都会留下盲区。
     @TestCase
     func flacInOggIsDecodableAndMatchesNativeFlac() {
+        if (gsSkipIfNoFixtures("flacInOggIsDecodableAndMatchesNativeFlac")) {
+            return
+        }
+
         let oggPath = "${PM_ROOT}/ogg/ogg_flac.oga"
         let nativePath = "${PM_ROOT}/flac/flac_s16_44100_stereo.flac"
 

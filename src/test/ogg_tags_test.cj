@@ -314,6 +314,10 @@ class OggTagsTest {
     /// 「FLAC 块链复原」两段逻辑。
     @TestCase
     func realTaggedFixtures() {
+        if (gsSkipIfNoFixtures("realTaggedFixtures")) {
+            return
+        }
+
         let root = "testdata/ogg"
 
         let v = AudioFile.readTags("${root}/ogg_vorbis_tagged.ogg")
@@ -340,6 +344,10 @@ class OggTagsTest {
     /// 再确认"标签读得出来"，两条一起才构成完整的契约验证。
     @TestCase
     func readTagsWorksWithoutDecoder() {
+        if (gsSkipIfNoFixtures("readTagsWorksWithoutDecoder")) {
+            return
+        }
+
         let path = "testdata/ogg/ogg_vorbis_tagged.ogg"
 
         // 前提：该文件当前确实不能解码
@@ -364,6 +372,10 @@ class OggTagsTest {
     /// 与其用"猜"的方式去解析，不如明确地返回空 Tag。
     @TestCase
     func speexCommentIsNotCovered() {
+        if (gsSkipIfNoFixtures("speexCommentIsNotCovered")) {
+            return
+        }
+
         let tag = AudioFile.readTags("testdata/ogg/ogg_speex_16000.spx")
         @Assert(tag.hasNoStandardFields())
     }

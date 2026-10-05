@@ -127,6 +127,10 @@ class BenchDecode {
     // ------------------------------------------------------------------
     @TestCase
     func fixturesAreDecodable() {
+        if (gsSkipIfNoFixtures("fixturesAreDecodable")) {
+            return
+        }
+
         let fixtures = [
             (BD_WAV_16, "WAV 16-bit 立体声"),
             (BD_FLAC_16, "FLAC 16-bit 立体声"),

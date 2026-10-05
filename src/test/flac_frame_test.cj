@@ -88,6 +88,10 @@ class FlacFrameTest {
     /// 否则只看到一个位偏移，定位成本极高。
     @TestCase
     func decodedSamplesMatchGoldenOnCoveredFixtures() {
+        if (gsSkipIfNoFixtures("decodedSamplesMatchGoldenOnCoveredFixtures")) {
+            return
+        }
+
         // (素材, golden 基准, 期望帧数)。期望帧数来自素材规格（见 sctiptr 的 DUR_*）。
         let fixtures = [
             ("testdata/flac/flac_s16_44100_stereo.flac", "sine_44100_stereo_s16.f32le", 44100),
@@ -136,6 +140,10 @@ class FlacFrameTest {
     /// 因此更强：外部实现与我们的解码器之间没有共享任何代码。
     @TestCase
     func reportsFirstMismatchingFrame() {
+        if (gsSkipIfNoFixtures("reportsFirstMismatchingFrame")) {
+            return
+        }
+
         let path = "testdata/flac/flac_s16_44100_stereo.flac"
         let data = ffReadAll(path)
         let info = parseStreamInfo(data)
@@ -183,6 +191,10 @@ class FlacFrameTest {
     /// 一旦它出错，会被其它文件的失败掩盖（其它文件多为 LPC/FIXED）。
     @TestCase
     func silenceUsesConstantSubframesAndDecodesToZero() {
+        if (gsSkipIfNoFixtures("silenceUsesConstantSubframesAndDecodesToZero")) {
+            return
+        }
+
         let samples = ffDecodePure("testdata/flac/flac_silence.flac")
         if (samples.size == 0) {
             @Fail("静音文件不应解出 0 个样本")
@@ -200,6 +212,10 @@ class FlacFrameTest {
     /// 帧同步码被破坏 -> 必须抛出库内异常，而不是解出垃圾。
     @TestCase
     func rejectsBrokenFrameSync() {
+        if (gsSkipIfNoFixtures("rejectsBrokenFrameSync")) {
+            return
+        }
+
         let data = ffReadAll("testdata/flac/flac_s16_44100_stereo.flac")
         let info = parseStreamInfo(data)
         let frameStart = findFirstFrameOffset(data)
@@ -215,6 +231,10 @@ class FlacFrameTest {
     /// 元数据块长度被改成越界值 -> 定位首帧时必须拒绝，而不是把帧起点定到文件中间。
     @TestCase
     func rejectsMetadataBlockOverrunningFile() {
+        if (gsSkipIfNoFixtures("rejectsMetadataBlockOverrunningFile")) {
+            return
+        }
+
         let data = ffReadAll("testdata/flac/flac_s16_44100_stereo.flac")
         // 首个元数据块的 24 位长度位于 byte[5..7]，改成远超文件大小
         data[5] = 0xFF

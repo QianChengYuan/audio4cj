@@ -121,6 +121,10 @@ class FlacBitstreamTest {
     /// （会报"第 0 个样本就不同"，而真正的问题是长度）。先断长度，报错才指向原因。
     @TestCase
     func goldenBaselineMatchesOnAllFixtures() {
+        if (gsSkipIfNoFixtures("goldenBaselineMatchesOnAllFixtures")) {
+            return
+        }
+
         for ((path, golden, expectFrames, channels) in FB_FIXTURES) {
             let actual = fbDecodeFile(path, fbIsOgg(path), FB_CHUNK_ALIGNED)
 
@@ -169,6 +173,10 @@ class FlacBitstreamTest {
     /// 边界处的错位样本。
     @TestCase
     func chunkSizesAgreeOnAllFixtures() {
+        if (gsSkipIfNoFixtures("chunkSizesAgreeOnAllFixtures")) {
+            return
+        }
+
         for ((path, _, _, _) in FB_FIXTURES) {
             let ogg = fbIsOgg(path)
             let aligned = fbDecodeFile(path, ogg, FB_CHUNK_ALIGNED)
@@ -187,6 +195,10 @@ class FlacBitstreamTest {
     /// 帧粒度与请求粒度不一致是 seek 最容易出错的地方。
     @TestCase
     func seekMatchesSequentialDecode() {
+        if (gsSkipIfNoFixtures("seekMatchesSequentialDecode")) {
+            return
+        }
+
         let path = "testdata/flac/flac_s16_44100_stereo.flac"
         let full = fbDecodeFile(path, false, FB_CHUNK_ALIGNED)
         @Assert(full.size > 0)
@@ -236,6 +248,10 @@ class FlacBitstreamTest {
     /// 故本用例只比对**实际解出的样本**，不依赖 totalFrames。
     @TestCase
     func oggSeekMatchesSequentialDecode() {
+        if (gsSkipIfNoFixtures("oggSeekMatchesSequentialDecode")) {
+            return
+        }
+
         let path = "testdata/ogg/ogg_flac.oga"
         let full = fbDecodeFile(path, true, FB_CHUNK_ALIGNED)
         @Assert(full.size > 0)

@@ -277,6 +277,10 @@ class FlacSeekTableTest {
     /// 只有拿"无表"一侧的**解码帧数**作对照，才能证明表真的被用上。
     @TestCase
     func splicedSeekTableIsParsedAndUsed(): Unit {
+        if (gsSkipIfNoFixtures("splicedSeekTableIsParsedAndUsed")) {
+            return
+        }
+
         let image = stReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         let points = stFramePoints(image)
         @Assert(points.size >= 4) // 素材太短则这个对比没有意义
