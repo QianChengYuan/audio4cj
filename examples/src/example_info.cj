@@ -16,10 +16,12 @@ import audio4cj.core.Audio4CjException
  *   不该为了问一句格式而让文件保持打开。
  *
  * 【不受支持的格式仍能被识别】
- *   探测与解码是两件事：**MP3（其解码已移出本版本范围）**、Ogg/Vorbis、MP4 等
- *   都会被准确识别（连子编码一起），只是 `open()` 会抛
- *   `FormatNotSupportedException` —— 异常信息里写的就是 `format().codecId`
- *   那套标识。要读它们的**标签**请用示例 tags。
+ *   探测与解码是两件事：**Ogg/Vorbis、Ogg/Opus、MP4/AAC** 等都会被准确识别
+ *   （连子编码一起），只是 `open()` 会抛 `FormatNotSupportedException` ——
+ *   异常信息里写的就是 `format().codecId` 那套标识。要读它们的**标签**请用示例 tags。
+ *
+ *   【MP3 不在这类格式里】MP3 已回到解码范围（纯仓颉内核），`open()` 会正常返回。
+ *   想确认"声明帧数 vs 实际解出帧数"是否吻合，用示例 `verify`。
  * ========================================================================== */
 func exampleInfo(path: String): Int64 {
     try (f = AudioFile.open(path)) {

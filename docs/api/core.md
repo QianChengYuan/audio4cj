@@ -55,7 +55,7 @@ public open class Audio4CjException <: Exception {
 
 **何时抛出**：
 
-- `AudioFile.open()` 遇到探测层不支持的容器（如 MP3 —— 其解码已移出本版本范围、Ogg/Vorbis、未知格式）；
+- `AudioFile.open()` 遇到探测层不支持的容器（如 Ogg/Vorbis、Ogg/Opus、AAC、未知格式）；
 - 容器虽被识别，但尚无对应实现。
 
 ```cangjie
@@ -109,7 +109,7 @@ public class ClosedResourceException <: Audio4CjException {
 | 场景 | 应抛出的异常 |
 |---|---|
 | 容器无法识别（未知魔数） | `FormatNotSupportedException` |
-| 容器已识别但无实现（如当前 MP3） | `FormatNotSupportedException` |
+| 容器已识别但无实现（如 Ogg/Vorbis、AAC） | `FormatNotSupportedException` |
 | 容器结构非法（RIFF 标识缺失、chunk 长度非法） | `CorruptedFileException` |
 | 编码数据损坏（坏帧） | `DecodeException` |
 | 格式不支持 seek | `SeekNotSupportedException` |
@@ -143,7 +143,7 @@ public class AudioInfo {
 |---|---|---|
 | `sampleRate` | `Int64` | 采样率（Hz）。**源文件实际值**，本库不统一采样率 |
 | `channels` | `Int64` | 声道数 |
-| `bitDepth` | `Int64` | **源位深**：`16` / `24` / `32`；值 `32` 也用于表示 float32。有损格式（当前解码范围内没有）恒为 32 —— 无源位深，该值表示「解码输出为 float32」，**不应**理解为 32 位整数 PCM |
+| `bitDepth` | `Int64` | **源位深**：`16` / `24` / `32`；值 `32` 也用于表示 float32。**有损格式（如 MP3）恒为 32** —— 无源位深，该值表示「解码输出为 float32」，**不应**理解为 32 位整数 PCM |
 | `durationMs` | `Int64` | 时长（毫秒） |
 | `totalFrames` | `Int64` | 总帧数；**`-1` 表示不可知**（如无索引的流式来源） |
 

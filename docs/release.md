@@ -142,7 +142,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | 输入从哪来 | 现场构造：WAV（RIFF + PCM）、FLAC（**verbatim 子帧** + 规范 CRC-8/CRC-16）、Ogg 页（映射头 + 跨页续传 + 页 CRC-32）、MP4 box 树、ID3v1/v2 与 Vorbis comment。见 `src/test/selfcontained_test.cj` |
 | 判据从哪来 | 由构造式给出：期望 PCM 就是构造时写入的样本（FLAC）；Ogg 封装后的解码结果必须与原生 FLAC **逐位相同** |
 | 负向用例 | 两组"改坏一个字节必须报错"：FLAC 帧 CRC-16、Ogg 页 CRC-32。它们与正向用例同等重要 —— 对"损坏被静默接受"是盲的测试等于没有 |
-| 未随包的那部分 | 14 个依赖语料的用例留在仓库，由仓库侧 `cjpm test` 全量运行（**222 条**）。仓库侧另有 ffmpeg golden 逐样本比对、素材识别矩阵与基准比对 |
+| 未随包的那部分 | 依赖语料的用例留在仓库，由仓库侧 `cjpm test` 全量运行（**228 条**）。仓库侧另有 ffmpeg golden 逐样本比对、素材识别矩阵与基准比对 |
 | 重建仓库素材 | `bash scripts/gen_testdata.sh`（或 `.ps1`）用 ffmpeg 就地重建 `testdata/`（61 个文件，全部由合成信号编码而来，不含第三方版权内容）；素材已入库，通常不需要重建 |
 | 需要什么前置 | 包内测试：**无**。仓库侧重建素材：ffmpeg / ffprobe（需含 aac / libvorbis / libopus / flac / libmp3lame 编码器；libspeex 可选） |
 

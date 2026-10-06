@@ -24,9 +24,7 @@ class FacadeFormatTest {
 
         ffCheck("testdata/wav/wav_s16_44100_stereo.wav", "wav", "", "wav")
         ffCheck("testdata/flac/flac_s16_44100_stereo.flac", "flac", "", "flac")
-        // 这里曾有 ffCheck("testdata/mp3/mp3_cbr_128k.mp3", "mp3", ...)。
-        // MP3 解码已移出本版本范围，它不再能走 open() —— 相关契约由本文件
-        // 下方 mp3IsIdentifiableAndTagReadableButNotDecodable 单独钉住。
+        ffCheck("testdata/mp3/mp3_cbr_128k.mp3", "mp3", "", "mp3")
 
         // Ogg 族才有子编码 —— 容器与编码必须能分开读，
         // 这样"凡是 Ogg 走某分支"这类判断才不必去切字符串。
@@ -110,48 +108,45 @@ class FacadeFormatTest {
         @Expect(message.contains("vorbis"), true)
     }
 
-    /// 【MP3 的契约：能识别、标签可读，但不能解码】
+    /// 【MP3 的契约：能识别、**可解码**、标签也可读】
     ///
-    /// 这条是本次取舍（MP3 解码移出范围）的**钉子**：以后若有人把探测层的
-    /// supported 改回 true，或误删 readTags 的 mp3 分支，这里会立刻变红 ——
-    /// "移出能力"这件事若只写在文档里，迟早会漂移。
+    /// 这条钉住 MP3 **回到解码范围**这件事：它有纯仓颉解码内核（format/mp3_decode.cj），
+    /// probe 的 supported 为 true，`open()` 能真正解出 PCM。若有人把 supported 改回 false、
+    /// 或误删 readTags 的 mp3 分支，这里会立刻变红 —— 能力变化若只写在文档里，迟早漂移。
     ///
-    /// 它同时钉住一处**最容易做错**的地方：不可解码 ≠ 认不出来。
-    /// 谁要是图省事把 mp3 从探测层整个删掉，本用例的前几条断言会失败。
-    /// 与上一条用例的区别也正在这里：Vorbis 是"识别得出、但不支持"，
-    /// MP3 是"识别得出、**标签还完全可用**"，两者不是一回事。
+    /// 它同时钉住一处**最容易做错**的地方：不可解码 ≠ 认不出来（对照上一条 Vorbis 用例：
+    /// Vorbis 是"识别得出、但不支持"，MP3 则是三者齐备）。
     @TestCase
-    func mp3IsIdentifiableAndTagReadableButNotDecodable(): Unit {
-        if (gsSkipIfNoFixtures("mp3IsIdentifiableAndTagReadableButNotDecodable")) {
+    func mp3IsIdentifiableDecodableAndTagReadable(): Unit {
+        if (gsSkipIfNoFixtures("mp3IsIdentifiableDecodableAndTagReadable")) {
             return
         }
 
         let path = "testdata/mp3/mp3_id3v23.mp3"
 
-        // 1) 仍被识别为 mp3（而不是 unknown），且没有子编码
+        // 1) 被识别为 mp3（而不是 unknown），且没有子编码
         let probe = detectFile(path)
         @Expect(probe.container, "mp3")
         @Expect(probe.codec, "")
 
-        // 2) 但不再可解码
-        @Expect(probe.supported, false)
+        // 2) 可解码
+        @Expect(probe.supported, true)
 
-        // 3) 公开路径上：open 必须抛"不支持"，且信息要能让人知道下一步怎么办
-        var message = ""
-        try {
-            let f = AudioFile.open(path)
-            f.close()
-            @Fail("MP3 已移出解码范围，open 应当抛异常")
-        } catch (e: FormatNotSupportedException) {
-            message = e.toString()
+        // 3) 公开路径上：open 成功，且能解出非空 PCM
+        try (f = AudioFile.open(path)) {
+            let info = f.info()
+            @Expect(info.sampleRate, 44100)
+            @Expect(info.channels, 2)
+            // 有损格式无源位深，32 表示"输出为 float32"
+            @Expect(info.bitDepth, 32)
+            @Assert(info.totalFrames > 0)
+
+            let buf = f.readAll()
+            @Assert(buf.samples.size > 0)
+            @Assert(buf.frameCount > 0)
         }
-        @Expect(message.contains("mp3"), true)
-        // 提示里必须点明"标签仍可读" —— 否则使用者会以为整个 MP3 都用不了
-        @Expect(message.contains("readTags"), true)
 
-        // 4) 标签读取完全不受影响。这部分是本条用例最实在的收获：
-        //    它是**第一个**读真实 独立第三方解码器 产出 MP3 的标签用例
-        //    （read_tags_test 用的是手工构造的字节，压边界；两者互补）。
+        // 4) 标签读取不受影响（ID3v2 优先，字段完整）
         let tag = AudioFile.readTags(path)
         @Expect(tag.hasNoStandardFields(), false)
         @Expect(tag.title.getOrThrow(), "MP3 Title")

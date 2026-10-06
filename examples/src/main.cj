@@ -26,6 +26,7 @@ main(args: Array<String>): Int64 {
         case "async" => exampleAsync(path)
         case "tags" => exampleTags(path)
         case "info" => exampleInfo(path)
+        case "verify" => exampleVerify(path)
         case _ =>
             println("未知示例：${name}")
             usage()
@@ -41,4 +42,5 @@ func usage(): Unit {
     println("  async   后台解码 + 有界队列背压（AsyncFrameStream）")
     println("  tags    只读标签（不要求容器可解码）")
     println("  info    容器/编码识别与基本信息")
+    println("  verify  端到端验证：声明帧数 vs 实际解出帧数 + 一行结论（不通过时返回码 1）")
 }

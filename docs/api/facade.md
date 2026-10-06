@@ -76,7 +76,7 @@ public static func open(path: String): AudioFile
 |---|---|---|
 | `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深转换） | `fmt` 中的真实位深（8 / 16 / 24 / 32） |
 | `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
-| `mp3` | **不在解码范围内**（其解码曾用 第三方 C 库 FFI，已移出本版本）—— `open()` 会抛 `FormatNotSupportedException`，但标签仍可用 `readTags` 读取 | ——（无解码输出） |
+| `mp3` | **纯仓颉**（解码内核见 `src/format/mp3_*.cj`：帧同步 → Huffman → 反量化 → IMDCT → 多相合成滤波） | 恒为 `32`（表示输出为 float32，而非 32 位整数 PCM） |
 | `ogg` + `flac` | **纯仓颉**（`PureFlacKernel` + `OggFlacByteSource`）—— Ogg 容器先被重建成一条与原生 FLAC 逐字节等同的流（页体重组 + 页 CRC-32 校验），再交给同一套解码逻辑 | `STREAMINFO` 中的真实位深 |
 
 其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
@@ -87,8 +87,8 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：**本库不依赖任何第三方代码**（`wav`、`flac`、`ogg`+`flac` 都是纯仓颉
-> 实现，`mp3` 解码已移出范围），因此既没有静态链接进来的 C 代码，也不需要 C 工具链。
+> **依赖提示**：**本库不依赖任何第三方代码**（`wav`、`flac`、`mp3`、`ogg`+`flac` 都是纯仓颉
+> 实现），因此既没有静态链接进来的 C 代码，也不需要 C 工具链。
 
 ```cangjie
 import audio4cj.facade.AudioFile
@@ -306,7 +306,7 @@ import audio4cj.core.FormatNotSupportedException
 
 main() {
     try {
-        let tag = AudioFile.readTags("./song.mp3")      // MP3 尚不能解码，但标签可读
+        let tag = AudioFile.readTags("./song.ogg")      // OGG/Vorbis 尚不能解码，但标签可读
         let title = tag.title ?? "(无标题)"
         let track = tag.track ?? 0
         let total = tag.trackTotal ?? 0

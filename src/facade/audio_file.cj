@@ -28,12 +28,11 @@ import std.collection.*
  *   多文件并行处理请为每个文件创建独立实例（§4.7）。
  *
  * 当前可解码范围（与 probe 层的 supported 字段保持一致）：
- *   WAV、**FLAC**、**Ogg 封装的 FLAC** —— 三者均为纯仓颉实现。
+ *   WAV、**FLAC**、**Ogg 封装的 FLAC**、**MP3** —— 四者均为**纯仓颉实现**。
  *
- * 【MP3：自本版本起不在解码范围内】它曾是唯一依赖 C 库的格式，
- *   而"制品包里带 C"正是中心仓审核退回的原因。但 MP3 **仍可被识别、标签仍可读**
- *   （见 readTags），故它不是"完全不支持"，而是"只支持标签"。
- *   取舍的完整记录见 docs/codec-expansion-assessment.md。
+ * 【MP3 已回到解码范围（纯仓颉内核）】它曾是唯一依赖 C 库的格式，因而被移出
+ *   过一版；如今由本库自己的解码内核（format/mp3_decode.cj）承担，
+ *   与 WAV / FLAC 一样**不引入任何 C 依赖**。其标签读取一直可用（见 readTags）。
  * ========================================================================== */
 public class AudioFile <: Resource {
     private var _closed: Bool = false
@@ -78,13 +77,13 @@ public class AudioFile <: Resource {
         let probe = detectFile(path)
 
         if (!probe.supported) {
-            // 【提示里为什么要专门提一句 MP3】MP3 与"完全没实现"的容器不同：
-            // 它**能被识别、也能读出标签**（见 readTags），只是解码不在本版本
-            // 范围内。只回一句"不支持的格式"会让使用者以为整个 MP3 都用不了。
+            // 【为什么提示里要点出 readTags】部分容器（如 Ogg/Vorbis、MP4）虽然
+            // 尚不能解码，但**标签是可读的**（见 readTags）。只回一句"不支持"
+            // 会让使用者以为整个文件都用不了。
             throw FormatNotSupportedException(
                 "不支持的音频格式：${formatLabel(probe)}（${probe.mimeType}）。" +
-                    "当前可解码 WAV / FLAC，以及 Ogg 封装的 FLAC；" +
-                    "MP3 仅支持读取标签（AudioFile.readTags），不支持解码。")
+                    "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC；" +
+                    "其余容器可能仍可用 AudioFile.readTags 读取标签。")
         }
 
         // 把探测结果固化成值类型，随 AudioFile 一起保留 ——
@@ -101,9 +100,7 @@ public class AudioFile <: Resource {
                 )
                 AudioFile(path, reader, decoder, formatInfo)
             case "flac" => openFlac(path, formatInfo, false)
-            // 【这里刻意没有 case "mp3"】MP3 在 supported 检查处已被拦下（见上），
-            // 故本 match 中不会出现 "mp3"。不写一个"只为抛异常"的空分支：
-            // 那会让"MP3 不可解码"有两处表述，改一处就会出现不一致。
+            case "mp3" => openMp3(path, formatInfo)
             case "ogg" =>
                 // 目前只有 Ogg 封装的 FLAC 可解码，它在 supported 检查处已通过。
                 // 这里再做一次显式判断并非冗余：它把「容器级」与「编码级」两道
@@ -129,6 +126,21 @@ public class AudioFile <: Resource {
             reader.sampleRate(),
             reader.channels(),
             reader.bitsPerSample(),
+            reader.totalFrames()
+        )
+        AudioFile(path, reader, decoder, formatInfo)
+    }
+
+    /// 以 MP3 读取器 + 解码器装配 `AudioFile`。
+    ///
+    /// 与 FLAC 装配同构：读取器（demuxer）持有纯仓颉解码内核与读取进度，
+    /// 解码器只做 f32 字节的视角转换。MP3 的位深恒为 32（表示 float32，
+    /// 而非 32 位整数 PCM），由 `Mp3PcmDecoder.codecParams` / `info()` 报告。
+    private static func openMp3(path: String, formatInfo: FormatInfo): AudioFile {
+        let reader = Mp3FormatReader(path)
+        let decoder = Mp3PcmDecoder(
+            reader.sampleRate(),
+            reader.channels(),
             reader.totalFrames()
         )
         AudioFile(path, reader, decoder, formatInfo)

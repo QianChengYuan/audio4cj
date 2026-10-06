@@ -3,8 +3,8 @@
 #   文档：docs/quickstart.md、docs/api/      许可证：Apache-2.0（见 LICENSE / NOTICE）
 #
 #   解码全部为纯仓颉实现：WAV（位深转换）、FLAC（帧解码 + CRC-8/16 + SEEKTABLE）、
-#   Ogg 封装的 FLAC（页重组 + 页 CRC-32）。MP3 不在解码范围内 —— 容器仍可识别、
-#   ID3 标签仍可读，但不解码。
+#   MP3（帧同步 + Huffman + IMDCT + 多相合成滤波）、
+#   Ogg 封装的 FLAC（页重组 + 页 CRC-32）。
 # ============================================================================
 
 [package]
@@ -58,9 +58,11 @@
     "/src/test",
     # 仓库侧静态检查配置（cjlint 规则集）只服务于 CI，与已上架同类包形态一致。
     "/config",
-    # 内部工程文档（发布流程、编解码扩展评估）：保留在仓库，不发往制品页。
+    # 内部工程文档（发布流程、编解码扩展评估、解码偏差定位评估）：
+    # 保留在仓库，不发往制品页。
     "/docs/release.md",
     "/docs/codec-expansion-assessment.md",
+    "/docs/decode-deviation-localization-evaluation.md",
     "*.bak",          # 防御性：备份、编译中间产物与动态库一律不进包
     "*.cjo",
     "*.dll",

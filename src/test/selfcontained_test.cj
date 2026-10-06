@@ -800,9 +800,16 @@ class SelfContainedFormatTest {
         remove(path)
     }
 
-    /// MP3：能被识别、标签可读，但**不可解码** —— 这条是"MP3 移出解码范围"的钉子
+    /// MP3：能识别、可解码（MP3 已回到解码范围），且**伪流必须被拒绝**
+    ///
+    /// 这条一语双关：
+    ///   · 能力面 —— MP3 现在 supported=true，走的是纯仓颉解码内核；
+    ///   · 健壮面 —— 本用例构造的"伪 MP3"只有一个合法帧头、其后是 ID3v1，
+    ///     **不含任何真正的帧数据**。解码器不得把它当成一段短音频解出来，
+    ///     必须在打开阶段就明确拒绝（CorruptedFileException）。
+    ///     这正是"帧同步 + 连续帧校验"存在的意义：单个同步字不足为凭。
     @TestCase
-    func mp3IsIdentifiedTagReadableButNotDecodable() {
+    func mp3IsIdentifiedAndFakeStreamIsRejected() {
         let path = scWrite(
             "a4cj_sc_id3v2.mp3",
             scFakeMp3(scId3v2Title("Self Test Title"), scId3v1Title("legacy"))
@@ -811,17 +818,10 @@ class SelfContainedFormatTest {
         let probe = detectFile(path)
         @Expect(probe.container, "mp3")
         @Expect(probe.codec, "")
-        @Expect(probe.supported, false)
+        @Expect(probe.supported, true)
 
-        var message = ""
-        try {
-            let f = AudioFile.open(path)
-            f.close()
-            @Fail("MP3 已移出解码范围，open 应当抛异常")
-        } catch (e: FormatNotSupportedException) {
-            message = e.toString()
-        }
-        @Expect(message.contains("mp3"), true)
+        // 伪流：有同步字但没有合法帧 → 打开即被拒绝
+        @AssertThrows[CorruptedFileException](AudioFile.open(path))
 
         // 标签读取完全不受影响：ID3v2 优先于 ID3v1
         let tag = AudioFile.readTags(path)
