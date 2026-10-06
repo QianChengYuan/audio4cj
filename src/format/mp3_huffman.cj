@@ -696,7 +696,17 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
         var leaf = codebookCount1[idx0]
         if ((leaf & 8) == 0) {
             bc.check()
-            let idx1 = (leaf >> 3) + (((bc.cache & 0xFFFFFFFF) << 4) >> (32 - (leaf & 3)))
+            // 【掩码必须在左移**之后**再取一次 —— 这是一个从 uint32 移植到 Int64 的陷阱】
+            //   参照实现里 `bs_cache` 是 **uint32**，`bs_cache << 4` 会按 32 位**回绕**，
+            //   于是 `>> (32 - k)` 取到的正是"窥探的 4 位之后的 k 位"。
+            //   本库的 `bc.cache` 是 **Int64**：`(x & 0xFFFFFFFF) << 4` 不回绕，
+            //   缓存最高 4 位被抬到 bit32..35，再 `>> (32 - k)` 时它们一起被取出来，
+            //   于是 `idx1` 远大于 k 位（实测 26/27 变成 58）→ 撞上越界守卫 → break。
+            //   后果极隐蔽：count1 循环在**第一次需要二级查表**时就整体退出，
+            //   该 granule 的高频谱线再也没被写入（保持 0），PCM 侧表现为
+            //   "高频整体被压低"，且低码率更明显（count1 占比更大）。
+            //   实测：mono_64 有 232/234 个 granule 的覆盖谱线数比规范实现少 100~300 条。
+            let idx1 = (leaf >> 3) + ((((bc.cache & 0xFFFFFFFF) << 4) & 0xFFFFFFFF) >> (32 - (leaf & 3)))
             if (idx1 < 0 || idx1 >= codebookCount1.size) {
                 break
             }
