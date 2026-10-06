@@ -126,6 +126,28 @@ jobs:
           cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac async
           cjpm run -- ../testdata/flac/flac_s16_44100_stereo.flac info
 
+          # verify 是**可判定**的守卫：它对三种格式断言「声明帧数 vs 实际解出帧数」
+          # （MP3 走有损口径、WAV/FLAC 走无损严格相等口径）。
+          # 【为什么断言的是输出而不是退出码】`cjpm run` 不会透传程序的退出码
+          # （实测恒为 0），所以只能检查输出里的结论行 —— 直接运行可执行文件时
+          # 退出码才是有效的（不通过为 1）。
+          for f in \
+            ../testdata/mp3/mp3_cbr_128k.mp3 \
+            ../testdata/wav/wav_s16_44100_stereo.wav \
+            ../testdata/flac/flac_s16_44100_stereo.flac
+          do
+            out=$(cjpm run -- "$f" verify)
+            echo "$out"
+            if echo "$out" | grep -q "不通过"; then
+              echo "::error::verify 不通过：$f"
+              exit 1
+            fi
+            echo "$out" | grep -q "结论" || {
+              echo "::error::verify 缺少结论行：$f"
+              exit 1
+            }
+          done
+
   # ============================================================
   # Windows x86_64
   # ============================================================

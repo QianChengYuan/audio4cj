@@ -36,8 +36,9 @@ import audio4cj.format.PureFlacKernel
 private let BD_WAV_16: String = "testdata/wav/wav_s16_44100_stereo.wav"
 private let BD_FLAC_16: String = "testdata/flac/flac_s16_44100_stereo.flac"
 private let BD_FLAC_24: String = "testdata/flac/flac_s24_44100_stereo.flac"
-// 这里曾有 BD_MP3 及其基准。MP3 解码已移出本版本范围（它依赖第三方 C 库，
-// 而带 C 的制品包在中心仓审核中被退回），故相应基准与健全性断言一并移除。
+
+/// MP3 基准素材（纯仓颉内核；它的耗时构成本库最重的一条解码路径）。
+private let BD_MP3: String = "testdata/mp3/mp3_cbr_128k.mp3"
 
 /// 累加器：让基准体的计算结果"有去处"，避免被优化掉。
 ///
@@ -108,6 +109,15 @@ class BenchDecode {
     @Bench
     func flac24DecodeAll() {
         BD_SINK += bdDecodeAll(BD_FLAC_24)
+    }
+
+    /// MP3：本库**最重**的一条纯仓颉解码路径（Huffman + IMDCT + 多相合成滤波）。
+    ///
+    /// 它的数字是"纯仓颉 MP3 解码值不值"的直接依据，也是与当年 FFI 方案
+    /// 对比的锚点 —— 当年之所以能接受纯仓颉化，前提正是"代价可度量"。
+    @Bench
+    func mp3DecodeAll() {
+        BD_SINK += bdDecodeAll(BD_MP3)
     }
 
     // ------------------------------------------------------------------

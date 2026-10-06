@@ -104,6 +104,11 @@ D="$OUT/mp3"
 q -i "$REF_SINE" -t "$DUR_MATRIX" -c:a libmp3lame -b:a 128k "$D/mp3_cbr_128k.mp3"
 q -i "$REF_SINE" -t "$DUR_MATRIX" -c:a libmp3lame -q:a 4 "$D/mp3_vbr_q4.mp3"
 q -i "$REF_MONO" -c:a libmp3lame -b:a 64k "$D/mp3_16000_mono.mp3"
+# 高频完整性回归素材：白噪声 + 每 0.25 s 一个瞬变（判据见 src/test/mp3_hf_regression_test.cj）
+q -f lavfi -i "anoisesrc=d=2:c=white:a=0.30:r=44100" \
+  -f lavfi -i "aevalsrc='0.9*exp(-60*mod(t\,0.25))':s=44100:d=2" \
+  -filter_complex "amix=inputs=2:normalize=0" -ac 1 -c:a libmp3lame -b:a 64k \
+  "$D/mp3_noise_64k_mono.mp3"
 COMMON=( -metadata title="MP3 Title" -metadata artist="MP3 Artist" \
          -metadata album="MP3 Album" -metadata date="2026" \
          -metadata genre="Test" -metadata comment="MP3 Comment" )
@@ -206,16 +211,19 @@ gold "$OUT/flac/flac_s16_44100_mono.flac"    "$G/sine_44100_mono_s16.f32le"
 gold "$OUT/wav/wav_u8_44100_mono.wav"        "$G/sine_44100_mono_u8.f32le"
 gold "$OUT/wav/wav_s16_16000_mono.wav"       "$G/tone_16000_mono_s16.f32le"
 gold "$OUT/flac/flac_s16_16000_mono.flac"    "$G/tone_16000_mono_s16.f32le"
+# 有损格式（MP3）：基准同样是 ffmpeg 的输出，但比对只走 envelope 模式（见 GOLDEN.tsv）
+gold "$OUT/mp3/mp3_cbr_128k.mp3"             "$G/mp3_cbr_128k.f32le"
+# 高频回归用它做**分频段**基准（envelope 那套对"顶部被抹掉"不敏感）
+gold "$OUT/mp3/mp3_noise_64k_mono.mp3"       "$G/mp3_noise_64k_mono.f32le"
 
 # GOLDEN.tsv：素材 → 基准 + 比对模式（供 src/test/golden_test.cj 读取）
 cat > "$G/GOLDEN.tsv" <<'TSV'
 # fixture	golden	mode
 # 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，供 src/test/golden_test.cj 读取。
 # fixture 为 testdata 下的相对路径；golden 为 testdata/golden 下的文件名。
-# mode: 目前只有 samples（逐样本比对）。
-# 曾有 envelope 模式（只比帧数与整体能量，供有损格式用）—— 随 MP3 解码移出
-# 本版本范围一并移除，因为那行数据会失去消费者（只剩数据没人读）。
-# 若将来接入有损格式，需恢复该模式，见 golden_test.cj 的说明。
+# mode: samples（逐样本比对，无损格式）/ envelope（长度 + 整体能量，有损格式）。
+# 有损格式（MP3）只能走 envelope：两套有损解码器在量化细节与编码器延迟补偿上
+# **合法地**存在差异，逐样本相等不是"更高标准"而是错误标准。见 golden_test.cj。
 wav/wav_s16_44100_stereo.wav	sine_44100_stereo_s16.f32le	samples
 flac/flac_s16_44100_stereo.flac	sine_44100_stereo_s16.f32le	samples
 ogg/ogg_flac.oga	sine_44100_stereo_s16.f32le	samples
@@ -226,6 +234,8 @@ flac/flac_s16_44100_mono.flac	sine_44100_mono_s16.f32le	samples
 wav/wav_u8_44100_mono.wav	sine_44100_mono_u8.f32le	samples
 wav/wav_s16_16000_mono.wav	tone_16000_mono_s16.f32le	samples
 flac/flac_s16_16000_mono.flac	tone_16000_mono_s16.f32le	samples
+mp3/mp3_cbr_128k.mp3	mp3_cbr_128k.f32le	envelope
+mp3/mp3_noise_64k_mono.mp3	mp3_noise_64k_mono.f32le	envelope
 TSV
 
 # ---------------------------------------------------------------- MANIFEST.tsv

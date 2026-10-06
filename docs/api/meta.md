@@ -254,15 +254,15 @@ func dumpExtras(tag: Tag): Unit {
 
 | 入口 | 前置条件 | 适用场景 |
 |---|---|---|
-| `AudioFile.open(path).metadata()` | 容器**可解码**（当前仅 WAV） | 已打开文件，顺便读标签 |
-| **`AudioFile.readTags(path)`** | **无要求** | MP3 / FLAC 等尚无解码实现的格式，只读标签 |
+| `AudioFile.open(path).metadata()` | 容器**可解码**（WAV / FLAC / MP3 / Ogg-FLAC） | 已打开文件，顺便读标签 |
+| **`AudioFile.readTags(path)`** | **无要求** | OGG / MP4 等尚无解码实现的容器，只读标签 |
 
 ```cangjie
 import audio4cj.facade.AudioFile
 
 main() {
-    // MP3 当前不能解码，但标签可以读
-    let tag = AudioFile.readTags("./song.mp3")
+    // OGG/Vorbis 当前不能解码，但标签可以读
+    let tag = AudioFile.readTags("./song.ogg")
     let title = tag.title ?? "(无标题)"
     let artist = tag.artist ?? "(无艺术家)"
     println("标题: ${title}")

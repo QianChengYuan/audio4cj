@@ -10,9 +10,9 @@
 
 > **没有任何 C 依赖，也没有构建顺序要求**
 >
-> - **WAV、FLAC 与 Ogg 封装的 FLAC** 都是纯仓颉实现，**不需要** C 库；
-> - **MP3 解码不在本版本范围内**（它是最后一个依赖 C 库的格式）——
->   但 MP3 **仍可识别、标签仍可读**（见下文 `readTags` 一节）；
+> - **WAV、FLAC、MP3 与 Ogg 封装的 FLAC** 都是纯仓颉实现，**不需要** C 库；
+> - **MP3 曾是最后一个依赖 C 库的格式**（一度被移出过解码范围），现在由本库自己的
+>   解码内核（`src/format/mp3_*.cj`）承担 —— 解码侧现在**零 C 依赖**；
 > - 因此 `cjpm build` / `cjpm check` / `cjpm test` 都不需要 C 编译器，
 >   且 **`check` 与 `build` 的先后随意**。
 >
@@ -58,13 +58,13 @@ cjpm clean          # 清理构建产物
 > 用例不随包；包内另有一套**自足用例**（输入在仓颉里现场构造），解包后直接
 > `cjpm test` 即为 **143 条全部真实执行、零跳过**（含"改坏一个字节必须报错"的负向用例）。
 >
-> 想跑包含语料与外部基准的全量 **222 条**，请从**源码仓库**获取（`testdata/` 已入库）。
+> 想跑包含语料与外部基准的全量 **228 条**，请从**源码仓库**获取（`testdata/` 已入库）。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例
 
-> 以下示例对 **WAV / FLAC / Ogg 封装的 FLAC** 均适用 —— 三者共用同一套 `AudioFile` API。
-> 唯一需留意的是 `bitDepth` 的语义差异：MP3 恒为 `32`（表示输出为 float32，
+> 以下示例对 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** 均适用 —— 四者共用同一套 `AudioFile` API。
+> 唯一需留意的是 `bitDepth` 的语义差异：**MP3 恒为 `32`**（表示输出为 float32，
 > 而非 32 位整数 PCM），详见 [`AudioInfo`](api/core.md)。
 
 ### 示例 1：读取音频信息
@@ -173,13 +173,13 @@ main() {
 
 ### 示例 6：只读标签（不需要解码能力）
 
-**尚无解码实现**的格式（如 MP3 —— 其解码已移出本版本范围），也能用 `readTags` 读出标签：
+**尚无解码实现**的格式（如 OGG/Vorbis、MP4），也能用 `readTags` 读出标签：
 
 ```cangjie
 import audio4cj.facade.AudioFile
 
 main() {
-    let tag = AudioFile.readTags("./song.mp3")      // 不需要 open()，也不要求可解码
+    let tag = AudioFile.readTags("./song.ogg")      // 不需要 open()，也不要求可解码
 
     let title = tag.title ?? "(无标题)"
     let artist = tag.artist ?? "(无艺术家)"
@@ -279,7 +279,7 @@ main() {
 
 ## 六、限制与注意事项
 
-1. **当前可解码 WAV / FLAC / Ogg 封装的 FLAC**。**MP3**（解码已移出本版本范围）、OGG/Vorbis、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
+1. **当前可解码 WAV / FLAC / MP3 / Ogg 封装的 FLAC**。OGG/Vorbis、OGG/Opus、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
 2. **32-bit float PCM 暂不支持**，`isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`。
 3. **`AudioFile` 不跨线程共享**。多文件并行处理请为每个文件创建独立实例。
 4. **库不统一采样率**。输出统一为 f32 交错，但采样率沿用源文件，混合不同采样率的音频需自行重采样。

@@ -135,6 +135,13 @@ $D = Join-Path $Out "mp3"
 Invoke-Ffmpeg -i $refSine -t $DurMatrix "-c:a" libmp3lame "-b:a" 128k (Join-Path $D "mp3_cbr_128k.mp3")
 Invoke-Ffmpeg -i $refSine -t $DurMatrix "-c:a" libmp3lame "-q:a" 4 (Join-Path $D "mp3_vbr_q4.mp3")
 Invoke-Ffmpeg -i $refMono "-c:a" libmp3lame "-b:a" 64k (Join-Path $D "mp3_16000_mono.mp3")
+# 高频完整性回归素材：白噪声 + 每 0.25 s 一个瞬变。低码率 + 噪声/瞬变正是
+# count1 区（频谱顶部）占比最大、最能暴露"顶部被整段写零"这一类缺陷的内容。
+# 判据见 src/test/mp3_hf_regression_test.cj。
+Invoke-Ffmpeg -f lavfi -i "anoisesrc=d=2:c=white:a=0.30:r=44100" `
+    -f lavfi -i "aevalsrc='0.9*exp(-60*mod(t\,0.25))':s=44100:d=2" `
+    -filter_complex "amix=inputs=2:normalize=0" -ac 1 "-c:a" libmp3lame "-b:a" 64k `
+    (Join-Path $D "mp3_noise_64k_mono.mp3")
 $common = @(
     "-metadata", "title=MP3 Title", "-metadata", "artist=MP3 Artist",
     "-metadata", "album=MP3 Album", "-metadata", "date=2026",
@@ -248,6 +255,10 @@ Invoke-Gold (Join-Path $Out "flac\flac_s16_44100_mono.flac")   (Join-Path $G "si
 Invoke-Gold (Join-Path $Out "wav\wav_u8_44100_mono.wav")       (Join-Path $G "sine_44100_mono_u8.f32le")
 Invoke-Gold (Join-Path $Out "wav\wav_s16_16000_mono.wav")      (Join-Path $G "tone_16000_mono_s16.f32le")
 Invoke-Gold (Join-Path $Out "flac\flac_s16_16000_mono.flac")   (Join-Path $G "tone_16000_mono_s16.f32le")
+# 有损格式（MP3）：基准同样是 ffmpeg 的输出，但比对只走 envelope 模式（见 GOLDEN.tsv）
+Invoke-Gold (Join-Path $Out "mp3\mp3_cbr_128k.mp3")            (Join-Path $G "mp3_cbr_128k.f32le")
+# 高频回归用它做**分频段**基准（envelope 那套对"顶部被抹掉"不敏感，见 mp3_hf_regression_test.cj）
+Invoke-Gold (Join-Path $Out "mp3\mp3_noise_64k_mono.mp3")      (Join-Path $G "mp3_noise_64k_mono.f32le")
 
 # GOLDEN.tsv：素材 → 基准 + 比对模式（供 src/test/golden_test.cj 读取）
 # 【与 gen_testdata.sh 必须逐字节一致】含行尾：这里显式用 LF 与无 BOM 的 UTF-8，
@@ -256,10 +267,9 @@ $goldenTsv = @(
     "# fixture`tgolden`tmode"
     "# 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，供 src/test/golden_test.cj 读取。"
     "# fixture 为 testdata 下的相对路径；golden 为 testdata/golden 下的文件名。"
-    "# mode: 目前只有 samples（逐样本比对）。"
-    "# 曾有 envelope 模式（只比帧数与整体能量，供有损格式用）—— 随 MP3 解码移出"
-    "# 本版本范围一并移除，因为那行数据会失去消费者（只剩数据没人读）。"
-    "# 若将来接入有损格式，需恢复该模式，见 golden_test.cj 的说明。"
+    "# mode: samples（逐样本比对，无损格式）/ envelope（长度 + 整体能量，有损格式）。"
+    "# 有损格式（MP3）只能走 envelope：两套有损解码器在量化细节与编码器延迟补偿上"
+    "# **合法地**存在差异，逐样本相等不是'更高标准'而是错误标准。见 golden_test.cj。"
     "wav/wav_s16_44100_stereo.wav`tsine_44100_stereo_s16.f32le`tsamples"
     "flac/flac_s16_44100_stereo.flac`tsine_44100_stereo_s16.f32le`tsamples"
     "ogg/ogg_flac.oga`tsine_44100_stereo_s16.f32le`tsamples"
@@ -270,6 +280,8 @@ $goldenTsv = @(
     "wav/wav_u8_44100_mono.wav`tsine_44100_mono_u8.f32le`tsamples"
     "wav/wav_s16_16000_mono.wav`ttone_16000_mono_s16.f32le`tsamples"
     "flac/flac_s16_16000_mono.flac`ttone_16000_mono_s16.f32le`tsamples"
+    "mp3/mp3_cbr_128k.mp3`tmp3_cbr_128k.f32le`tenvelope"
+    "mp3/mp3_noise_64k_mono.mp3`tmp3_noise_64k_mono.f32le`tenvelope"
 )
 [System.IO.File]::WriteAllText((Join-Path $G "GOLDEN.tsv"), (($goldenTsv -join "`n") + "`n"),
     (New-Object System.Text.UTF8Encoding($false)))

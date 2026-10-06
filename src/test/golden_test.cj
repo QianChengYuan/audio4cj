@@ -62,13 +62,30 @@ private let GT_MANIFEST: String = "testdata/golden/GOLDEN.tsv"
 ///   - 远比 16 位的最小量化步长（约 3e-5）紧 30 倍，任何一位的缩放错误都跑不掉。
 private let GT_TOLERANCE: Float32 = 1.0e-6
 
-// 这里曾有两个"有损格式容差"常量（帧数相对 1%、整体能量相对 5%），供 MP3 的
-// 松比对用例使用。MP3 解码已移出本版本范围，那份比对连同常量一并移除 ——
-// 留着它们会让人以为库里还有有损格式的比对机制在跑。
-//
-// 若将来接入有损格式（例如纯仓颉 AAC），需要连带恢复这套思路：
-// 有损解码器之间在量化细节与编码器延迟补偿上**合法地**存在差异，
-// 逐样本相等是不可能达到的标准，只能用"帧数 + 整体能量"的包络比对。
+/// 有损格式（MP3）包络比对：**总能量**（平方和）的相对容差。
+///
+/// 【为什么有损格式不能用逐样本比对】两套有损解码器在量化细节与编码器延迟
+/// 补偿上**合法地**存在差异（不同实现的合成滤波器组舍入不同，实测噪声素材上
+/// 逐样本相关只有 0.99 量级）。逐样本相等在这里不是"更高标准"，而是一个错误
+/// 标准 —— 它会把正确行为判成缺陷。因此改用**包络**判据：
+///   · 长度：我们的输出必须**不少于**基准，且多出的部分不超过编码器延迟/填充
+///     的合理上限（见 GT_ENVELOPE_MAX_EXTRA_SAMPLES）；
+///   · 能量：**总能量（平方和）**的相对差 <= 5%（不用平均功率 —— 理由见
+///     gtTotalEnergy 的说明：样本数不同会把长度差异误算成能量差异）。
+/// 实测（2026-10-05，本机 ffmpeg 9.0.2，mp3_cbr_128k，正弦）：
+/// 长度 94464 vs 88200 交错样本（多出 6264 = 编码器延迟 + 末尾填充帧），
+/// **总能量相对差 0.0%** —— 能量这一项才是拦住"缩放系数错、声道错位、
+/// 频谱算错"的那道闸。
+private let GT_ENVELOPE_ENERGY_TOLERANCE: Float64 = 0.05
+
+/// 有损格式允许比基准多出的交错样本数上限。
+///
+/// 依据：LAME 会在流首写入编码器延迟（576 样本/声道）、流尾补一个填充帧，
+/// ffmpeg 解码时按 Xing/Info 的 gapless 信息把它们裁掉，而我们输出**完整**
+/// 帧序列。1 秒 44.1kHz 立体声实测多出 6264 个交错样本（≈2.7 个 MP3 帧），
+/// 这里取 2 个 MPEG1 帧的 4 倍（2 × 1152 × 2ch × 2 = 9216）作为上限，
+/// 既容得下合法的延迟/填充，又拦得住"多解出一整段"这类真错误。
+private let GT_ENVELOPE_MAX_EXTRA_SAMPLES: Int64 = 9216
 
 /// 无损互证对：同一段 PCM 的两种无损封装。
 ///
@@ -135,7 +152,7 @@ private func gtMaxDiff(a: Array<Float32>, b: Array<Float32>): Float32 {
     maxDiff
 }
 
-/// 整体平均功率（能量的直接度量；不开方，既省 std.math 又不丢信息）。
+/// 整体平均功率（单样本能量；不开方，既省 std.math 又不丢信息）。
 private func gtMeanPower(samples: Array<Float32>): Float64 {
     if (samples.size == 0) {
         return 0.0
@@ -146,6 +163,21 @@ private func gtMeanPower(samples: Array<Float32>): Float64 {
         sum += d * d
     }
     sum / Float64(samples.size)
+}
+
+/// 整体能量（平方和）。
+///
+/// 【为什么有损格式要比"总能量"而不是"平均功率"】我们的输出包含编码器延迟
+/// 与末尾填充帧（ffmpeg 会按 gapless 信息裁掉），两侧**样本数不同**。平均功率
+/// 分母不同，会把这点长度差异直接放大成 7% 的"能量差"（实测），而总能量不受
+/// 样本数影响 —— 它才是"解码是否正确还原了这段声音"的不变量。
+private func gtTotalEnergy(samples: Array<Float32>): Float64 {
+    var sum: Float64 = 0.0
+    for (v in samples) {
+        let d = Float64(v)
+        sum += d * d
+    }
+    sum
 }
 
 /// 相对差：|x - y| / max(|y|, eps)，避免基准为零时除零。
@@ -298,8 +330,51 @@ class GoldenTest {
         }
     }
 
-    // 这里曾有 `mp3MatchesInEnvelopeNotSampleBySample`：对 MP3 做"帧数 + 整体能量"
-    // 的包络比对（因为两套有损解码器之间逐样本相等是不可能达到的标准）。
-    // MP3 解码移出本版本范围后，该用例与 GOLDEN.tsv 里那条 `envelope` 行一并移除 ——
-    // 数据行留着而消费者已去，只会让"package 里有一份没人读的基准"悄悄存在。
+    /// 有损格式（MP3）的包络比对：长度 + 整体能量，**不做**逐样本比对
+    ///
+    /// 沿用映射表里 `envelope` 模式的行。判据与容差见 GT_ENVELOPE_* 常量的说明。
+    @TestCase
+    func mp3MatchesInEnvelopeNotSampleBySample() {
+        if (gsSkipIfNoFixtures("mp3MatchesInEnvelopeNotSampleBySample")) {
+            return
+        }
+
+        let rows = gtLoadManifest()
+        let bad = ArrayList<String>()
+        var checked: Int64 = 0
+
+        for (row in rows) {
+            let (fixture, golden, mode) = row
+            if (mode != "envelope") {
+                continue
+            }
+
+            let actual = gtDecode(fixture)
+            let expected = gtLoadGolden(golden)
+            let extra = actual.size - expected.size
+            let energyRelDiff = gtRelativeDiff(gtTotalEnergy(actual), gtTotalEnergy(expected))
+
+            println(
+                "${fixture} vs ${golden}（包络）: 样本 ${actual.size}/${expected.size} " +
+                    "(多 ${extra}), 总能量相对差 ${energyRelDiff}")
+
+            // 输出必须不少于基准：少说明丢了音频，是真缺陷
+            if (extra < 0) {
+                bad.add("${fixture} 输出样本数 ${actual.size} 少于基准 ${expected.size}")
+            }
+            // 多出的只能是编码器延迟/填充；超过上限说明多解出了内容
+            if (extra > GT_ENVELOPE_MAX_EXTRA_SAMPLES) {
+                bad.add("${fixture} 比基准多出 ${extra} 个样本，超过上限 ${GT_ENVELOPE_MAX_EXTRA_SAMPLES}")
+            }
+            if (energyRelDiff > GT_ENVELOPE_ENERGY_TOLERANCE) {
+                bad.add("${fixture} 总能量相对差 ${energyRelDiff} 超过容差 ${GT_ENVELOPE_ENERGY_TOLERANCE}")
+            }
+            checked += 1
+        }
+
+        @Assert(checked > 0)
+        if (!bad.isEmpty()) {
+            @Fail(String.join(bad.toArray(), delimiter: " | "))
+        }
+    }
 }

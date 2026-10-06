@@ -253,10 +253,11 @@ class MalformedInputTest {
 
     /// MP3：ID3v2 头声明 synchsafe 最大长度（约 256 MB），实际不足 140 字节
     ///
-    /// 【重点变了】解码路径已不在范围内，`AudioFile.open` 在探测层就被拦下、
-    /// 够不到任何解码器 —— 原先那句 `mfOpenAndDrain` 断言现在**恒真**，
-    /// 留着只会让人以为这里还在验 C 路径。真正仍有价值的是 **ID3 解析器**：
-    /// 它仍是纯仓颉、仍在本版本能力内，`mfReadTagsOnly` 正是压它的那条。
+    /// 【重点】MP3 已回到解码范围，因此这里同时压两条纯仓颉路径：
+    ///   · 标签路径（ID3 解析器）：声明长度远超实际，必须优雅收场；
+    ///   · 解码路径（MP3 内核）：数据里根本没有合法帧，必须明确拒绝，
+    ///     而不是把 ID3 的填充字节当成音频解出来 —— 这就是 `mfOpenAndDrain`
+    ///     存在的意义（只接受"正常完成"或"抛库内/文件系统异常"两种结局）。
     @TestCase
     func mp3OversizedId3Tag() {
         let out = ArrayList<UInt8>()
@@ -274,13 +275,16 @@ class MalformedInputTest {
 
         let path = mfWrite("a4cj_mf_mp3_id3.mp3", out.toArray())
         @Assert(mfReadTagsOnly(path))
+        @Assert(mfOpenAndDrain(path))
         remove(path)
     }
 
     /// MP3：以合法帧同步字开头，其后全是垃圾（无任何有效 MPEG 帧）
     ///
-    /// 同上：解码路径已不在范围内，本条压的是"**ID3 解析器**面对垃圾字节
-    /// 仍能优雅收场"（探测器会把 0xFF 0xFB 认成 mp3，故标签路径确实会被走到）。
+    /// 探测器会把 0xFF 0xFB 认成 mp3，于是**两条路径都会被走到**：
+    ///   · 标签路径面对垃圾字节要优雅收场；
+    ///   · 解码路径要能识破"只有同步字、没有连续合法帧"，明确拒绝。
+    ///     这正是"帧同步 + 连续帧校验"必须同时存在的原因。
     @TestCase
     func mp3GarbageAfterSyncWord() {
         let out = ArrayList<UInt8>()
@@ -294,6 +298,7 @@ class MalformedInputTest {
 
         let path = mfWrite("a4cj_mf_mp3_garbage.mp3", out.toArray())
         @Assert(mfReadTagsOnly(path))
+        @Assert(mfOpenAndDrain(path))
         remove(path)
     }
 }

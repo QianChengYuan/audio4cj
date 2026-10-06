@@ -1,10 +1,9 @@
 # fixture	golden	mode
 # 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，供 src/test/golden_test.cj 读取。
 # fixture 为 testdata 下的相对路径；golden 为 testdata/golden 下的文件名。
-# mode: 目前只有 samples（逐样本比对）。
-# 曾有 envelope 模式（只比帧数与整体能量，供有损格式用）—— 随 MP3 解码移出
-# 本版本范围一并移除，因为那行数据会失去消费者（只剩数据没人读）。
-# 若将来接入有损格式，需恢复该模式，见 golden_test.cj 的说明。
+# mode: samples（逐样本比对，无损格式）/ envelope（长度 + 整体能量，有损格式）。
+# 有损格式（MP3）只能走 envelope：两套有损解码器在量化细节与编码器延迟补偿上
+# **合法地**存在差异，逐样本相等不是"更高标准"而是错误标准。见 golden_test.cj。
 wav/wav_s16_44100_stereo.wav	sine_44100_stereo_s16.f32le	samples
 flac/flac_s16_44100_stereo.flac	sine_44100_stereo_s16.f32le	samples
 ogg/ogg_flac.oga	sine_44100_stereo_s16.f32le	samples
@@ -15,3 +14,5 @@ flac/flac_s16_44100_mono.flac	sine_44100_mono_s16.f32le	samples
 wav/wav_u8_44100_mono.wav	sine_44100_mono_u8.f32le	samples
 wav/wav_s16_16000_mono.wav	tone_16000_mono_s16.f32le	samples
 flac/flac_s16_16000_mono.flac	tone_16000_mono_s16.f32le	samples
+mp3/mp3_cbr_128k.mp3	mp3_cbr_128k.f32le	envelope
+mp3/mp3_noise_64k_mono.mp3	mp3_noise_64k_mono.f32le	envelope
