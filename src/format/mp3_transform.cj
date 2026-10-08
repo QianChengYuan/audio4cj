@@ -414,7 +414,11 @@ protected func l3Decode(h: Mp3Dec, s: Mp3Scratch, grInfo: Array<Mp3GrInfo>, nch:
         l3DecodeScalefactors(h.header, s.istPos[ch], s.bs, grInfo[ch], s.scf, ch)
 
         let grbufForHuffman = s.grbuf.slice(576 * ch, s.grbuf.size - 576 * ch)
+        // 子段计时（哨兵守卫 ⇒ 默认零开销）：哈夫曼码字解析 + 反量化。
+        // `-O2` 后频谱链占 67~69%，只有切开才知道该打哈夫曼还是 IMDCT。
+        let tHuff0 = mp3PhaseNow()
         l3Huffman(grbufForHuffman, s.bs, grInfo[ch], s.scf, layer3grLimit)
+        mp3PhaseAddHuff(mp3PhaseNow() - tHuff0)
 
         ch = ch + 1
     }
@@ -449,6 +453,10 @@ protected func l3Decode(h: Mp3Dec, s: Mp3Scratch, grInfo: Array<Mp3GrInfo>, nch:
                 grInfo[ch].sfbtab.slice(grInfo[ch].nLongSfb, grInfo[ch].sfbtab.size - grInfo[ch].nLongSfb))
         }
 
+        // 子段计时：变换链（抗混叠 + IMDCT + 符号翻转）。
+        // 短块的重排（上面 if 内）没并进来 —— 它只影响短块帧，单独计时会让代码更碎；
+        // 因此 `transNs` 与 `huffNs` 之和会略小于频谱链总量，差额即重排与两侧的频带计算。
+        let tTrans0 = mp3PhaseNow()
         let grbufForAa = s.grbuf.slice(576 * ch, s.grbuf.size - 576 * ch)
         l3Antialias(grbufForAa, aaBands)
 
@@ -456,6 +464,7 @@ protected func l3Decode(h: Mp3Dec, s: Mp3Scratch, grInfo: Array<Mp3GrInfo>, nch:
         l3ImdctGr(grbufSlice, h.mdctOverlap[ch], grInfo[ch].blockType, nLongBands)
 
         l3ChangeSignRange(s.grbuf, 576 * ch, 32)
+        mp3PhaseAddTrans(mp3PhaseNow() - tTrans0)
 
         ch = ch + 1
     }
