@@ -503,25 +503,49 @@ private func synth(xl: Array<Float64>, dstl: Array<Float32>, nch: Int64, lins: A
             let vz = zlin + 4 * i - 64 * k
             let vy = zlin + 4 * i - 64 * (15 - k)
 
-            var j: Int64 = 0
+            // 展开 j = 0..3，并把 8 个 `lins` 取数提到局部变量。
+            //
+            // 【为什么】原先每个 j 要读 `lins[vz+j]` 与 `lins[vy+j]` **各两次**（每次都是带
+            //   边界的数组访问），4 个 j 合计 16 次；提到局部后只剩 8 次，并省掉循环计数与
+            //   比较。合成段占墙钟 62%，这些冗余取数正是它"开销受限"（而非浮点受限）的主因。
+            //
+            // 【逐位等价】只合并取数、不打乱运算顺序：`z * w1 + y * w0` 与
+            //   `z * w0 - y * w1` 的**求值次序与原先逐字相同**，因此结果逐位不变。
+            let z0 = lins[vz + 0]
+            let z1 = lins[vz + 1]
+            let z2 = lins[vz + 2]
+            let z3 = lins[vz + 3]
+            let y0 = lins[vy + 0]
+            let y1 = lins[vy + 1]
+            let y2 = lins[vy + 2]
+            let y3 = lins[vy + 3]
             if (k == 0) {
-                while (j < 4) {
-                    b[j] = lins[vz + j] * w1 + lins[vy + j] * w0
-                    a[j] = lins[vz + j] * w0 - lins[vy + j] * w1
-                    j = j + 1
-                }
+                b[0] = z0 * w1 + y0 * w0
+                b[1] = z1 * w1 + y1 * w0
+                b[2] = z2 * w1 + y2 * w0
+                b[3] = z3 * w1 + y3 * w0
+                a[0] = z0 * w0 - y0 * w1
+                a[1] = z1 * w0 - y1 * w1
+                a[2] = z2 * w0 - y2 * w1
+                a[3] = z3 * w0 - y3 * w1
             } else if ((k & 1) == 1) {
-                while (j < 4) {
-                    b[j] += lins[vz + j] * w1 + lins[vy + j] * w0
-                    a[j] += lins[vy + j] * w1 - lins[vz + j] * w0
-                    j = j + 1
-                }
+                b[0] += z0 * w1 + y0 * w0
+                b[1] += z1 * w1 + y1 * w0
+                b[2] += z2 * w1 + y2 * w0
+                b[3] += z3 * w1 + y3 * w0
+                a[0] += y0 * w1 - z0 * w0
+                a[1] += y1 * w1 - z1 * w0
+                a[2] += y2 * w1 - z2 * w0
+                a[3] += y3 * w1 - z3 * w0
             } else {
-                while (j < 4) {
-                    b[j] += lins[vz + j] * w1 + lins[vy + j] * w0
-                    a[j] += lins[vz + j] * w0 - lins[vy + j] * w1
-                    j = j + 1
-                }
+                b[0] += z0 * w1 + y0 * w0
+                b[1] += z1 * w1 + y1 * w0
+                b[2] += z2 * w1 + y2 * w0
+                b[3] += z3 * w1 + y3 * w0
+                a[0] += z0 * w0 - y0 * w1
+                a[1] += z1 * w0 - y1 * w1
+                a[2] += z2 * w0 - y2 * w1
+                a[3] += z3 * w0 - y3 * w1
             }
             k = k + 1
         }
