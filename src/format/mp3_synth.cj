@@ -61,7 +61,8 @@ private func dctII(grbuf: Array<Float64>, n: Int64): Unit {
 
     var k: Int64 = 0
     while (k < n) {
-        for (i in Range<Int64>(0, 8, 1, true, true, false)) {
+        var i: Int64 = 0
+        while (i < 8) {
             let x0 = grbuf[k + i * 18]
             let x1 = grbuf[k + (15 - i) * 18]
             let x2 = grbuf[k + (16 + i) * 18]
@@ -74,6 +75,7 @@ private func dctII(grbuf: Array<Float64>, n: Int64): Unit {
             t[1 * 8 + i] = (t0 - t1) * gSec[3 * i + 2]
             t[2 * 8 + i] = t3 + t2
             t[3 * 8 + i] = (t3 - t2) * gSec[3 * i + 2]
+            i = i + 1
         }
 
         var ti: Int64 = 0
@@ -617,12 +619,16 @@ protected func synthGranule(qmfState: Array<Float64>, grbuf: Array<Float64>, nba
     pcmBuffer.copyTo(pcm, 0, 0, copySize)
 
     if (nch == 1) {
-        for (qi in Range<Int64>(0, 15 * 64, 2, true, true, false)) {
+        var qi: Int64 = 0
+        while (qi < 15 * 64) {
             qmfState[qi] = lins[nbands * 64 + qi]
+            qi = qi + 2
         }
     } else {
-        for (qi in Range<Int64>(0, 15 * 64, 1, true, true, false)) {
+        var qi: Int64 = 0
+        while (qi < 15 * 64) {
             qmfState[qi] = lins[nbands * 64 + qi]
+            qi = qi + 1
         }
     }
 
