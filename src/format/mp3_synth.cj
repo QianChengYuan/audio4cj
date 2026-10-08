@@ -592,18 +592,29 @@ private func synth(xl: Array<Float64>, dstl: Array<Float32>, nch: Int64, lins: A
 protected func synthGranule(qmfState: Array<Float64>, grbuf: Array<Float64>, nbands: Int64, nch: Int64,
     pcm: Array<Float32>, lins: Array<Float64>): Array<Float64> {
     var pcmSize = 1152 * nch
+    // 子段计时（哨兵守卫，默认零开销）：把合成段拆成三块 ——
+    //   fixNs  = 每 granule 的固定开销（pcmBuffer 分配 + 状态拷入 + 拷出与状态回写，三段累计）
+    //   dctNs  = dctII 循环
+    //   loopNs = synth 主循环（逐子带）
+    let tFix0 = mp3PhaseNow()
     var pcmBuffer = Array<Float32>(pcmSize, repeat: 0.0)
+    mp3PhaseAddFix(mp3PhaseNow() - tFix0)
 
+    let tDct0 = mp3PhaseNow()
     var ch: Int64 = 0
     while (ch < nch) {
         let dctSlice = grbuf.slice(576 * ch, 576 * (ch + 1) - 576 * ch)
         dctII(dctSlice, nbands)
         ch = ch + 1
     }
+    mp3PhaseAddDct(mp3PhaseNow() - tDct0)
 
     // 持久状态拷进工作缓冲头部；`synth` 会在 15*64 处追加当前窗口
+    let tFix1 = mp3PhaseNow()
     qmfState.copyTo(lins, 0, 0, 15 * 64)
+    mp3PhaseAddFix(mp3PhaseNow() - tFix1)
 
+    let tLoop0 = mp3PhaseNow()
     var band: Int64 = 0
     // 步进 2：`synth` 一次产出 2 个样本（成对计算，见 synth 的说明）
     while (band < nbands) {
@@ -614,7 +625,9 @@ protected func synthGranule(qmfState: Array<Float64>, grbuf: Array<Float64>, nba
 
         band = band + 2
     }
+    mp3PhaseAddLoop(mp3PhaseNow() - tLoop0)
 
+    let tFix2 = mp3PhaseNow()
     let copySize = min(pcmSize, pcm.size)
     pcmBuffer.copyTo(pcm, 0, 0, copySize)
 
@@ -631,6 +644,7 @@ protected func synthGranule(qmfState: Array<Float64>, grbuf: Array<Float64>, nba
             qi = qi + 1
         }
     }
+    mp3PhaseAddFix(mp3PhaseNow() - tFix2)
 
     return qmfState
 }
