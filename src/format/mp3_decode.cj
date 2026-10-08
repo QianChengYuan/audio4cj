@@ -156,7 +156,7 @@ protected func mp3PhaseTick(): Unit {
         MP3_PHASE.checked = true
         MP3_PHASE.enabled = exists(Path("testdata/diag/phase_timing.on"))
         if (MP3_PHASE.enabled) {
-            println("PHASE 分段计时已开启（每 100 帧一行，单位 ms）")
+            println("PHASE 分段计时已开启（每 10000 帧一行，单位 us）")
         }
     }
 }
@@ -167,7 +167,11 @@ protected func mp3PhaseFrameDone(): Unit {
         return
     }
     MP3_PHASE.frames += 1
-    if (MP3_PHASE.frames % 100 != 0) {
+    // 【为什么是 10000 而不是 100】100 帧的间隔会把"热身段"和稳态混在同一张表里
+    //   （实测同一构建的前几个区间能比稳态高 30%+），据此算占比会偏。10000 帧
+    //   （约 4.3 分钟音频）才够一次纯稳态采样；代价是 20 秒的合成素材不再打印，
+    //   要看得用真实歌曲跑（约 11700 个 MPEG 帧/首，即一首一次）。
+    if (MP3_PHASE.frames % 10000 != 0) {
         return
     }
     let dDec = MP3_PHASE.decodeNs - MP3_PHASE.lastDecodeNs
