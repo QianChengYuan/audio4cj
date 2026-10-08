@@ -142,6 +142,14 @@ Invoke-Ffmpeg -f lavfi -i "anoisesrc=d=2:c=white:a=0.30:r=44100" `
     -f lavfi -i "aevalsrc='0.9*exp(-60*mod(t\,0.25))':s=44100:d=2" `
     -filter_complex "amix=inputs=2:normalize=0" -ac 1 "-c:a" libmp3lame "-b:a" 64k `
     (Join-Path $D "mp3_noise_64k_mono.mp3")
+# 吞吐门禁用素材：20 秒合成混合内容（粉噪声 + 每 0.4 秒一个瞬变 + 多音，128k 立体声）。
+# 噪声是最坏情形（count1 区被填满），门槛因此挂在这条上，
+# 且 20 秒能把"每文件固定开销"摊薄。见 src/test/mp3_throughput_test.cj。
+Invoke-Ffmpeg -f lavfi -i "anoisesrc=d=20:c=pink:a=0.22:r=44100" `
+    -f lavfi -i "aevalsrc='0.7*exp(-50*mod(t\,0.4))*sin(2*PI*1800*t)':s=44100:d=20" `
+    -f lavfi -i "aevalsrc='0.25*sin(2*PI*220*t)+0.18*sin(2*PI*880*t)+0.12*sin(2*PI*3500*t)':s=44100:d=20" `
+    -filter_complex "amix=inputs=3:normalize=0,volume=0.8" -ac 2 "-c:a" libmp3lame "-b:a" 128k `
+    (Join-Path $D "mp3_mix_128k_20s.mp3")
 $common = @(
     "-metadata", "title=MP3 Title", "-metadata", "artist=MP3 Artist",
     "-metadata", "album=MP3 Album", "-metadata", "date=2026",

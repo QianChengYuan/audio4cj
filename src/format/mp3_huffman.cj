@@ -569,7 +569,12 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
     let bc = L3BitCache(bs)
     var ireg: Int64 = 0 // 当前处理到第几个"区域"（决定用哪张码表、逃逸位数）
     var bigValCnt = grInfo.bigValues
-    var sfb = grInfo.sfbtab // 频带游标：每消费完一带就 slice 掉一项（以 0 结尾）
+    // 频带游标用**下标**，不用 `slice`：
+    //   原先每消费一个频带就 `sfb = sfb.slice(1, sfb.size - 1)` —— 每个 granule 要分配
+    //   十几次小数组（44.1kHz 立体声约每秒 2000+ 次），纯属白送的 GC 压力；
+    //   换成下标后一次分配都没有，而且不再改动传进来的频带表（更安全）。
+    let sfb = grInfo.sfbtab
+    var sfbIdx: Int64 = 0
     var dstOff: Int64 = 0
     var curOne: Float64 = 0.0 // 当前频带的标度因子（就地反量化用）
     var scfIdx: Int64 = 0
@@ -586,13 +591,13 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
         let linbits = gLinbits[tabNum]
 
         do {
-            if (sfb.size == 0) {
+            if (sfbIdx >= sfb.size) {
                 break
             }
 
-            let np = sfb[0] / 2
+            let np = sfb[sfbIdx] / 2
 
-            sfb = sfb.slice(1, sfb.size - 1)
+            sfbIdx = sfbIdx + 1
 
             curOne = scf[scfIdx]
             scfIdx = scfIdx + 1
@@ -723,7 +728,7 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
         // leaf 的低 4 位分别对应 4 个样点"是否非零"；非零的样点才读 1 位符号。
         //
         // 【频带游标的推进速率：每个码字**只减 2**，不是减 4】
-        //   `np` 的单位是"样点对"（`np = sfb[0] / 2`），而一个 count1 码字覆盖
+        //   `np` 的单位是"样点对"（`np = sfb[sfbIdx] / 2`），而一个 count1 码字覆盖
         //   **4 个样点 = 2 对**，所以每码字只能扣 2。参照实现把这件事写成
         //   "在每个样点对之前各推进一次游标"（4 个样点分两组）：
         //       RELOAD_SCALEFACTOR; DEQ(0); DEQ(1);
@@ -745,12 +750,12 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
             if ((sampleIdx & 1) == 0) {
                 np = np - 1
                 if (np <= 0) {
-                    if (sfb.size == 0) {
+                    if (sfbIdx >= sfb.size) {
                         aborted = true
                         break
                     }
-                    let npLocal = sfb[0] / 2
-                    sfb = sfb.slice(1, sfb.size - 1)
+                    let npLocal = sfb[sfbIdx] / 2
+                    sfbIdx = sfbIdx + 1
                     if (npLocal == 0) {
                         aborted = true
                         break
@@ -783,7 +788,7 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
         }
         dstOff = dstOff + 4
 
-        if (np <= 0 && sfb.size == 0) {
+        if (np <= 0 && sfbIdx >= sfb.size) {
             break
         }
     }
