@@ -492,8 +492,18 @@ private func synth(xl: Array<Float64>, dstl: Array<Float32>, nch: Int64, lins: A
         lins[zlin + 4 * (i + 16) + 1] = xr[1 + 18 * (1 + i)]
         lins[zlin + 4 * (i - 16) + 2] = xl[18 * (1 + i)]
         lins[zlin + 4 * (i - 16) + 3] = xr[18 * (1 + i)]
-        var a = [0.0, 0.0, 0.0, 0.0]
-        var b = [0.0, 0.0, 0.0, 0.0]
+        // a/b 用**命名标量**而不是 4 元数组。
+        //   原先每个 k 要对 a/b 做 16 次带边界检查的数组访问（4 读 + 4 写；累加分支还是读改写的两倍），
+        //   8 个 k 合计约 128 次/每个 i；再乘 16 个 i、9 次调用、2 声道、2 granule —— 每帧上万次。
+        //   标量版本落在寄存器里，且**运算与求值次序逐字不变**（逐位等价，由 232 用例背书）。
+        var a0 = 0.0
+        var a1 = 0.0
+        var a2 = 0.0
+        var a3 = 0.0
+        var b0 = 0.0
+        var b1 = 0.0
+        var b2 = 0.0
+        var b3 = 0.0
 
         let wBase = (14 - i) * 16
         var k: Int64 = 0
@@ -520,44 +530,44 @@ private func synth(xl: Array<Float64>, dstl: Array<Float32>, nch: Int64, lins: A
             let y2 = lins[vy + 2]
             let y3 = lins[vy + 3]
             if (k == 0) {
-                b[0] = z0 * w1 + y0 * w0
-                b[1] = z1 * w1 + y1 * w0
-                b[2] = z2 * w1 + y2 * w0
-                b[3] = z3 * w1 + y3 * w0
-                a[0] = z0 * w0 - y0 * w1
-                a[1] = z1 * w0 - y1 * w1
-                a[2] = z2 * w0 - y2 * w1
-                a[3] = z3 * w0 - y3 * w1
+                b0 = z0 * w1 + y0 * w0
+                b1 = z1 * w1 + y1 * w0
+                b2 = z2 * w1 + y2 * w0
+                b3 = z3 * w1 + y3 * w0
+                a0 = z0 * w0 - y0 * w1
+                a1 = z1 * w0 - y1 * w1
+                a2 = z2 * w0 - y2 * w1
+                a3 = z3 * w0 - y3 * w1
             } else if ((k & 1) == 1) {
-                b[0] += z0 * w1 + y0 * w0
-                b[1] += z1 * w1 + y1 * w0
-                b[2] += z2 * w1 + y2 * w0
-                b[3] += z3 * w1 + y3 * w0
-                a[0] += y0 * w1 - z0 * w0
-                a[1] += y1 * w1 - z1 * w0
-                a[2] += y2 * w1 - z2 * w0
-                a[3] += y3 * w1 - z3 * w0
+                b0 += z0 * w1 + y0 * w0
+                b1 += z1 * w1 + y1 * w0
+                b2 += z2 * w1 + y2 * w0
+                b3 += z3 * w1 + y3 * w0
+                a0 += y0 * w1 - z0 * w0
+                a1 += y1 * w1 - z1 * w0
+                a2 += y2 * w1 - z2 * w0
+                a3 += y3 * w1 - z3 * w0
             } else {
-                b[0] += z0 * w1 + y0 * w0
-                b[1] += z1 * w1 + y1 * w0
-                b[2] += z2 * w1 + y2 * w0
-                b[3] += z3 * w1 + y3 * w0
-                a[0] += z0 * w0 - y0 * w1
-                a[1] += z1 * w0 - y1 * w1
-                a[2] += z2 * w0 - y2 * w1
-                a[3] += z3 * w0 - y3 * w1
+                b0 += z0 * w1 + y0 * w0
+                b1 += z1 * w1 + y1 * w0
+                b2 += z2 * w1 + y2 * w0
+                b3 += z3 * w1 + y3 * w0
+                a0 += z0 * w0 - y0 * w1
+                a1 += z1 * w0 - y1 * w1
+                a2 += z2 * w0 - y2 * w1
+                a3 += z3 * w0 - y3 * w1
             }
             k = k + 1
         }
 
-        dstl[(15 - i) * nch + dstrOff] = scalePcm(a[1])
-        dstl[(17 + i) * nch + dstrOff] = scalePcm(b[1])
-        dstl[(15 - i) * nch + 0] = scalePcm(a[0])
-        dstl[(17 + i) * nch + 0] = scalePcm(b[0])
-        dstl[(47 - i) * nch + dstrOff] = scalePcm(a[3])
-        dstl[(49 + i) * nch + dstrOff] = scalePcm(b[3])
-        dstl[(47 - i) * nch + 0] = scalePcm(a[2])
-        dstl[(49 + i) * nch + 0] = scalePcm(b[2])
+        dstl[(15 - i) * nch + dstrOff] = scalePcm(a1)
+        dstl[(17 + i) * nch + dstrOff] = scalePcm(b1)
+        dstl[(15 - i) * nch + 0] = scalePcm(a0)
+        dstl[(17 + i) * nch + 0] = scalePcm(b0)
+        dstl[(47 - i) * nch + dstrOff] = scalePcm(a3)
+        dstl[(49 + i) * nch + dstrOff] = scalePcm(b3)
+        dstl[(47 - i) * nch + 0] = scalePcm(a2)
+        dstl[(49 + i) * nch + 0] = scalePcm(b2)
         i = i - 1
     }
 
