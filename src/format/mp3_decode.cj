@@ -122,6 +122,13 @@ protected class Mp3PhaseStats {
     /// `transNs` = 变换链（抗混叠 + IMDCT + 符号翻转；短块的重排并入 decodeNs 不减除）。
     var huffNs: Int64 = 0
     var transNs: Int64 = 0
+    /// 合成段内部拆分（合成占整帧 40.8%，但内部构成不能靠微基准折算 ——
+    /// 实测微基准高估整段 2.5 倍，故必须像频谱链那样加子段计时）：
+    /// `dctNs` = `dctII` 循环；`loopNs` = `synth` 主循环；
+    /// `fixNs` = 每 granule 固定开销（`pcmBuffer` 分配 + 状态拷入 + 拷出与状态回写，三段累计）。
+    var dctNs: Int64 = 0
+    var loopNs: Int64 = 0
+    var fixNs: Int64 = 0
     /// 旁信息 + 位池装配（`l3ReadSideInfo` + `l3RestoreReservoir` + `l3SaveReservoir`）。
     /// 单列出来是为了**归因**：两阶段（频谱链 + 合成）之外还有一笔可观的墙钟差额，
     /// 这笔差额到底落在这里、还是落在门面/调用方，只能靠量。
@@ -136,6 +143,9 @@ protected class Mp3PhaseStats {
     var lastFrameNs: Int64 = 0
     var lastHuffNs: Int64 = 0
     var lastTransNs: Int64 = 0
+    var lastDctNs: Int64 = 0
+    var lastLoopNs: Int64 = 0
+    var lastFixNs: Int64 = 0
 }
 
 protected let MP3_PHASE = Mp3PhaseStats()
@@ -166,12 +176,18 @@ protected func mp3PhaseFrameDone(): Unit {
     let dFrame = MP3_PHASE.frameNs - MP3_PHASE.lastFrameNs
     let dHuff = MP3_PHASE.huffNs - MP3_PHASE.lastHuffNs
     let dTrans = MP3_PHASE.transNs - MP3_PHASE.lastTransNs
+    let dDct = MP3_PHASE.dctNs - MP3_PHASE.lastDctNs
+    let dLoop = MP3_PHASE.loopNs - MP3_PHASE.lastLoopNs
+    let dFix = MP3_PHASE.fixNs - MP3_PHASE.lastFixNs
     MP3_PHASE.lastDecodeNs = MP3_PHASE.decodeNs
     MP3_PHASE.lastSynthNs = MP3_PHASE.synthNs
     MP3_PHASE.lastSideNs = MP3_PHASE.sideNs
     MP3_PHASE.lastFrameNs = MP3_PHASE.frameNs
     MP3_PHASE.lastHuffNs = MP3_PHASE.huffNs
     MP3_PHASE.lastTransNs = MP3_PHASE.transNs
+    MP3_PHASE.lastDctNs = MP3_PHASE.dctNs
+    MP3_PHASE.lastLoopNs = MP3_PHASE.loopNs
+    MP3_PHASE.lastFixNs = MP3_PHASE.fixNs
     let total = dDec + dSyn + dSide
     let pct = if (total <= 0) {
         0.0
@@ -179,9 +195,11 @@ protected func mp3PhaseFrameDone(): Unit {
         100.0 * Float64(dDec) / Float64(total)
     }
     // 微秒显示：`-O2` 下每 100 帧只有几毫秒，整数毫秒会把拆分全压成 0。
+    // 合成侧三段（dct / 主循环 / 固定开销）之和应与 dSyn 基本相等 —— 差值是三层计时点之间的零头。
     println(
         "PHASE ${MP3_PHASE.frames} 帧：频谱链 ${dDec / 1000} us（其中哈夫曼+反量化 ${dHuff / 1000} us、" +
-            "变换链 ${dTrans / 1000} us）、合成 ${dSyn / 1000} us、旁信息+位池 ${dSide / 1000} us、" +
+            "变换链 ${dTrans / 1000} us）、合成 ${dSyn / 1000} us（其中 dctII ${dDct / 1000} us、" +
+            "主循环 ${dLoop / 1000} us、固定开销 ${dFix / 1000} us）、旁信息+位池 ${dSide / 1000} us、" +
             "三段合计 ${total / 1000} us、**整帧调用 ${dFrame / 1000} us**" + "（频谱链占 ${pct}%）")
 }
 
@@ -207,6 +225,24 @@ protected func mp3PhaseAddHuff(delta: Int64): Unit {
 protected func mp3PhaseAddTrans(delta: Int64): Unit {
     if (MP3_PHASE.enabled) {
         MP3_PHASE.transNs += delta
+    }
+}
+
+protected func mp3PhaseAddDct(delta: Int64): Unit {
+    if (MP3_PHASE.enabled) {
+        MP3_PHASE.dctNs += delta
+    }
+}
+
+protected func mp3PhaseAddLoop(delta: Int64): Unit {
+    if (MP3_PHASE.enabled) {
+        MP3_PHASE.loopNs += delta
+    }
+}
+
+protected func mp3PhaseAddFix(delta: Int64): Unit {
+    if (MP3_PHASE.enabled) {
+        MP3_PHASE.fixNs += delta
     }
 }
 
