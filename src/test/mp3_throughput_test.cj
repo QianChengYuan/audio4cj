@@ -35,10 +35,13 @@ import std.time.*
 let MP_AUDIO_SECONDS: Float64 = 20.0
 
 /// 红线：最坏情形素材上的实时倍速下限（硬断言）。
-let MP_RED_LINE: Float64 = 2.5
+/// 定 4.0 的依据：消灭流层每帧分配与逐字节拷贝后实测 **5.22×**，红线取在其下约 23%，
+/// 既守住"明显退化"又能吸收机器抖动。上一版是 2.5×（当时实测 3.30×）。
+let MP_RED_LINE: Float64 = 4.0
 
 /// 目标：达到后把红线提升上去（当前只报告、不判定）。
-let MP_TARGET: Float64 = 5.0
+/// 5× 已于 2026-10-08 达到（实测 5.22×），故目标前移到 8×，指向合成滤波器那一段。
+let MP_TARGET: Float64 = 8.0
 private let MP_FIXTURE: String = "testdata/mp3/mp3_mix_128k_20s.mp3"
 
 /// 把整个 MP3 解成 f32 交错样本，并返回样本总数（用于防空解）。
