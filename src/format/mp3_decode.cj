@@ -80,6 +80,16 @@ protected class Mp3Dec {
     var header: Array<UInt8>
     var reservBuf: Array<UInt8>
 
+    /// 解码工作缓冲（side info / 位池主数据 / 频谱 / 标度因子 / 合成输入 / 强度立体声位置）。
+    ///
+    /// 【为什么放在解码器状态里，而不是每帧新建】
+    ///   它是**纯工作缓冲**：一帧内必被覆盖或显式复位（`grbuf.fill(0.0)`、`istPos` 每声道清零、
+    ///   `bs` 由 `bitsInit` 重设），**不含跨帧状态**（跨帧状态是上面那几个字段）。
+    ///   原先每帧 `Mp3Scratch()` 会重建 `maindata`(2815 B) + `grbuf`(1152×8 B) + `syn`(2112×8 B)
+    ///   + `scf` + `grInfo`(4 个对象) + `istPos` —— 实测"每帧分配与准备"占墙钟约 46%，
+    ///   见 docs/decode-deviation-localization-evaluation.md 性能节的优化前后对照。
+    var scratch: Mp3Scratch
+
     public init() {
         mdctOverlap = Array<Array<Float64>>(2, {_: Int64 => Array<Float64>(9 * 32, repeat: 0.0)})
         qmfState = Array<Float64>(15 * 2 * 32, repeat: 0.0)
@@ -87,6 +97,7 @@ protected class Mp3Dec {
         freeFormatBytes = 0
         header = Array<UInt8>(4, repeat: 0)
         reservBuf = Array<UInt8>(511, repeat: 0)
+        scratch = Mp3Scratch()
     }
 }
 
@@ -106,18 +117,28 @@ protected class Mp3PhaseStats {
     var frames: Int64 = 0
     var decodeNs: Int64 = 0
     var synthNs: Int64 = 0
+    /// 旁信息 + 位池装配（`l3ReadSideInfo` + `l3RestoreReservoir` + `l3SaveReservoir`）。
+    /// 单列出来是为了**归因**：两阶段（频谱链 + 合成）之外还有一笔可观的墙钟差额，
+    /// 这笔差额到底落在这里、还是落在门面/调用方，只能靠量。
+    var sideNs: Int64 = 0
+    /// **整帧调用**（`mp3DecodeFrame` 整函数，由流层 `nextPacket` 计时）。
+    /// 它与上面三段的关系是决定性的：整帧 ≈ 三段之和 ⇒ 残差在流层的循环里；
+    /// 整帧 ≈ 墙钟 ⇒ 残差在 `mp3DecodeFrame` 内、但不在三段里。
+    var frameNs: Int64 = 0
     var lastDecodeNs: Int64 = 0
     var lastSynthNs: Int64 = 0
+    var lastSideNs: Int64 = 0
+    var lastFrameNs: Int64 = 0
 }
 
-protected let mp3Phase = Mp3PhaseStats()
+protected let MP3_PHASE = Mp3PhaseStats()
 
 /// 每帧调用一次：首次调用时探测 sentinel，之后只做一次布尔判断。
 protected func mp3PhaseTick(): Unit {
-    if (!mp3Phase.checked) {
-        mp3Phase.checked = true
-        mp3Phase.enabled = exists(Path("testdata/diag/phase_timing.on"))
-        if (mp3Phase.enabled) {
+    if (!MP3_PHASE.checked) {
+        MP3_PHASE.checked = true
+        MP3_PHASE.enabled = exists(Path("testdata/diag/phase_timing.on"))
+        if (MP3_PHASE.enabled) {
             println("PHASE 分段计时已开启（每 100 帧一行，单位 ms）")
         }
     }
@@ -125,25 +146,31 @@ protected func mp3PhaseTick(): Unit {
 
 /// 每帧一次：累计帧数并按固定间隔打印**区间增量**（打印累计值会被误读成瞬时值）。
 protected func mp3PhaseFrameDone(): Unit {
-    if (!mp3Phase.enabled) {
+    if (!MP3_PHASE.enabled) {
         return
     }
-    mp3Phase.frames += 1
-    if (mp3Phase.frames % 100 != 0) {
+    MP3_PHASE.frames += 1
+    if (MP3_PHASE.frames % 100 != 0) {
         return
     }
-    let dDec = mp3Phase.decodeNs - mp3Phase.lastDecodeNs
-    let dSyn = mp3Phase.synthNs - mp3Phase.lastSynthNs
-    mp3Phase.lastDecodeNs = mp3Phase.decodeNs
-    mp3Phase.lastSynthNs = mp3Phase.synthNs
-    let total = dDec + dSyn
+    let dDec = MP3_PHASE.decodeNs - MP3_PHASE.lastDecodeNs
+    let dSyn = MP3_PHASE.synthNs - MP3_PHASE.lastSynthNs
+    let dSide = MP3_PHASE.sideNs - MP3_PHASE.lastSideNs
+    let dFrame = MP3_PHASE.frameNs - MP3_PHASE.lastFrameNs
+    MP3_PHASE.lastDecodeNs = MP3_PHASE.decodeNs
+    MP3_PHASE.lastSynthNs = MP3_PHASE.synthNs
+    MP3_PHASE.lastSideNs = MP3_PHASE.sideNs
+    MP3_PHASE.lastFrameNs = MP3_PHASE.frameNs
+    let total = dDec + dSyn + dSide
     let pct = if (total <= 0) {
         0.0
     } else {
         100.0 * Float64(dDec) / Float64(total)
     }
-    println("PHASE ${mp3Phase.frames} 帧：频谱链 ${dDec / 1000000} ms、" +
-        "合成 ${dSyn / 1000000} ms、合计 ${total / 1000000} ms（频谱链占 ${pct}%）")
+    println(
+        "PHASE ${MP3_PHASE.frames} 帧：频谱链 ${dDec / 1000000} ms、" +
+            "合成 ${dSyn / 1000000} ms、旁信息+位池 ${dSide / 1000000} ms、" +
+            "三段合计 ${total / 1000000} ms、**整帧调用 ${dFrame / 1000000} ms**" + "（频谱链占 ${pct}%）")
 }
 
 protected func mp3DecInit(dec: Mp3Dec): Unit {
@@ -159,9 +186,14 @@ protected func mp3DecReset(dec: Mp3Dec): Unit {
 
     for (ch in Range<Int64>(0, 2, 1, true, true, false)) {
         dec.mdctOverlap[ch].fill(0.0)
+        // 工作缓冲随解码器实例存活，跨文件/seek 复用会带入上一段流的残留：
+        // 其中 `grbuf` 与 `istPos` 是"必须为 0 才正确"的字段（正常路径每 granule 会复位它们，
+        // 但"重新开始"这条路径不应依赖"下面一定会先写"）。
+        dec.scratch.istPos[ch].fill(UInt8(0))
     }
 
     dec.qmfState.fill(0.0)
+    dec.scratch.grbuf.fill(0.0)
 }
 
 /// 把解码得到的定标整数样本（int16 量纲）转为库统一的 f32（取值 [-1.0, 1.0]）。
@@ -221,13 +253,15 @@ protected func mp3DecodeFrame(dec: Mp3Dec, mp3: Array<UInt8>, mp3Bytes: Int64, p
         _ = getBits(bsFrame, 16)
     }
     if (info.layer == 3) {
-        var scratch = Mp3Scratch()
+        let scratch = dec.scratch
+        let tSide0 = MonoTime.now()
         let mainDataBegin = l3ReadSideInfo(bsFrame, scratch.grInfo, hdr)
         if (mainDataBegin < 0 || bsFrame.pos > bsFrame.limit) {
             mp3DecInit(dec);
             return 0
         }
         let ok = l3RestoreReservoir(dec, bsFrame, scratch, mainDataBegin)
+        let tSide1 = MonoTime.now()
         if (ok != 0) {
             var ngr: Int64 = 1
             if (hdrTestMpeg1(hdr)) {
@@ -247,18 +281,22 @@ protected func mp3DecodeFrame(dec: Mp3Dec, mp3: Array<UInt8>, mp3Bytes: Int64, p
                 let tDec1 = MonoTime.now()
                 dec.qmfState = synthGranule(dec.qmfState, scratch.grbuf, 18, info.channels,
                     pcm.slice(pcmOff, pcm.size - pcmOff), scratch.syn)
-                if (mp3Phase.enabled) {
-                    mp3Phase.decodeNs += (tDec1 - tDec0).toNanoseconds()
-                    mp3Phase.synthNs += (MonoTime.now() - tDec1).toNanoseconds()
+                if (MP3_PHASE.enabled) {
+                    MP3_PHASE.decodeNs += (tDec1 - tDec0).toNanoseconds()
+                    MP3_PHASE.synthNs += (MonoTime.now() - tDec1).toNanoseconds()
                 }
                 igr = igr + 1
             }
             mp3PhaseFrameDone()
         }
+        let tSave0 = MonoTime.now()
         l3SaveReservoir(dec, scratch)
+        if (MP3_PHASE.enabled) {
+            MP3_PHASE.sideNs += (tSide1 - tSide0).toNanoseconds() + (MonoTime.now() - tSave0).toNanoseconds()
+        }
         return ok * hdrFrameSamples(dec.header)
     } else {
-        var scratch = Mp3Scratch()
+        let scratch = dec.scratch
         var sci = L12ScaleInfo()
         l12ReadScaleInfo(hdr, bsFrame, sci)
         var iacc: Int64 = 0

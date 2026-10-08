@@ -4,6 +4,7 @@ import audio4cj.core.*
 import audio4cj.meta.*
 import audio4cj.pcm.f32ToBytes
 import std.fs.*
+import std.time.*
 
 /* ============================================================================
  * MP3 demuxer（FormatReader 实现）
@@ -58,17 +59,14 @@ private func mp3FillWindow(file: File, buf: Array<UInt8>, len: Int64): (Int64, B
     var n = len
     var eof = false
     while (n < buf.size && !eof) {
-        let want = buf.size - n
-        let scratch = Array<UInt8>(want, repeat: 0)
-        let r = file.read(scratch)
+        // 直接把文件读进窗口尾部：`buf[n..]` 是**共享视图**（不是拷贝），
+        // 因此既不需要临时数组、也不需要逐字节搬运。原先每读一次都要
+        // 分配一块 `want` 大小（最大 64 KB）的临时数组再把内容逐字节拷进窗口，
+        // 而这是**每帧**一次的量级 —— 实测流层占了墙钟近四成（见文档性能节）。
+        let r = file.read(buf.slice(n, buf.size - n))
         if (r <= 0) {
             eof = true
             break
-        }
-        var i: Int64 = 0
-        while (i < r) {
-            buf[n + i] = scratch[i]
-            i += 1
         }
         n += r
     }
@@ -164,18 +162,18 @@ protected class Mp3FormatReader <: FormatReader {
                 break
             }
             let info = Mp3FrameInfo()
+            let tFrame0 = MonoTime.now()
             let n = mp3DecodeFrame(_dec, _buf[0.._bufLen], _bufLen, _pcm, info)
+            if (MP3_PHASE.enabled) {
+                MP3_PHASE.frameNs += (MonoTime.now() - tFrame0).toNanoseconds()
+            }
             let consumed = info.frameBytes
             if (consumed <= 0) {
                 break
             }
             if (n > 0) {
-                let samples = n * _channels
-                var i: Int64 = 0
-                while (i < samples) {
-                    acc[framesOut * _channels + i] = _pcm[i]
-                    i += 1
-                }
+                // 同上：整体搬运（逐样本循环每轮还要重算 `framesOut * _channels + i`）
+                _pcm.copyTo(acc, 0, framesOut * _channels, n * _channels)
                 framesOut += n
             }
             consume(consumed)
@@ -311,11 +309,9 @@ protected class Mp3FormatReader <: FormatReader {
             return
         }
         let left = _bufLen - n
-        var i: Int64 = 0
-        while (i < left) {
-            _buf[i] = _buf[n + i]
-            i += 1
-        }
+        // 整体搬运而不是逐字节：逐字节循环在仓颉里带边界检查，64 KB 窗口下
+        // 每帧一次就是可观的开销（见文档性能节）。向左搬移是安全的整体拷贝。
+        _buf.copyTo(_buf, n, 0, left)
         _bufLen = left
     }
 
