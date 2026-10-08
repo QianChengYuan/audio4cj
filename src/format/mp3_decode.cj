@@ -117,6 +117,11 @@ protected class Mp3PhaseStats {
     var frames: Int64 = 0
     var decodeNs: Int64 = 0
     var synthNs: Int64 = 0
+    /// 频谱链内部拆分（`-O2` 后频谱链占 67~69%，不切开就不知道该打哪一段）：
+    /// `huffNs` = `l3Huffman`（码表取数 + 码字解析 + linbits 逃逸 + 反量化）；
+    /// `transNs` = 变换链（抗混叠 + IMDCT + 符号翻转；短块的重排并入 decodeNs 不减除）。
+    var huffNs: Int64 = 0
+    var transNs: Int64 = 0
     /// 旁信息 + 位池装配（`l3ReadSideInfo` + `l3RestoreReservoir` + `l3SaveReservoir`）。
     /// 单列出来是为了**归因**：两阶段（频谱链 + 合成）之外还有一笔可观的墙钟差额，
     /// 这笔差额到底落在这里、还是落在门面/调用方，只能靠量。
@@ -129,6 +134,8 @@ protected class Mp3PhaseStats {
     var lastSynthNs: Int64 = 0
     var lastSideNs: Int64 = 0
     var lastFrameNs: Int64 = 0
+    var lastHuffNs: Int64 = 0
+    var lastTransNs: Int64 = 0
 }
 
 protected let MP3_PHASE = Mp3PhaseStats()
@@ -157,20 +164,50 @@ protected func mp3PhaseFrameDone(): Unit {
     let dSyn = MP3_PHASE.synthNs - MP3_PHASE.lastSynthNs
     let dSide = MP3_PHASE.sideNs - MP3_PHASE.lastSideNs
     let dFrame = MP3_PHASE.frameNs - MP3_PHASE.lastFrameNs
+    let dHuff = MP3_PHASE.huffNs - MP3_PHASE.lastHuffNs
+    let dTrans = MP3_PHASE.transNs - MP3_PHASE.lastTransNs
     MP3_PHASE.lastDecodeNs = MP3_PHASE.decodeNs
     MP3_PHASE.lastSynthNs = MP3_PHASE.synthNs
     MP3_PHASE.lastSideNs = MP3_PHASE.sideNs
     MP3_PHASE.lastFrameNs = MP3_PHASE.frameNs
+    MP3_PHASE.lastHuffNs = MP3_PHASE.huffNs
+    MP3_PHASE.lastTransNs = MP3_PHASE.transNs
     let total = dDec + dSyn + dSide
     let pct = if (total <= 0) {
         0.0
     } else {
         100.0 * Float64(dDec) / Float64(total)
     }
+    // 微秒显示：`-O2` 下每 100 帧只有几毫秒，整数毫秒会把拆分全压成 0。
     println(
-        "PHASE ${MP3_PHASE.frames} 帧：频谱链 ${dDec / 1000000} ms、" +
-            "合成 ${dSyn / 1000000} ms、旁信息+位池 ${dSide / 1000000} ms、" +
-            "三段合计 ${total / 1000000} ms、**整帧调用 ${dFrame / 1000000} ms**" + "（频谱链占 ${pct}%）")
+        "PHASE ${MP3_PHASE.frames} 帧：频谱链 ${dDec / 1000} us（其中哈夫曼+反量化 ${dHuff / 1000} us、" +
+            "变换链 ${dTrans / 1000} us）、合成 ${dSyn / 1000} us、旁信息+位池 ${dSide / 1000} us、" +
+            "三段合计 ${total / 1000} us、**整帧调用 ${dFrame / 1000} us**" + "（频谱链占 ${pct}%）")
+}
+
+/// 子段计时的取时/累加 helper（放这里是因为本文件已 `import std.time.*`；
+/// `mp3_transform.cj` 与它同包，直接调用即可，不必再引入时间库）。
+/// 开关判断放在 helper 内部 ⇒ 哨兵未开时调用点只有一次函数调用，零账目开销。
+///
+/// 【为什么返回相对基准的纳秒而不是 `MonoTime`】`toNanoseconds()` 是 `Duration` 的方法，
+/// 不是 `MonoTime` 的（实测编译错误：'toNanoseconds' is not a member of struct 'MonoTime'）。
+/// 取一个模块级基准时刻、返回差值，调用方就只做 `Int64` 相减，无需 import 时间库。
+private let MP3_PHASE_BASE = MonoTime.now()
+
+protected func mp3PhaseNow(): Int64 {
+    (MonoTime.now() - MP3_PHASE_BASE).toNanoseconds()
+}
+
+protected func mp3PhaseAddHuff(delta: Int64): Unit {
+    if (MP3_PHASE.enabled) {
+        MP3_PHASE.huffNs += delta
+    }
+}
+
+protected func mp3PhaseAddTrans(delta: Int64): Unit {
+    if (MP3_PHASE.enabled) {
+        MP3_PHASE.transNs += delta
+    }
 }
 
 protected func mp3DecInit(dec: Mp3Dec): Unit {
