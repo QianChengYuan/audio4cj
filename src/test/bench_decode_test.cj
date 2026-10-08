@@ -40,6 +40,17 @@ private let BD_FLAC_24: String = "testdata/flac/flac_s24_44100_stereo.flac"
 /// MP3 基准素材（纯仓颉内核；它的耗时构成本库最重的一条解码路径）。
 private let BD_MP3: String = "testdata/mp3/mp3_cbr_128k.mp3"
 
+/// 门禁与趋势判断用的 MP3 素材：20 秒合成混合内容（粉噪声 + 每 0.4 秒一个瞬变 + 多音）。
+///
+/// 【为什么另起一条，而不是沿用 BD_MP3】
+///   `mp3_cbr_128k.mp3` 是 440 Hz 正弦：频谱稀疏、count1 区几乎全零。它对
+///   **吞吐**是失真样本 —— 实测同一实现在 1 秒正弦上只有 4.3× 实时，而在 30 秒
+///   真实音乐上是 8.8×：短素材量到的其实是"每文件固定开销 + 启动噪声"，不是吞吐；
+///   而稀疏频谱又把它高估成"很轻"。两者都不能当门禁。
+///   本条用 20 秒、内容密度接近真实音乐的素材，把固定开销摊薄，并保留正弦那条
+///   作为历史锚点（与当年 FFI 方案的对比口径不变）。
+private let BD_MP3_MIX: String = "testdata/mp3/mp3_mix_128k_20s.mp3"
+
 /// 累加器：让基准体的计算结果"有去处"，避免被优化掉。
 ///
 /// 基准不做断言，故只累加、不校验；也正是因此它必须是可变的文件级变量，
@@ -118,6 +129,13 @@ class BenchDecode {
     @Bench
     func mp3DecodeAll() {
         BD_SINK += bdDecodeAll(BD_MP3)
+    }
+
+    /// MP3 门禁口径：与上一条同一条解码路径，但素材换成 20 秒混合内容。
+    /// 性能门槛（`mp3_throughput_test.cj`）就以这条的数字为准。
+    @Bench
+    func mp3MixDecodeAll() {
+        BD_SINK += bdDecodeAll(BD_MP3_MIX)
     }
 
     // ------------------------------------------------------------------
