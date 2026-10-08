@@ -18,7 +18,7 @@
   # 测试代码经 @Test 宏展开后会产生大量 "unreachable block in 'if' expression"
   # 与 unused 变量/导入告警（本地实测 341 条），会把真实告警淹没。此类告警不改变
   # 产物语义，故统一关闭；产品代码在本开关前后均为零告警（实测）。
-  compile-option = "-Woff unused"
+  compile-option = "-O2 -Woff unused"
 
   # —— 中心仓元数据（随 meta-data.json 上架展示）——
   authors = ["yuan_1992"]
