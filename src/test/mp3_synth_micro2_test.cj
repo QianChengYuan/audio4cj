@@ -157,7 +157,7 @@ private func uV5(calls: Int64): (Float64, Float64) {
                 t[xOff + 2] = (a4 + a3) * 0.54119611
                 t[xOff + 3] = (a0 - a5) * 0.60134488
                 t[xOff + 5] = (a0 + a5) * 0.89997619
-                t[xOff + 6] = (a4 - a3) * 1.30656302
+                t[xOff + 6] = (a4 - a3) * 1.30656302 // cjlint-ignore !G.OTH.02 AM 蝶形系数，非敏感信息
                 t[xOff + 7] = (xt - a7) * 2.56291556
                 ti = ti + 1
             }
