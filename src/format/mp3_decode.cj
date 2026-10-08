@@ -2,6 +2,8 @@ package audio4cj.format
 
 import std.core.*
 import std.collection.*
+import std.fs.*
+import std.time.*
 
 /* ============================================================================
  * MP3 解码内核（入口）
@@ -88,6 +90,62 @@ protected class Mp3Dec {
     }
 }
 
+/// 分段计时（诊断用）：受 `testdata/diag/phase_timing.on` 这个 sentinel 文件守卫。
+///
+/// 【为什么用 sentinel 文件而不是环境变量】
+///   仓库既有的诊断开关就是这个约定（`src/test/diag_dump_test.cj` 由 `testdata/diag/dump.list`
+///   触发），导入面与"默认关闭"的保证完全一致；且 `testdata/diag/` 已在 .gitignore 里，
+///   sentinel 不会被误提交。
+///
+/// 【为什么用顶层 `let` + 类字段】
+///   仓颉不允许顶层 `var`，但允许顶层 `let` 绑定一个**类实例**、再改它的字段 ——
+///   这是表达"进程级统计"的常规做法，不必把计数器塞进公开 API。
+protected class Mp3PhaseStats {
+    var checked: Bool = false
+    var enabled: Bool = false
+    var frames: Int64 = 0
+    var decodeNs: Int64 = 0
+    var synthNs: Int64 = 0
+    var lastDecodeNs: Int64 = 0
+    var lastSynthNs: Int64 = 0
+}
+
+protected let mp3Phase = Mp3PhaseStats()
+
+/// 每帧调用一次：首次调用时探测 sentinel，之后只做一次布尔判断。
+protected func mp3PhaseTick(): Unit {
+    if (!mp3Phase.checked) {
+        mp3Phase.checked = true
+        mp3Phase.enabled = exists(Path("testdata/diag/phase_timing.on"))
+        if (mp3Phase.enabled) {
+            println("PHASE 分段计时已开启（每 100 帧一行，单位 ms）")
+        }
+    }
+}
+
+/// 每帧一次：累计帧数并按固定间隔打印**区间增量**（打印累计值会被误读成瞬时值）。
+protected func mp3PhaseFrameDone(): Unit {
+    if (!mp3Phase.enabled) {
+        return
+    }
+    mp3Phase.frames += 1
+    if (mp3Phase.frames % 100 != 0) {
+        return
+    }
+    let dDec = mp3Phase.decodeNs - mp3Phase.lastDecodeNs
+    let dSyn = mp3Phase.synthNs - mp3Phase.lastSynthNs
+    mp3Phase.lastDecodeNs = mp3Phase.decodeNs
+    mp3Phase.lastSynthNs = mp3Phase.synthNs
+    let total = dDec + dSyn
+    let pct = if (total <= 0) {
+        0.0
+    } else {
+        100.0 * Float64(dDec) / Float64(total)
+    }
+    println("PHASE ${mp3Phase.frames} 帧：频谱链 ${dDec / 1000000} ms、" +
+        "合成 ${dSyn / 1000000} ms、合计 ${total / 1000000} ms（频谱链占 ${pct}%）")
+}
+
 protected func mp3DecInit(dec: Mp3Dec): Unit {
     dec.header[0] = 0
 }
@@ -118,6 +176,7 @@ protected func scalePcm(sample: Float64): Float32 {
 // ===== MP3帧解码主函数 =====
 protected func mp3DecodeFrame(dec: Mp3Dec, mp3: Array<UInt8>, mp3Bytes: Int64, pcm: Array<Float32>, info: Mp3FrameInfo): Int64 {
     var hdr: Array<UInt8> = []
+    mp3PhaseTick()
 
     var i: Int64 = 0
     var frameSize: Int64 = 0
@@ -181,13 +240,20 @@ protected func mp3DecodeFrame(dec: Mp3Dec, mp3: Array<UInt8>, mp3Bytes: Int64, p
                 var pcmOff = 576 * info.channels * igr
 
                 scratch.grbuf.fill(0.0)
+                let tDec0 = MonoTime.now()
                 l3Decode(dec, scratch,
                     scratch.grInfo.slice(igr * info.channels, scratch.grInfo.size - (igr * info.channels)),
                     info.channels)
+                let tDec1 = MonoTime.now()
                 dec.qmfState = synthGranule(dec.qmfState, scratch.grbuf, 18, info.channels,
                     pcm.slice(pcmOff, pcm.size - pcmOff), scratch.syn)
+                if (mp3Phase.enabled) {
+                    mp3Phase.decodeNs += (tDec1 - tDec0).toNanoseconds()
+                    mp3Phase.synthNs += (MonoTime.now() - tDec1).toNanoseconds()
+                }
                 igr = igr + 1
             }
+            mp3PhaseFrameDone()
         }
         l3SaveReservoir(dec, scratch)
         return ok * hdrFrameSamples(dec.header)
