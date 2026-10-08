@@ -386,7 +386,12 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         }
         let startInWindow = _cursor - _windowFileOffset
         _reader.seekToBit(startInWindow * 8)
+        let tFrame0 = flacPhaseNow()
         let frame = decodeFrame(_reader, _info)
+        if (MP3_PHASE.enabled) {
+            FLAC_PHASE.frameNs += (flacPhaseNow() - tFrame0)
+            flacPhaseFrameDone()
+        }
 
         verifyFrameCrc(startInWindow, frame.headerEndByte, frame.frameEndByte)
         _framesSinceReposition += 1

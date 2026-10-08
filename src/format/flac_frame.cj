@@ -1,7 +1,69 @@
 package audio4cj.format
 
+import std.time.*
 import audio4cj.core.CorruptedFileException
 import std.collection.ArrayList
+// ============================================================================
+// FLAC 分配闸门（受 testdata/diag/phase_timing.on 守卫，默认零开销）
+//
+// 【为什么需要】flac_frame.cj 里有 7 处每次调用都新建的大缓冲（blockSize 通常 4096
+//   ⇒ 每块 32 KB）。但"该不该把它们改成复用池"不能靠估：本仓已两次证明微基准
+//   会高估（形态复刻带进生产代码没有的开销）。唯一可信的判据是**在真实素材上量
+//   出分配占整帧的比例** —— 那就是池的天花板。
+//
+// 【怎么量】所有大分配都走 flacAllocInt64（与原语句逐一对应，只是多了一对取时），
+//   累计到 allocNs；整帧耗时由流层计入 frameNs。两者之比即答案。
+// ============================================================================
+protected class FlacPhaseStats {
+    var frames: Int64 = 0
+    var frameNs: Int64 = 0
+    var allocNs: Int64 = 0
+    var lastFrameNs: Int64 = 0
+    var lastAllocNs: Int64 = 0
+}
+
+protected let FLAC_PHASE = FlacPhaseStats()
+private let FLAC_PHASE_BASE = MonoTime.now()
+
+protected func flacPhaseNow(): Int64 {
+    (MonoTime.now() - FLAC_PHASE_BASE).toNanoseconds()
+}
+
+/// 大缓冲的统一入口：语义与 `flacAllocInt64(n)` 完全相同，只多一对取时。
+protected func flacAllocInt64(n: Int64): Array<Int64> {
+    mp3PhaseTick()
+    if (!MP3_PHASE.enabled) {
+        return Array<Int64>(n, repeat: 0)
+    }
+    let t0 = flacPhaseNow()
+    let a = Array<Int64>(n, repeat: 0)
+    FLAC_PHASE.allocNs += (flacPhaseNow() - t0)
+    a
+}
+
+/// 每帧一次：累计并按间隔打印区间增量（与 MP3 的 PHASE 同构）。
+protected func flacPhaseFrameDone(): Unit {
+    mp3PhaseTick()
+    if (!MP3_PHASE.enabled) {
+        return
+    }
+    FLAC_PHASE.frames += 1
+    if (FLAC_PHASE.frames % 1000 != 0) {
+        return
+    }
+    let dFrame = FLAC_PHASE.frameNs - FLAC_PHASE.lastFrameNs
+    let dAlloc = FLAC_PHASE.allocNs - FLAC_PHASE.lastAllocNs
+    FLAC_PHASE.lastFrameNs = FLAC_PHASE.frameNs
+    FLAC_PHASE.lastAllocNs = FLAC_PHASE.allocNs
+    let pct = if (dFrame <= 0) {
+        0.0
+    } else {
+        100.0 * Float64(dAlloc) / Float64(dFrame)
+    }
+    println(
+        "FLACPHASE ${FLAC_PHASE.frames} 帧：整帧 ${dFrame / 1000} us、" +
+            "其中大缓冲分配 ${dAlloc / 1000} us（占 ${pct}%）")
+}
 
 /* ============================================================================
  * FLAC 帧解码（纯仓颉）
@@ -269,7 +331,7 @@ private func decodeResidual(reader: BitReader, blockSize: Int64, predictorOrder:
         throw CorruptedFileException("FLAC 分区数 ${partitions} 无法整除块大小 ${blockSize}")
     }
 
-    let out = Array<Int64>(blockSize, repeat: 0)
+    let out = flacAllocInt64(blockSize)
     var index: Int64 = 0
     var p: Int64 = 0
     while (p < partitions) {
@@ -384,7 +446,7 @@ private func decodeSubframe(reader: BitReader, bitsPerSample: Int64, blockSize: 
 /// CONSTANT 子帧：整块同一个值。
 private func decodeConstant(reader: BitReader, bitsPerSample: Int64, blockSize: Int64): Array<Int64> {
     let value = reader.readSignedBits(bitsPerSample)
-    let out = Array<Int64>(blockSize, repeat: 0)
+    let out = flacAllocInt64(blockSize)
     var i: Int64 = 0
     while (i < blockSize) {
         out[i] = value
@@ -395,7 +457,7 @@ private func decodeConstant(reader: BitReader, bitsPerSample: Int64, blockSize: 
 
 /// VERBATIM 子帧：未压缩，逐样本位宽 = 位深。
 private func decodeVerbatim(reader: BitReader, bitsPerSample: Int64, blockSize: Int64): Array<Int64> {
-    let out = Array<Int64>(blockSize, repeat: 0)
+    let out = flacAllocInt64(blockSize)
     var i: Int64 = 0
     while (i < blockSize) {
         out[i] = reader.readSignedBits(bitsPerSample)
@@ -411,7 +473,7 @@ private func decodeFixed(reader: BitReader, order: Int64, bitsPerSample: Int64, 
     if (order > blockSize) {
         throw CorruptedFileException("FLAC FIXED 阶数 ${order} 超过块大小 ${blockSize}")
     }
-    let out = Array<Int64>(blockSize, repeat: 0)
+    let out = flacAllocInt64(blockSize)
 
     // 前 order 个样本是原样存储的
     var i: Int64 = 0
@@ -454,7 +516,7 @@ private func decodeLpc(reader: BitReader, order: Int64, bitsPerSample: Int64, bl
         throw CorruptedFileException("FLAC LPC 阶数 ${order} 超过规范上限 32")
     }
 
-    let out = Array<Int64>(blockSize, repeat: 0)
+    let out = flacAllocInt64(blockSize)
 
     // 前 order 个样本原样存储
     var i: Int64 = 0
@@ -474,7 +536,7 @@ private func decodeLpc(reader: BitReader, order: Int64, bitsPerSample: Int64, bl
     let shift = reader.readSignedBits(5)
 
     // 系数：共 order 个，每个 precision 位有符号
-    let coef = Array<Int64>(order, repeat: 0)
+    let coef = flacAllocInt64(order)
     i = 0
     while (i < order) {
         coef[i] = reader.readSignedBits(precision)
@@ -640,8 +702,8 @@ private func applyChannelDecorrelation(
     let a = raw[0]
     let b = raw[1]
     let n = header.blockSize
-    let left = Array<Int64>(n, repeat: 0)
-    let right = Array<Int64>(n, repeat: 0)
+    let left = flacAllocInt64(n)
+    let right = flacAllocInt64(n)
 
     var i: Int64 = 0
     while (i < n) {
