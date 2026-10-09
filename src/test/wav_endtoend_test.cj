@@ -93,8 +93,9 @@ private func buildWav(
 
 /// 写临时 WAV 并返回路径。
 private func writeWav(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 浮点近似比较。

@@ -222,8 +222,9 @@ private func buildFlacFile(
 
 /// 写临时 FLAC 文件并返回路径。
 private func writeFlac(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 // ---------------------------------------------------------------------------

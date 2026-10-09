@@ -148,7 +148,7 @@ class Mp3DecodeTest {
             i += 1
         }
 
-        let path = "a4cj_mp3_garbage_stream.mp3"
+        let path = testTmpPath("a4cj_mp3_garbage_stream.mp3")
         File.writeTo(path, out)
         try {
             // 打开阶段就必须拒绝（而不是给出一段"解出来的"垃圾音频）

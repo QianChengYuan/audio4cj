@@ -207,8 +207,8 @@ private let FLAC_SEEKPOINT_PLACEHOLDER: UInt64 = 0xFFFFFFFFFFFFFFFF
 /// 解析 SEEKTABLE 时最多接纳的定位点数。
 ///
 /// 【为什么要设上限】块长度是文件里的 24 位字段、**未经验证**。若不设限，
-/// 一个声称极长的块会让解析阶段一次性分配大量内存 —— 与 malformed_input_test
-/// 里"声明长度远超实际"那类用例防的是同一个问题。
+/// 一个声称极长的块会让解析阶段一次性分配大量内存 —— 与「声明长度远超实际」
+/// 那类健壮性用例防的是同一个问题。
 /// 超出部分直接忽略：SEEKTABLE 是**提示性**数据，缺失只会让 seek 退化为
 /// 从头解码，不影响正确性，因此截断比报错更合适。
 protected let FLAC_SEEKTABLE_MAX_POINTS: Int64 = 65536

@@ -73,8 +73,9 @@ private func asyncBuildWav(frameCount: Int64): Array<UInt8> {
 }
 
 private func asyncWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 // ---------------------------------------------------------------------------

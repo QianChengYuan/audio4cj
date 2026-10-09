@@ -254,7 +254,8 @@ protected class PureFlacKernel <: FlacDecodeKernel {
 
             if (blockType == FLAC_BLOCK_SEEKTABLE && len > 0) {
                 // 【只读入上限内的部分】块长度是文件里的 24 位字段、未经验证，
-                // 按它直接分配会中招（与 malformed_input_test 防的是同一类问题）。
+                // 按它直接分配会中招（与「声明长度远超实际」那类健壮性用例
+                // 防的是同一个问题）。
                 // 且截断必须**对齐到 18 的整数倍**：否则解析器会看到"长度非整数倍"
                 // 而判为损坏 —— 那是我们自己截断造成的，不该报成文件损坏。
                 let capped = if (len > FLAC_SEEKTABLE_MAX_BYTES) {
@@ -350,7 +351,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 【那个"源已耗尽"不能省】历史版本只判"剩余不足一帧"，于是**首次回填
     ///   之前**（剩余为 0）就被判成已结束 —— 整条流解出 0 个样本且不报错。
     ///   它长期没暴露：原生素材都由两遍编码器写入了总样本数，而总样本数
-    ///   恒为 0 的 Ogg-FLAC 此前走第三方 C 库，绕过了这里。切到纯仓颉 Ogg 源
+    ///   恒为 0 的 Ogg-FLAC 此前走第三方 C 库，未经过这里。切到纯仓颉 Ogg 源
     ///   时它立刻显形，现由 oggWrappedMatchesFfi 用例钉住。
     private func atEnd(): Bool {
         if (_info.totalSamples > 0) {

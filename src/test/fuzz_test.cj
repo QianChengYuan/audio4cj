@@ -93,8 +93,9 @@ private func fuzzMutate(rng: Random, sample: Array<UInt8>, flips: Int64): Array<
 
 /// 写临时文件。
 private func fuzzWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 尝试打开畸形文件。

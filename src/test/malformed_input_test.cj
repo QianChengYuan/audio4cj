@@ -46,8 +46,9 @@ private func mfAppendUInt32LE(out: ArrayList<UInt8>, v: Int64): Unit {
 }
 
 private func mfWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 打开并**有限地**消费数据。

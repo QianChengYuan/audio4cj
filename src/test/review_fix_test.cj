@@ -56,8 +56,9 @@ private func rfAppendUInt32BE(out: ArrayList<UInt8>, v: Int64): Unit {
 }
 
 private func rfWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 读取整个文件（写法与 flac_crc_test 的 crcReadWhole 一致：

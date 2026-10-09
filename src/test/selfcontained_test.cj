@@ -81,8 +81,9 @@ private func scU24BE(out: ArrayList<UInt8>, v: Int64): Unit {
 
 /// 写出临时文件并返回路径。
 private func scWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 追加 `n` 个零字节（定长字段填充用）。

@@ -44,8 +44,9 @@ private func crcReadWhole(path: String): Array<UInt8> {
 
 /// 写成临时文件（命名沿用本仓库其它测试的 `a4cj_` 前缀）。
 private func crcWriteTemp(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 用纯仓颉内核完整解码一遍，返回库内异常的消息（无异常则返回 None）。

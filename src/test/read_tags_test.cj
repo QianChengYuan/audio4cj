@@ -44,8 +44,9 @@ private func rtAppendSynchsafe(out: ArrayList<UInt8>, v: Int64): Unit {
 }
 
 private func rtWrite(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 构造 INFO 子块序列（含 "INFO" 标识）。

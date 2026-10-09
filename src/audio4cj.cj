@@ -36,4 +36,4 @@ package audio4cj
 ///
 /// 显式标注类型：cjlint 的 G.DCL.02 要求公开变量声明类型，而非依赖类型推断
 /// ——公开 API 的类型应当写在签名里，让使用者不必回看初始化表达式。
-public let AUDIO4CJ_VERSION: String = "0.1.3"
+public let AUDIO4CJ_VERSION: String = "0.1.4"

@@ -28,7 +28,8 @@
     2. 校验发布元数据是否漏填（METADATA_REQUIRED）：官方把这些字段**全列为可选项**，
        漏填不会让打包失败 —— 但会造成制品页缺作者、缺标签、检索不到，而这个后果
        要到发布之后才暴露（中心仓不接受同版本重复发布，届时版本号已被占用）。
-    3. 校验产包内容（REQUIRED / FORBIDDEN 两张表），任一不满足即判失败。
+    3. 校验产包内容（REQUIRED / FORBIDDEN 两张表 + 测试素材依赖断言），
+      任一不满足即判失败。
 
 【为什么要求工作区干净】
 
@@ -47,6 +48,7 @@
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -86,6 +88,7 @@ ALWAYS_PACKED = ["cjpm.toml", "README.md", "README_zh.md"]
 REQUIRED = [
     "cjpm.toml",  # 模块定义（含 include 白名单）
     "src/",  # 库源码
+    "src/test/",  # 测试源码：只随包**自足子集**（依赖语料的文件见 FORBIDDEN）
     "docs/",  # 面向使用者的公开文档
     "LICENSE",
     "LICENSES.md",
@@ -93,11 +96,14 @@ REQUIRED = [
     "README.md",
 ]
 
-# 【刻意不列入 REQUIRED 的两项，理由在此】
-#   src/test/ —— 测试源码**不随包**：制品只交付可直接构建的产品代码，使用者
-#     不会拿到 fuzz / 长跑 / 依赖外部素材的用例，构建输出也不受测试告警影响。
-#     配套的反向断言见下方 FORBIDDEN 的 "src/test/"。
+# 【刻意不列入 REQUIRED 的一项，理由在此】
 #   config/   —— cjlint 规则集只服务于仓库侧 CI，消费者不需要。
+#
+# 【src/test/ 为什么在 REQUIRED 里】
+#   随包的是**纯内存、零副作用**的子集：不需要任何素材，也不写任何临时文件，
+#   消费者解包后 `cjpm test` 就能真实跑通 —— 这是制品"可自证"的唯一路径，
+#   所以是必需项。依赖语料的、以及需要写盘生成素材的用例，反过来被钉在下方
+#   FORBIDDEN 里（前者素材是二进制、进不了包；后者要求可写目录、对消费者无必要）。
 
 # 【曾经还有 build.cj 与 third-party 下的 6 个 C 文件】它们服务于"消费者现场编译
 #   C 库"这条链路。C 依赖整体移除后，包内不应再出现任何 C 源码或构建脚本 ——
@@ -125,16 +131,50 @@ FORBIDDEN = [
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     ("docs/release.md", set()),  # 发布流程：内部工程文档
     ("docs/codec-expansion-assessment.md", set()),  # 编解码扩展评估：内部工程文档
-    # --- 测试源码：整目录不随包 ---
-    #   制品包是**源码包**，使用者会直接 `cjpm build` 它。把测试发出去有三重代价：
-    #     ① 测试代码经 @Test 宏展开会产生大量 unreachable / unused 告警
-    #        （本地实测 341 条，其中 unreachable 168 条），淹没使用者构建输出里的
-    #        真实告警；
-    #     ② fuzz、长跑、依赖外部素材的用例本就不该交付给消费者；
-    #     ③ 体积与构建时间全部转嫁给使用者。
-    #   这些用例留在仓库，由仓库侧 `cjpm test` 全量运行（testdata/ 已入库）；
-    #   制品包只交付产品代码与公开文档。
-    ("src/test/", set()),
+    # --- 依赖语料的用例：不随包 ---
+    #   判据只有一条 —— **要不要素材**：这些文件需要 testdata/ 或 musics/，而素材
+    #   是二进制、cjpm 官方规则不打包，留在包里只会变成守卫静默跳过的死用例。
+    #   它们仍留在仓库，由仓库侧 `cjpm test` 全量运行（testdata/ 已入库）；
+    #   包内的功能验证由自足用例承担（见 REQUIRED 的 src/test/）。
+    #   与 cjpm.toml 的 exclude **逐个对应**：任何一边漏改，另一边（以及下方
+    #   「测试素材依赖检查」的内容判据）都会报警。
+    ("src/test/bench_decode_test.cj", set()),
+    ("src/test/diag_dump_test.cj", set()),
+    ("src/test/facade_format_test.cj", set()),
+    ("src/test/flac_bitstream_test.cj", set()),
+    ("src/test/flac_crc_test.cj", set()),
+    ("src/test/flac_frame_test.cj", set()),
+    ("src/test/flac_meta_test.cj", set()),
+    ("src/test/flac_perf_diag_test.cj", set()),
+    ("src/test/flac_seektable_test.cj", set()),
+    ("src/test/golden_support_test.cj", set()),
+    ("src/test/golden_test.cj", set()),
+    ("src/test/long_run_test.cj", set()),
+    ("src/test/mp3_decode_test.cj", set()),
+    ("src/test/mp3_hf_regression_test.cj", set()),
+    ("src/test/mp3_throughput_test.cj", set()),
+    ("src/test/mp4_tags_test.cj", set()),
+    ("src/test/ogg_crc_test.cj", set()),
+    ("src/test/ogg_tags_test.cj", set()),
+    ("src/test/probe_matrix_test.cj", set()),
+    ("src/test/review_fix_test.cj", set()),
+    # --- 写盘 / 生成二进制素材的用例：不随包 ---
+    #   判据：用例运行时**会写出临时素材**（统一走 src/test/test_scratch.cj 的
+    #   testTmpPath，落到 target/test-tmp/），或直接写 target/ 下的产物。
+    #   对消费者与制品审阅者都无必要，且隐含"目录可写"这个环境要求 ——
+    #   包内只留纯内存、零副作用的用例。
+    #   它们仍留在仓库，由仓库侧 `cjpm test` 全量运行（自足端到端、
+    #   CRC 校验与损坏样本回归、随机输入回归、WAV 写回读、流式背压等）。
+    #   与 cjpm.toml 的 include 白名单**逐个对应**：任何一边漏改，另一边报警。
+    ("src/test/async_frame_stream_test.cj", set()),
+    ("src/test/flac_decode_test.cj", set()),
+    ("src/test/fuzz_test.cj", set()),
+    ("src/test/malformed_input_test.cj", set()),
+    ("src/test/read_tags_test.cj", set()),
+    ("src/test/selfcontained_test.cj", set()),
+    ("src/test/test_scratch.cj", set()),
+    ("src/test/wav_endtoend_test.cj", set()),
+    ("src/test/wav_writer_test.cj", set()),
     # --- 构建产物 ---
     ("target/", set()),
     # --- C 依赖遗留：整体移除后不应再出现（防御性断言，防止将来无意带回）---
@@ -284,6 +324,39 @@ def read_entries(cjp: Path):
     return top, [n[len(prefix):] for n in names if n.startswith(prefix)]
 
 
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_LINE_COMMENT = re.compile(r"//[^\n]*")
+
+
+def strip_comments(text: str) -> str:
+    """去掉块注释与行注释，只留代码。
+
+    "依赖素材的测试不进包"这条判据必须落在代码上：注释里出现素材路径往往是在
+    **解释规则本身**（如 selfcontained_test.cj 的文件头），不算依赖。
+    字符串里带 `//` 的情况在本仓测试代码里不存在，故不做词法级处理。
+    """
+    return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", text))
+
+
+def read_test_sources(cjp: Path) -> dict:
+    """取出包内 `*_test.cj` 的正文（剥掉顶层 `名字-版本/` 前缀）。
+
+    供"依赖素材的测试不进包"这条断言使用：素材 testdata/、musics/ 都是二进制，
+    而 cjpm 从不打包二进制，所以引用它们的用例在制品里必然跑不起来。
+    """
+    sources = {}
+    with tarfile.open(cjp, "r:*") as tar:
+        for member in tar.getmembers():
+            if not member.isfile() or not member.name.endswith("_test.cj"):
+                continue
+            handle = tar.extractfile(member)
+            if handle is None:
+                continue
+            rel = member.name.split("/", 1)[1] if "/" in member.name else member.name
+            sources[rel] = handle.read().decode("utf-8", errors="replace")
+    return sources
+
+
 def read_metadata():
     """读取 cjpm bundle 生成的 target/meta-data.json —— 随制品上传的元数据。"""
     path = REPO_ROOT / "target" / "meta-data.json"
@@ -329,7 +402,7 @@ def verify_metadata() -> None:
     log("发布元数据校验通过 ✅")
 
 
-def verify_and_report(top: str, entries) -> None:
+def verify_and_report(top: str, entries, test_sources) -> None:
     log()
     log(f"=== 4/4 校验包内容（顶层目录：{top}）===")
     log(f"条目总数：{len(entries)}")
@@ -369,6 +442,46 @@ def verify_and_report(top: str, entries) -> None:
             log(f"    ❌ {rule:<20} 命中 {len(hits)} 项 {note}")
         else:
             log(f"    ✅ {rule:<20} 未包含 {note}")
+
+    log("— 测试素材依赖检查 —")
+    # 【判据是"有没有引用素材"，不是文件名后缀】
+    #   规则：**依赖素材的测试不进包** —— 素材（testdata/、musics/）是二进制，
+    #   而 cjpm 从不打包二进制，引用它们的用例对消费者必然跑不起来（报错，或者
+    #   永远打印跳过）。所以包内**允许**出现自包含的 `*_test.cj`，只拦真正
+    #   引用素材的那些，拦的依据只能是内容。
+    # 【判据落在**代码**上，注释不算】
+    #   注释里出现素材路径，往往是在**解释这条规则本身**：例如
+    #   selfcontained_test.cj 的文件头写着"依赖 testdata/ 的用例在包内没有意义" ——
+    #   那是说明，不是依赖。不区分注释就会把本该随包的自足用例一起拦下（实测踩过）。
+    #   代价：把素材路径写进注释、代码里靠常量间接引用的情况会漏判；但这类间接引用
+    #   通常仍留有代码级线索（下一条的守卫名），且漏网文件会被 FORBIDDEN 的显式
+    #   清单拦住 —— 两张表互为验证，正是本脚本的设计。
+    # 【除路径外还认"素材守卫"这个标记】
+    #   仓库约定：依赖语料的用例在素材缺失时必须**跳过**，统一走
+    #   `gsSkipIfNoFixtures(...)`（golden 基准、probe 矩阵等 17 个文件在用）。
+    #   守卫名出现在代码里 ⇒ 该文件就是依赖语料的用例，与它用什么姿势拼路径无关。
+    # 【为什么只扫 `*_test.cj`，不扫全部 .cj】
+    #   产品代码里有**合法**的素材路径引用：src/format/mp3_decode.cj 的
+    #   `exists(Path("testdata/diag/phase_timing.on"))`（诊断 sentinel，默认关闭）。
+    #   对全部文件按内容判必然误报，故判据只施加在测试源文件上。
+    MATERIAL_MARKERS = ("testdata", "musics")
+    MATERIAL_GUARD = "SkipIfNoFixtures"
+    dependent = []
+    for name in sorted(test_sources):
+        code = strip_comments(test_sources[name])
+        hit = [marker for marker in MATERIAL_MARKERS if marker in code]
+        if MATERIAL_GUARD in code:
+            hit.append(MATERIAL_GUARD)
+        if hit:
+            dependent.append((name, hit))
+    if dependent:
+        shown = "、".join(f"{name}（引用 {'/'.join(hit)}）" for name, hit in dependent[:3])
+        more = f"，另有 {len(dependent) - 3} 项" if len(dependent) > 3 else ""
+        problems.append(f"依赖素材的测试混入：{shown}{more}")
+        for name, hit in dependent[:5]:
+            log(f"    ❌ {name:<36} 引用 {'/'.join(hit)}")
+    else:
+        log(f"    ✅ {'*_test.cj':<20} {len(test_sources)} 项，均未引用素材")
 
     log("— 必需项检查 —")
     for rule in REQUIRED:
@@ -421,7 +534,8 @@ def main() -> int:
     cjp = bundle_in_repo(args.skip_tests)
     verify_metadata()
     top, entries = read_entries(cjp)
-    verify_and_report(top, entries)
+    test_sources = read_test_sources(cjp)
+    verify_and_report(top, entries, test_sources)
     dest = collect(cjp)
 
     log()

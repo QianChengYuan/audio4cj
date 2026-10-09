@@ -147,7 +147,7 @@ class OggCrcTest {
         @Assert(data.size > 100)
 
         data[data.size - 1] = data[data.size - 1] ^ 0xFF
-        let tmp = "a4cj_ogg_crc_bad.oga"
+        let tmp = testTmpPath("a4cj_ogg_crc_bad.oga")
         File.writeTo(tmp, data)
 
         // 打开阶段只读元数据链（前几页），故损坏要到解码阶段才被碰到

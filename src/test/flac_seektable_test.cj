@@ -63,8 +63,9 @@ private func stReadWhole(path: String): Array<UInt8> {
 
 /// 写成临时文件。
 private func stWriteTemp(name: String, bytes: Array<UInt8>): String {
-    File.writeTo(name, bytes)
-    name
+    let path = testTmpPath(name)
+    File.writeTo(path, bytes)
+    path
 }
 
 /// 遍历一整份 FLAC 内存镜像，记录每帧的 (首样本号, 相对首帧的字节偏移)。
