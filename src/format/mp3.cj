@@ -201,10 +201,9 @@ protected class Mp3FormatReader <: FormatReader {
     public func seekTo(timestampMs: Int64): Int64 {
         checkOpen()
 
-        var target = timestampMs * _sampleRate / 1000
-        if (target < 0) {
-            target = 0
-        }
+        // 饱和换算（timestampMs 可能是 Int64.Max，直接相乘会抛标准库
+        // OverflowException，而契约要求本库异常）
+        var target = msToFramesSaturating(timestampMs, _sampleRate)
         if (_totalFrames > 0 && target >= _totalFrames) {
             target = _totalFrames - 1
         }

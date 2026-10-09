@@ -125,10 +125,11 @@ private func ddLoadList(path: String): ArrayList<(String, String)> {
 ///   `readFrames(count)` 内部走 `drain()`，而 `drain()` 返回前会 `s.close()`；
 ///   FrameStream 的关闭**连带关闭底层 reader**（它与 AudioFile 共享 reader）。
 ///   因此第一次 `readFrames` 返回后 reader 已死，第二次调用会抛
-///   `ClosedResourceException`（实测："对已关闭的 MP3 reader 执行操作"），
-///   而 `f.isClosed()` 此时**仍然返回 false** —— 这是一处文档与实现的落差，
-///   已在 `docs/` 的诊断报告里单独记录。
-///   `stream()` 则给出"取到 None 才是正常结束"的完整语义，是官方主推用法。
+///   `ClosedResourceException`（实测："对已关闭的 MP3 reader 执行操作"）。
+///   注意：`drain()` 现在会同步置位 AudioFile 的关闭状态，故
+///   `f.isClosed()` 返回 true，与"reader 已死"一致（此前是 false，属实现缺陷，
+///   已修复）。这里改用 `stream()` 是因为它给出"取到 None 才是正常结束"的
+///   完整语义，是官方主推用法，且不是一次性 API。
 private func ddDumpOne(src: String, dst: String): Int64 {
     if (!exists(Path(src))) {
         return -1

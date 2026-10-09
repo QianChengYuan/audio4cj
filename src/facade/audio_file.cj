@@ -351,6 +351,13 @@ public class AudioFile <: Resource {
             }
         }
         s.close()
+        // stream() 返回的流与 AudioFile 共享底层 reader，s.close() 已经把关掉的
+        // reader 释放了：此后 info()/metadata()/stream() 都会抛
+        // ClosedResourceException。故这里必须同步置位关闭状态，否则
+        // isClosed() 返回 false 而几乎每个成员方法都抛异常，同一对象的状态
+        // 自相矛盾（历史缺陷）。readAll/readFrames 是一次性便捷 API，
+        // 消费完即视为资源已释放；需要继续分块读取请自行持有 stream()。
+        _closed = true
 
         mergeChunks(chunks, sampleRate, channels, limitFrames)
     }
@@ -387,12 +394,20 @@ public class AudioFile <: Resource {
             if (written >= take) {
                 break
             }
-            let src = c.samples
-            var i: Int64 = 0
-            while (i < src.size && written < take) {
-                out[written] = src[i]
-                written += 1
-                i += 1
+            let n = c.sampleCount
+            if (written + n <= take) {
+                // 整块搬入：走 copyInto，避免 `samples` 再整块复制一次
+                // （AudioBuffer.samples 现在返回副本，属于热路径开销）
+                written += c.copyInto(out, written)
+            } else {
+                // 最后一块只需一部分：逐样本拷以保留「按 limitFrames 截断」语义
+                let src = c.samples
+                var i: Int64 = 0
+                while (i < src.size && written < take) {
+                    out[written] = src[i]
+                    written += 1
+                    i += 1
+                }
             }
         }
 

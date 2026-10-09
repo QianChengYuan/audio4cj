@@ -10,7 +10,7 @@
 [package]
   name = "audio4cj"
   cjc-version = "1.2.0"
-  version = "0.1.2"
+  version = "0.1.3"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
 
@@ -48,7 +48,12 @@
     "/docs",          # 面向使用者的公开文档（仓库内部文档见 exclude）
     "/LICENSE",
     "/LICENSES.md",
-    "/NOTICE"
+    "/NOTICE",
+    # 根目录只有 cjpm.toml / README.md / README_zh.md 属于「无论 include/exclude
+    # 都会打包」的自动项（cjpm 官方规则），其余根文件必须显式列入白名单，
+    # 否则会被静默丢掉 —— 而这两项正是中心仓三方库模板的根目录标准组成文件。
+    "/CHANGELOG.md",
+    "/README.OpenSource"
   ]
 
   # —— 不随包分发 ——

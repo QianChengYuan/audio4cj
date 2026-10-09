@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "minimp3",
+    "License": "CC0-1.0",
+    "License File": "-",
+    "Version Number": "v1.0",
+    "Owner": "lieff",
+    "Upstream URL": "https://github.com/lieff/minimp3",
+    "Description": "Minimalistic MP3 decoder single-header library. audio4cj's pure-Cangjie MP3 kernel (src/format/mp3_*.cj) references its algorithm structure and was re-implemented in Cangjie; no minimp3 source code is bundled, linked or redistributed. CC0-1.0 imposes no conditions, so it is not a runtime or distribution dependency. See LICENSES.md for the full ledger."
+  }
+]

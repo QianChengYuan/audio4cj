@@ -123,15 +123,16 @@ protected class WavFormatReader <: FormatReader {
             throw CorruptedFileException("WAV 帧长非法，无法寻址")
         }
 
-        var byteOffset = timestampMs * _sampleRate / 1000 * frameSize
-        if (byteOffset > _dataSize) {
-            byteOffset = _dataSize
+        // 时间 → 帧号必须先做饱和换算，再按数据区长度裁剪：直接写
+        // `timestampMs * _sampleRate / 1000 * frameSize` 在 timestampMs 取
+        // Int64.Max 时会抛标准库 OverflowException（历史缺陷）。
+        let totalFrames = _dataSize / frameSize
+        var targetFrame = msToFramesSaturating(timestampMs, _sampleRate)
+        if (targetFrame > totalFrames) {
+            targetFrame = totalFrames
         }
-        if (byteOffset < 0) {
-            byteOffset = 0
-        }
-        // 对齐到帧边界
-        byteOffset = (byteOffset / frameSize) * frameSize
+
+        let byteOffset = targetFrame * frameSize
         _bytesConsumed = byteOffset
 
         let actualFrame = byteOffset / frameSize

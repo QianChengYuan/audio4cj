@@ -147,10 +147,9 @@ protected class FlacFormatReader <: FormatReader {
     public func seekTo(timestampMs: Int64): Int64 {
         checkOpen()
 
-        var targetFrame = timestampMs * _sampleRate / 1000
-        if (targetFrame < 0) {
-            targetFrame = 0
-        }
+        // 饱和换算（timestampMs 可能是 Int64.Max，直接相乘会抛标准库
+        // OverflowException，而契约要求本库异常）
+        var targetFrame = msToFramesSaturating(timestampMs, _sampleRate)
         if (_totalFrames > 0 && targetFrame >= _totalFrames) {
             targetFrame = _totalFrames - 1
         }

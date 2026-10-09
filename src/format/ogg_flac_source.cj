@@ -256,6 +256,11 @@ protected class OggFlacByteSource <: FlacByteSource {
 
         let segCount = Int64(head[26])
         let table = readRaw(segCount)
+        if (table.size != segCount) {
+            // readRaw 只在"一个字节都读不到"时返回空数组（文件末尾恰好落在
+            // 页头之后）；不校验就会出现 table[i] 越界这种非库异常。
+            throw CorruptedFileException("Ogg 页在文件末尾被截断（段表需 ${segCount} 字节，文件已结束）")
+        }
 
         // 页体长度 = 段表各项之和（页头里**没有**独立的页体长度字段）
         var bodyLen: Int64 = 0
@@ -268,6 +273,9 @@ protected class OggFlacByteSource <: FlacByteSource {
             throw CorruptedFileException("Ogg 页体长度 ${bodyLen} 超出规范上限 ${OGG_MAX_PAGE_BODY}")
         }
         let body = readRaw(bodyLen)
+        if (body.size != bodyLen) {
+            throw CorruptedFileException("Ogg 页在文件末尾被截断（页体需 ${bodyLen} 字节，文件已结束）")
+        }
 
         // ---- 整页 CRC-32 校验 ----
         // 覆盖 页头 + 段表 + 页体；计算前必须把 CRC 字段自身（页头 22..25）置零

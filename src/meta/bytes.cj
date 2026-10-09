@@ -200,7 +200,14 @@ protected func decodeUtf16(data: Array<UInt8>, defaultBigEndian: Bool): String {
             }
         }
 
-        runes.add(Rune(unit))
+        // 孤立代理（高代理后面不是低代理、或单独的 DC00–DFFF）不是合法的
+        // Unicode 标量值：直接 `Rune(unit)` 会抛 OverflowException，而标签
+        // 数据不可信（23 字节的畸形 ID3v2 即可触发），故按惯例替换为 U+FFFD。
+        if (unit >= 0xD800u32 && unit <= 0xDFFFu32) {
+            runes.add(Rune(0xFFFDu32))
+        } else {
+            runes.add(Rune(unit))
+        }
         i += 2
     }
 

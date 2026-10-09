@@ -59,6 +59,14 @@ public class AsyncFrameStream <: Resource {
     /// 后台解码线程句柄；close() 时用它强制汇合。
     private var _worker: ?Future<Unit> = None
 
+    /// 后台线程的失败记录（无则 None）。
+    ///
+    /// 后台线程一旦抛异常就会消亡；若把异常只留在那个线程里，消费者会永远
+    /// 等不到结束哨兵而挂死。故这里把异常**记住**，由 next() 在取到哨兵
+    /// （或队列已空转超时）时抛给消费者，使「None 严格且仅表示流结束、
+    /// 错误一律抛异常」的契约在异步路径同样成立。
+    private let _failure = AtomicOptionReference<Audio4CjException>(None)
+
     /// 仅供静态工厂使用。
     protected init(source: FrameStream, queueCapacity: Int64) {
         this._source = source
@@ -92,7 +100,7 @@ public class AsyncFrameStream <: Resource {
     /// 阻塞直到有数据可取。若已关闭则抛异常（与 FrameStream 一致）。
     public func next(): ?AudioBuffer {
         if (_closedFlag.load()) {
-            throw Audio4CjException("对已关闭的 AsyncFrameStream 执行操作")
+            throw ClosedResourceException("对已关闭的 AsyncFrameStream 执行操作")
         }
 
         // 注意：此处不使用 `while (true) { ... return ... }` 形式 ——
@@ -108,13 +116,19 @@ public class AsyncFrameStream <: Resource {
                         result = buf
                         finished = true
                     case None =>
-                        // 取到结束哨兵
+                        // 取到结束哨兵：若后台线程失败过，此处必须抛出该异常
+                        // 而非返回 None —— None 严格且仅表示流已结束。
+                        failIfPending()
                         _endedFlag.store(true)
                         finished = true
                 }
                 case None =>
-                    // 超时：可能是源流较长，也可能是已被取消 —— 后者需要主动退出，
-                    // 否则消费者会在此永久等待一个永远不会到来的哨兵。
+                    // 超时：可能是源流较长，也可能是已被取消 / 后台线程已失败 ——
+                    // 后两者需要主动退出，否则消费者会在此永久等待一个永远不会
+                    // 到来的哨兵（历史缺陷：坏文件使 next() 挂死）。
+                    if (_queue.size == 0) {
+                        failIfPending()
+                    }
                     if (_source.isCancelled() && _queue.size == 0) {
                         _endedFlag.store(true)
                         finished = true
@@ -150,7 +164,15 @@ public class AsyncFrameStream <: Resource {
         _source.cancel()
 
         match (_worker) {
-            case Some(f) => f.get()
+            case Some(f) =>
+                // 后台线程的异常已由 pump() 记录并经 next() 转交消费者；
+                // 这里吞掉它是为了不让汇合失败越过后面的 _source.close()，
+                // 否则会泄漏底层 reader。
+                try {
+                f.get()
+            } catch (e: Exception) {
+                ()
+            }
             case None => ()
         }
 
@@ -169,19 +191,41 @@ public class AsyncFrameStream <: Resource {
     }
 
     /// 后台解码主循环：解码一块就投递一块，队列满则阻塞（背压）。
+    ///
+    /// 整个循环包在 try/catch 内：解码错误（CorruptedFileException /
+    /// DecodeException 等）必须被记录并转交给消费者，绝不能让后台线程
+    /// 悄无声息地死掉 —— 那样消费者会永久阻塞在 next() 上。
     private func pump(): Unit {
-        while (true) {
-            let chunk = _source.next() // None = 源流结束（含被取消）
+        try {
+            while (true) {
+                let chunk = _source.next() // None = 源流结束（含被取消）
 
-            match (chunk) {
-                case Some(buf) =>
-                    if (!enqueue(buf)) {
-                        return // 关闭/取消期间放弃投递
-                    }
-                case None =>
-                    enqueueEnd()
-                    return
+                match (chunk) {
+                    case Some(buf) =>
+                        if (!enqueue(buf)) {
+                            return // 关闭/取消期间放弃投递
+                        }
+                    case None =>
+                        enqueueEnd()
+                        return
+                }
             }
+        } catch (e: Audio4CjException) {
+            _failure.store(Some(e))
+            enqueueEnd()
+        } catch (e: Exception) {
+            // 非库异常（如底层 IO 失败）也一并转交，并包装为库异常类型，
+            // 使调用方仍可用单个 `catch (e: Audio4CjException)` 兜住异步路径。
+            _failure.store(Some(DecodeException("后台解码失败：${e}")))
+            enqueueEnd()
+        }
+    }
+
+    /// 若后台线程曾失败，则把记录下来的异常抛给消费者。
+    private func failIfPending(): Unit {
+        match (_failure.load()) {
+            case Some(e) => throw e
+            case None => ()
         }
     }
 

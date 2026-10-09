@@ -220,8 +220,14 @@ try (f = AudioFile.open("./demo.wav")) {
 
 | 操作 | 后果 |
 |---|---|
-| 调用 `readAll()` / `readFrames()` 之后 | 该 `AudioFile` 的**底层 reader 已被关闭**，后续数据方法（`stream()` / `readAll()` / `readFrames()` / `seekTo()` / `info()` / `metadata()`）会失败 |
+| 调用 `readAll()` / `readFrames()` 之后 | 该 `AudioFile` 的**底层 reader 已被关闭**，后续数据方法（`stream()` / `readAll()` / `readFrames()` / `seekTo()` / `info()` / `metadata()`）会失败（抛 `ClosedResourceException`），`isClosed()` 也自此返回 `true` |
 | 调用 `stream()` 并手动 `close()` 流之后 | 同上 |
+
+> 说明：`readAll()` / `readFrames()` 会把 `AudioFile` 的关闭状态一并置位，
+> 即它们是**一次性 API**：读完之后该实例等同已关闭（`isClosed() == true`）。
+> 这与"底层 reader 已死"的事实保持一致 —— 此前 `isClosed()` 会返回 `false`
+> 而其他方法却抛异常，属状态自相矛盾的实现缺陷，已修复。
+> 若需要边读边用（例如分段处理）请使用 `stream()`。
 
 **实践建议**：
 
@@ -258,6 +264,9 @@ public func close(): Unit
 ```
 
 `close()` 释放资源（**幂等**，重复调用无副作用），并**一并关闭底层 reader**。`isClosed()` 查询关闭状态。
+
+> `readAll()` / `readFrames()` 也会把关闭状态置位（它们读完即关闭共享 reader，详见 §3.8），
+> 因此调用过这两者之一后 `isClosed()` 返回 `true`。
 
 ### 3.11 `readTags`（静态，M3 新增）
 

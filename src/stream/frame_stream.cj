@@ -1,6 +1,7 @@
 package audio4cj.stream
 
 import audio4cj.core.Audio4CjException
+import audio4cj.core.ClosedResourceException
 import audio4cj.pcm.AudioBuffer
 import audio4cj.format.FormatReader
 import audio4cj.codec.Decoder
@@ -50,9 +51,11 @@ public class FrameStream {
     /// 取下一条分块。
     /// - None **严格且仅表示**正常流结束（含用户取消）
     /// - 解码/解析错误抛 DecodeException 等，绝不用 None 表示错误（§4.1 铁律 1）
+    ///
+    /// 抛出：`ClosedResourceException`（对已 close() 的流继续取值，§4.1）
     public func next(): ?AudioBuffer {
         if (_closed) {
-            throw Audio4CjException("对已关闭的 FrameStream 执行操作")
+            throw ClosedResourceException("对已关闭的 FrameStream 执行操作")
         }
         if (_cancelled || _ended) {
             return None
