@@ -25,7 +25,7 @@ import std.time.*
  *     mp3_anchor.cj    Xing/Info/VBRI 锚点与"连续帧"校验（findFrame）
  *
  * 【拆分是纯代码搬移，且已用基准核过代价】
- *   搬移不改一行逻辑；判据是原有的 228 条用例（含与 ffmpeg 的 golden 包络比对）
+ *   搬移不改一行逻辑；判据是全量用例（含与独立参照解码器的 golden 包络比对）
  *   全绿。性能用 `cjpm bench --filter BenchDecode.mp3DecodeAll` 实测对照：
  *     单文件（拆分前）        229.9 ms
  *     拆分为本族 10 个文件    229.7 ms

@@ -282,7 +282,7 @@ private func l3ImdctShort(grbuf: Array<Float64>, overlap: Array<Float64>, nbands
 /// （不要误以为它只服务短块）。这是参照实现的结构，不是本库的选择。
 ///
 /// 【维护提示】它是"整块符号相乘"，改动会影响一片频率范围的相位而不是音量 ——
-/// 这类错误用耳朵不容易判断，靠与 ffmpeg 的逐样本/包络比对才抓得住。
+/// 这类错误用耳朵不容易判断，靠与独立参照解码器的逐样本/包络比对才抓得住。
 private func l3ChangeSignRange(grbuf: Array<Float64>, baseOff: Int64, bands: Int64): Unit {
     var b: Int64 = 0
     var base: Int64 = baseOff + 18
