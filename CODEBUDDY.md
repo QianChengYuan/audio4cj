@@ -97,6 +97,11 @@
 补充：`testdata/` 素材已入库，需要重建时才跑 `scripts/gen_testdata.*`（依赖 ffmpeg，仅仓库侧）。
 仓库侧测试**不得依赖外部工具联网**；与 ffmpeg 的比对只允许走已入库的 golden 基准。
 
+另一条实测经验：`cjpm bundle`（发布脚本的第 2 步）会**清空 `target/`**，因此
+**不要把日志重定向到 `target/` 下的文件再跑发布脚本** —— 文件被占用会让 `cjpm bundle`
+报 `Failed to remove target ... being used by another process` 而失败。日志请写到
+`target/` 之外，或直接用管道输出。
+
 ## 七、性能工作规范
 
 1. **门槛口径必须绑素材**：引用"≥ N× 实时"必须同时给出素材；短素材与含进程启动的对比会系统性高估，不得作为结论。
