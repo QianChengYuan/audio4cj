@@ -282,7 +282,11 @@ main() {
 | mp3 | ID3v2（文件头）+ ID3v1（文件尾 128 字节） | ID3v2 优先，为空字段由 ID3v1 回填 |
 | flac | `VORBIS_COMMENT` 元数据块 | — |
 | wav | `LIST/INFO` 子块 | — |
+| ogg | 首个逻辑流的注释头（Vorbis comment；Opus 为 `OpusTags`） | — |
+| mp4 / m4a | `moov.udta.meta.ilst`（`moov` 在文件头或文件尾均可定位） | — |
 
-**抛出**：无法识别的格式、或已识别但标签读取尚未实现的容器（如 OGG）会抛 `FormatNotSupportedException`；文件不存在抛 `std.fs` 的 `FSException`。
+**抛出**：**无法识别**的容器（如 APE / WavPack）会抛 `FormatNotSupportedException`；
+容器可识别但**无标签**（如 Speex 的注释头尚未覆盖）返回**空 `Tag`**，不抛异常；
+文件不存在抛 `std.fs` 的 `FSException`。
 
 > 无标签的文件返回**空 `Tag`**（既不是异常也不是 `None`），用 `hasNoStandardFields()` 判断即可。

@@ -80,7 +80,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 它们与 `cjpm.toml` 的 include 白名单**互为验证**：`include` 决定「打什么」，
 这两张表断言「打出来的对不对」—— 任何一边被改错，另一边都会报警。
 
-实测通过的包：**93 个条目 / 219.3 KB**（历史对照：未配置打包范围时 736 条目 / 896 KB；
+实测通过的包：**93 个条目 / 约 220 KB**（历史对照：未配置打包范围时 736 条目 / 896 KB；
 配置打包范围后 118 条目；C 依赖整体移除后 112 条目；把依赖语料的用例、`scripts/`
 与两份内部工程文档移出包后 96 条目；**0.1.4 再把会写盘的用例移出包**后为 93 条目
 —— 条目数与体积的每次变化都是"包里有什么"的快照）。
@@ -114,8 +114,8 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `config/` | cjlint 规则集：只服务于仓库侧 CI，消费者不需要 |
 | `testdata/` | **测试素材不随包分发**（`cjpm bundle` 不打包二进制，机制上做不到；详见下节） |
 | `docs/release.md`、`docs/codec-expansion-assessment.md` | 内部工程文档（发布流程、编解码扩展评估）：留在仓库，不发往制品页 |
-| `src/test/` 下 20 个依赖语料的用例 | 它们需要 `testdata/` 与 ffmpeg 基准；**没有登记进 `include` 白名单**，故不进包（随包只会变成跑不起来的死用例，见下节） |
-| `src/test/` 下 9 个**会写盘**的用例 | `async_frame_stream_test` / `flac_decode_test` / `fuzz_test` / `malformed_input_test` / `read_tags_test` / `selfcontained_test` / `wav_endtoend_test` / `wav_writer_test` / `test_scratch`（写盘助手）：运行时写出临时素材，隐含"工作目录可写"这个环境要求，对消费者与制品审阅者都无必要；同样**未登记进白名单**，并在 `release_bundle.py` 的 FORBIDDEN 里逐个钉住 |
+| `src/test/` 下 20 个依赖语料的用例文件 | 它们需要 `testdata/` 与 ffmpeg 基准；**没有登记进 `include` 白名单**，故不进包（随包只会变成跑不起来的死用例，见下节） |
+| `src/test/` 下 8 个**会写盘**的用例文件 + 1 个写盘助手 | `async_frame_stream_test` / `flac_decode_test` / `fuzz_test` / `malformed_input_test` / `read_tags_test` / `selfcontained_test` / `wav_endtoend_test` / `wav_writer_test` / `test_scratch`（写盘助手）：运行时写出临时素材，隐含"工作目录可写"这个环境要求，对消费者与制品审阅者都无必要；同样**未登记进白名单**，并在 `release_bundle.py` 的 FORBIDDEN 里逐个钉住 |
 | `third-party/`、`libs/` | **C 依赖遗留**：前者曾是 dr_libs 与 C 薄封装的所在地，后者曾是各平台的库产物目录。整体移除后不应再出现（防御性断言） |
 | `target/` | 构建产物 |
 
@@ -127,7 +127,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 > `testdata/`，于是**守卫静默跳过 —— 包内报"206 通过"而其中 42 条一行都没执行**（假绿）。
 > 第三条路是"包内只带自足用例"（输入现场构造、运行时落盘），依赖语料的用例留在仓库。
 > 现行做法是第四条路，判据从"要不要素材"收紧为**"要不要素材 + 会不会写盘"**：包内只留
-> **纯内存、零副作用**的用例（81 条断言），因为写盘用例额外要求"工作目录可写"，而这个
+> **纯内存、零副作用**的用例（14 个文件 / 81 个用例），因为写盘用例额外要求"工作目录可写"，而这个
 > 环境要求对消费者与制品审阅者都是纯负担 —— 落盘构造整段容器的强验证留在仓库侧。
 > 2026-10-09 补充：一度想写成"`include` 整个 `/src/test` + `exclude` 若干具体文件"的
 > 等价形式，实测该组合会让 `cjpm bundle` 在**打包阶段 OOM**（`--skip-lint` 同样触发，
@@ -136,7 +136,8 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 
 ## 测试素材不随包分发，包内验证靠"纯内存用例"（随包使用者的必读项）
 
-**结论**：制品包内**含 `src/test/` 的纯内存子集**（14 个用例：不读素材、不写任何文件），
+**结论**：制品包内**含 `src/test/` 的纯内存子集**（**14 个测试文件 / 81 个用例**：
+不读素材、不写任何文件），
 **不含 `testdata/`**，也**不含**素材生成脚本与任何会写盘的用例。
 
 **成因（平台行为，改不了）**：`cjpm bundle` **不打包二进制文件**。实测把 `/testdata`
@@ -148,17 +149,17 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 
 | 项 | 实情 |
 |---|---|
-| 包内 `cjpm test` | **81 条全部真实执行**（`PASSED=81, SKIPPED=0, ERROR=0, FAILED=0`），**不需要任何外部工具、不需要素材、不需要联网，也不要求工作目录可写**。实测（2026-10-09，0.1.4 制品）：解包到干净目录直接 `cjpm test`，81/81 通过、0 跳过 —— 有跳过就说明混进了依赖语料或不可跑的用例 |
+| 包内 `cjpm test` | **81 个用例全部真实执行**（14 个测试文件；`PASSED=81, SKIPPED=0, ERROR=0, FAILED=0`），**不需要任何外部工具、不需要素材、不需要联网，也不要求工作目录可写**。实测（2026-10-09，0.1.4 制品）：解包到干净目录直接 `cjpm test`，81/81 通过、0 跳过 —— 有跳过就说明混进了依赖语料或不可跑的用例 |
 | 输入从哪来 | 全部在内存里构造：`AudioBuffer` 位深转换、`Tag` 模型（ID3v1/v2、Vorbis comment、WAV LIST/INFO）、位读取器（FLAC 位序）、探测魔数判定表。**不含**任何落盘素材 |
 | 判据从哪来 | 契约式断言：异常类型与消息、字段映射、边界取值、探测结果与注册表一致性 |
 | 负向用例 | "长度字段越界必须安全停下""构造非法参数必须抛库内异常"等（**纯内存**，不落盘）。落盘构造整段容器再校验的负向用例（"改坏一个字节必须报错"：FLAC 帧 CRC-16、Ogg 页 CRC-32）留在仓库侧 |
-| 未随包的那部分 | 依赖语料的用例、以及会写盘的用例都留在仓库，由仓库侧 `cjpm test` 全量运行（**246 条**，含包内的 81 条）。仓库侧另有 ffmpeg golden 逐样本比对、素材识别矩阵与基准比对、自足端到端（WAV/FLAC/Ogg/MP4 现场构造后落盘再读回） |
+| 未随包的那部分 | 依赖语料的用例、以及会写盘的用例都留在仓库，由仓库侧 `cjpm test` 全量运行（**246 个用例**，其中包含包内那 81 个）。仓库侧另有 ffmpeg golden 逐样本比对、素材识别矩阵与基准比对、自足端到端（WAV/FLAC/Ogg/MP4 现场构造后落盘再读回） |
 | 用例写出的中间产物 | 仓库侧用例就地构造的 `a4cj_*` 音频统一落在 **`target/test-tmp/`**（见 `src/test/test_scratch.cj`；该文件本身不随包）：不再堆在仓库根目录，该目录随 `cjpm clean` 一并清除 |
 | 重建仓库素材 | `bash scripts/gen_testdata.sh`（或 `.ps1`）用 ffmpeg 就地重建 `testdata/`（61 个文件，全部由合成信号编码而来，不含第三方版权内容）；素材已入库，通常不需要重建 |
 | 需要什么前置 | 包内测试：**无**。仓库侧重建素材：ffmpeg / ffprobe（需含 aac / libvorbis / libopus / flac / libmp3lame 编码器；libspeex 可选） |
 
 > **体积与条目对照**：仓库内 `testdata/` 约 5.7 MB（61 文件）；制品包 **93 条目 /
-> 219.3 KB** —— **不含**素材与生成脚本，测试源码只带 14 个纯内存用例
+> 约 220 KB** —— **不含**素材与生成脚本，测试源码只带 14 个纯内存用例文件（81 个用例）
 > （`src/test/test_scratch.cj` 等会写盘的文件不随包）。
 >
 > **为什么仍以白名单为主**：两者失效方向不对称 —— `exclude` 漏一项 = 多打包 = 危险；

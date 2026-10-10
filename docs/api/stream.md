@@ -76,7 +76,7 @@ public class FrameStream {
 | 已被取消（`cancel()` 或外部取消请求） | 返回 `None` |
 | 空流（无后端） | 返回 `None` |
 | **解码失败 / 数据损坏** | **抛出 `DecodeException` 等异常** |
-| **对已关闭的流调用 `next()`** | **抛出 `Audio4CjException`** |
+| **对已关闭的流调用 `next()`** | **抛出 `ClosedResourceException`**（`Audio4CjException` 的子类） |
 
 **`None` 绝不用于表示错误**。这样调用方可以放心地把 `None` 当作循环终止条件。
 
@@ -245,7 +245,7 @@ public class AsyncFrameStream <: Resource {
 | 成员 | 说明 |
 |---|---|
 | `start(source, queueCapacity)` | 创建并**立即开始**后台解码。`queueCapacity` 是队列容量（块数），即「允许生产者超前解码多少块」，也就是**内存上限**；必须为正，否则抛 `Audio4CjException` |
-| `next()` | 阻塞取下一条分块。返回 `None` **严格且仅表示**流已结束（正常读完或被取消）。对已关闭的流调用会抛 `Audio4CjException` |
+| `next()` | 阻塞取下一条分块。返回 `None` **严格且仅表示**流已结束（正常读完或被取消）。对已关闭的流调用会抛 `ClosedResourceException`（`Audio4CjException` 的子类） |
 | `isEnded()` / `isClosed()` | 状态查询 |
 | `close()` | 请求取消源流 → **等待后台线程退出** → 关闭源流（**幂等**） |
 

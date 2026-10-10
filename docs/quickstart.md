@@ -22,13 +22,19 @@
 
 ## 二、引入本项目
 
-audio4cj 是一个 `static` 类型的 cjpm 库工程，尚未发布到中央仓库，使用**本地路径依赖**引入：
+audio4cj 是一个 `static` 类型的 cjpm 库工程，**对外已发布版本为 `0.1.2`**
+（`0.1.3` 与 `0.1.4` 处于发布流程中，见[更新记录](../CHANGELOG.md)）。
+
+在**源码仓库内开发与测试**时用**本地路径依赖**引入：
 
 ```toml
 # 你的工程 cjpm.toml
 [dependencies]
 audio4cj = { path = "../audio4cj" }
 ```
+
+> 从中心仓引入时请以**制品页给出的版本号为准**（本仓库的 `cjpm.toml` 中 `version`
+> 反映的是**待发布**版本，可能高于已上架版本）。
 
 随后显式导入所需类型（**根包不做聚合导出**，每个类型都要单独 `import`）：
 
@@ -45,7 +51,7 @@ import audio4cj.core.Audio4CjException
 
 ```bash
 cjpm build          # 构建
-cjpm test           # 运行全部单元测试（源码仓库内；制品包不含测试，见下方说明）
+cjpm test           # 运行单元测试（源码仓库内为全量；制品包内为纯内存子集，见下方说明）
 cjpm test --filter "Wav*.*"       # 只跑 WAV 相关用例
 cjpm test --parallel 4            # 并行执行
 cjpm clean          # 清理构建产物
@@ -54,9 +60,10 @@ cjpm clean          # 清理构建产物
 **没有任何 C 构建步骤。** 解码全部为纯仓颉实现，`cjpm build` / `cjpm test` 只编译仓颉代码。
 
 > 测试套件**不依赖任何外部工具**，也不需要联网。
-> ⚠ 制品包只交付**产品代码、公开文档与许可证**：**测试源码与 `testdata/` 语料都不随包**
-> （`testdata/` 是二进制，`cjpm bundle` 本就不打包；测试源码已在打包范围之外），
-> 因此**包内没有可运行的测试**。
+> ⚠ 制品包只交付**产品代码、公开文档、许可证，以及一组纯内存用例**（14 个测试文件、
+> 81 个用例：不读 `testdata/` 语料、不写任何文件）——解包后 `cjpm test` 即可跑通，
+> **不要求工作目录可写**。**`testdata/` 语料不随包**（它是二进制，`cjpm bundle` 本就不打包），
+> 依赖语料与会写盘的用例都留在源码仓库。
 >
 > 想跑含真实语料与外部基准比对的**全量 246 条**，请从**源码仓库**获取（`testdata/` 已入库）。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
@@ -193,8 +200,10 @@ main() {
 }
 ```
 
-支持 **MP3**（ID3v2 + ID3v1 合并）、**FLAC**（Vorbis comment）、**WAV**（LIST/INFO）。
-无法识别的格式、或尚未覆盖标签的容器（如 OGG）会抛 `FormatNotSupportedException`。
+支持 **MP3**（ID3v2 + ID3v1 合并）、**FLAC**（Vorbis comment）、**WAV**（LIST/INFO）、
+**OGG**（Vorbis comment，含 Opus 的 `OpusTags` 与 FLAC-in-Ogg）、**MP4**（`ilst` 原子）。
+**无法识别**的容器（如 APE / WavPack）会抛 `FormatNotSupportedException`；
+容器可识别但无标签（如 Speex 的注释头尚未覆盖）则返回**空 `Tag`**，不抛异常。
 
 ### 示例 7：异步流式读取（解码与消费并行）
 
