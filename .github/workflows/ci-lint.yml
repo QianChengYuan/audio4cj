@@ -43,11 +43,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 安装仓颉 SDK 1.2.0
+      - name: 安装仓颉 SDK 1.1.0
         uses: ./.github/actions/setup-cangjie
         with:
           os: linux
-          version: "1.2.0"
+          version: "1.1.0"
           url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}
 
       # cjfmt 没有 --check 模式，官方的门禁写法就是"就地格式化 + 比对 git diff"。

@@ -34,8 +34,8 @@ permissions:
   contents: read
 
 env:
-  # 与 cjpm.toml 的 cjc-version 保持一致
-  CANGJIE_VERSION: "1.2.0"
+  # 与 cjpm.toml 的 cjc-version 保持一致（最低声明版本；2026-10-10 起为 1.1.0）
+  CANGJIE_VERSION: "1.1.0"
 
 jobs:
   bundle:

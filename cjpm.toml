@@ -9,7 +9,7 @@
 
 [package]
   name = "audio4cj"
-  cjc-version = "1.2.0"
+  cjc-version = "1.1.0"
   version = "0.1.4"
   output-type = "static"
   description = "仓颉统一音频解析库：探测容器格式，解码为统一的 f32 交错 PCM，并提取统一的标签模型"
