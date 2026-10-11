@@ -12,6 +12,23 @@
 > 本文件是更新记录的**权威副本**：它位于仓库根目录，随制品包分发
 > （`docs/changelog.md` 仅为兼容旧链接的跳转页）。
 
+## 0.1.5（待发布）
+
+### 新增
+
+- **FLAC 编码**（新包 `audio4cj.encode`）：`flacBytes(buffer, bitsPerSample!: 16)`
+  把 f32 交错 PCM 编码为完整 FLAC 文件映像——定长分帧 4096、子帧类型
+  自动择优（constant / verbatim / fixed 0..4）、单分区 Rice 残差，
+  复用解码侧同源的 CRC-8 / CRC-16。无损性经双重验证：自解码 roundtrip
+  逐样本零误差；ffmpeg 交叉解码 MD5 与原 WAV 一致。
+  已知边界：仅 16 位；MD5 未计算（流内全 0）；压缩率低于 libFLAC
+  （无立体声联合编码）；非实时（逐位写入有优化空间）。
+
+### 版本号
+
+- `AUDIO4CJ_VERSION` 与 `cjpm.toml` 同步升至 **0.1.5**（0.1.4 从未在中心仓上架，
+  直接顺延，无跳版）。
+
 ## 0.1.4（待发布）
 
 ### 兼容性与性能门槛
