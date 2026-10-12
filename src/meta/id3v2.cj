@@ -259,6 +259,12 @@ private func applyFrame(tag: Tag, major: Int64, frameId: String, data: Array<UIn
         return
     }
 
+    // ---- 非同步歌词（USLT / v2.2 的 ULT）----
+    if (id == "USLT" || id == "ULT") {
+        parseLyricsFrame(tag, data)
+        return
+    }
+
     // ---- 用户自定义文本（TXXX / TXX）----
     if (id == "TXXX") {
         parseTxxxFrame(tag, data)
@@ -292,8 +298,9 @@ private func applyFrame(tag: Tag, major: Int64, frameId: String, data: Array<UIn
         tag.track = cur
         tag.trackTotal = total
     } else if (id == "TPOS") {
-        let (cur, _) = parseNumberPair(value)
+        let (cur, total) = parseNumberPair(value)
         tag.disc = cur
+        tag.discTotal = total
     } else if (id == "TCOM") {
         tag.composer = value
     } else {
@@ -326,6 +333,23 @@ private func parseCommentFrame(tag: Tag, data: Array<UInt8>): Unit {
     let text = decodeText(safeSlice(data, textStart, data.size - textStart), enc)
     if (!text.isEmpty()) {
         tag.comment = text
+    }
+}
+
+/// 解析 `USLT`（非同步歌词）：编码(1) + 语言(3) + 描述(按编码终止) + 歌词文本。
+/// 结构与 COMM 同构；文本走 `decodeText`（含 GBK 嗅探回退）。
+private func parseLyricsFrame(tag: Tag, data: Array<UInt8>): Unit {
+    if (data.size < 4) {
+        return
+    }
+    let enc = data[0]
+    let textStart = skipTerminatedText(data, 4, enc)
+    if (textStart >= data.size) {
+        return
+    }
+    let text = decodeText(safeSlice(data, textStart, data.size - textStart), enc)
+    if (!text.isEmpty()) {
+        tag.lyrics = text
     }
 }
 
@@ -396,6 +420,8 @@ private func parsePictureFrame(tag: Tag, data: Array<UInt8>, major: Int64): Unit
 
     let art = safeSlice(data, offset, data.size - offset)
     if (art.size > 0) {
+        // 多封面策略（v0.1.6 文档化）：APIC 可重复，当前实现为「后出现的覆盖先出现的」
+        // （典型文件首帧即 front cover，故最终结果通常是正确的；数组化多封面留待后续）
         tag.coverArt = art
         if (!mime.isEmpty()) {
             tag.coverMime = mime

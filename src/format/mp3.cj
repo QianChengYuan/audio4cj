@@ -84,7 +84,24 @@ protected class Mp3FormatReader <: FormatReader {
     private let _channels: Int64
 
     /// 总帧数；**-1 表示不可知**（无 Xing/VBRI 且无法估算）。
-    private let _totalFrames: Int64
+    /// 有 LAME 头时为裁剪后的有效帧数（init 末尾收紧，故为 var）。
+    private var _totalFrames: Int64
+
+    /// 首帧锚点元数据（v0.1.6 起经 info() 暴露）
+    private let _bitrateKbps: Int64
+    private let _isVbr: Bool
+    private let _mpegVersion: String
+    private let _layer: Int64
+    private let _channelMode: String
+
+    /// gapless（v0.1.6）：交付层裁剪参数。
+    /// 解码器输出的流首 delay 帧、流尾 padding 帧是编码器填充（LAME 头声明），
+    /// 不裁剪则连续播放有可闻咔哒/静音缝。二者未知（-1）时全部按 0 处理。
+    /// 口径：`_skipFrames` = 输出流起点要丢弃的 PCM 帧；`_deliverFrames` =
+    /// 应交付的有效 PCM 帧总数（-1 = 未知，不设上限）。
+    private let _skipFrames: Int64
+    private let _deliverFrames: Int64
+    private var _deliveredFrames: Int64 = 0
 
     /// 前向回填的读取窗口。
     private var _buf: Array<UInt8>
@@ -160,6 +177,35 @@ protected class Mp3FormatReader <: FormatReader {
             total = estimateTotalFrames(this._file.length, a)
         }
         this._totalFrames = total
+        this._bitrateKbps = a.bitrateKbps
+        this._isVbr = a.isVbr
+        this._mpegVersion = a.mpegVersion
+        this._layer = a.layer
+        this._channelMode = match (a.stereoMode) {
+            case 0 => "stereo"
+            case 1 => "joint stereo"
+            case 2 => "dual channel"
+            case _ => "mono"
+        }
+        // gapless 裁剪参数：仅在有 Xing/Info 总帧数与 LAME 头时可用
+        this._skipFrames = if (a.lameDelay >= 0) {
+            a.lameDelay
+        } else {
+            0
+        }
+        let rawTotal = a.totalFrames
+        if (rawTotal > 0 && a.lameDelay >= 0 && a.lamePadding >= 0) {
+            let effective = rawTotal - this._skipFrames - a.lamePadding
+            this._deliverFrames = if (effective > 0) {
+                effective
+            } else {
+                0
+            }
+            // 时长口径同步收紧（有效时长而非含填充的原始时长）
+            this._totalFrames = this._deliverFrames
+        } else {
+            this._deliverFrames = -1
+        }
     }
 
     // ------------------------------------------------------------------
@@ -205,13 +251,54 @@ protected class Mp3FormatReader <: FormatReader {
             refill()
         }
 
-        if (framesOut == 0) {
+        let framesOutRaw = framesOut
+        if (framesOutRaw == 0) {
             return None
         }
 
-        _framesConsumed += framesOut
+        // ---- gapless 裁剪（v0.1.6）----
+        // 解码帧坐标 [startFrame, startFrame+framesOut) 与有效交付区间
+        // [_skipFrames, _skipFrames+_deliverFrames) 取交集；交集为空且已越过
+        // 区间末端即流结束。_framesConsumed 保持"原始解码帧"口径（seek 用）。
+        var lo = startFrame
+        var hi = startFrame + framesOut
+        if (_deliverFrames >= 0) {
+            let limitEnd = _skipFrames + _deliverFrames
+            lo = if (startFrame > _skipFrames) {
+                startFrame
+            } else {
+                _skipFrames
+            }
+            hi = if (hi < limitEnd) {
+                hi
+            } else {
+                limitEnd
+            }
+        }
+        let outFrames = hi - lo
+        if (outFrames <= 0) {
+            return None
+        }
+        if (lo != startFrame || hi != startFrame + framesOut) {
+            // 把交集样本搬到 acc 头部（区间可能重叠，手动循环最稳）
+            let src0 = lo - startFrame
+            var k: Int64 = 0
+            while (k < outFrames * _channels) {
+                acc[k] = acc[src0 * _channels + k]
+                k += 1
+            }
+        }
+        framesOut = outFrames
+
+        _framesConsumed = startFrame + framesOutRaw
         let data = f32ToBytes(acc[0..framesOut * _channels])
-        let timestampMs = startFrame * 1000 / _sampleRate
+        // 时间戳用交付口径（减去流首被丢弃的 delay 帧）
+        let deliveredStart = lo - _skipFrames
+        let timestampMs = if (deliveredStart > 0) {
+            deliveredStart * 1000 / _sampleRate
+        } else {
+            0
+        }
         let durationMs = framesOut * 1000 / _sampleRate
         Packet(0, data, timestampMs, durationMs)
     }
@@ -235,13 +322,15 @@ protected class Mp3FormatReader <: FormatReader {
         if (target < 0) {
             target = 0
         }
+        // 交付帧坐标 → 原始解码帧坐标（流首 delay 帧会被裁掉）
+        var rawTarget = target + _skipFrames
 
-        if (target < _framesConsumed) {
+        if (rawTarget < _framesConsumed) {
             rewind()
         }
 
         let info = Mp3FrameInfo()
-        while (_framesConsumed < target) {
+        while (_framesConsumed < rawTarget) {
             if (_bufLen == 0 && _eof) {
                 break
             }
@@ -278,7 +367,8 @@ protected class Mp3FormatReader <: FormatReader {
         }
 
         // bitDepth 恒为 32：有损格式不存在源位深，32 表示"输出为 float32"（见 AudioInfo 文档）
-        AudioInfo(_sampleRate, _channels, 32, durationMs, _totalFrames)
+        AudioInfo(_sampleRate, _channels, 32, durationMs, _totalFrames, bitrateKbps: _bitrateKbps, isVbr: _isVbr,
+            mpegVersion: _mpegVersion, layer: _layer, channelMode: _channelMode)
     }
 
     // ------------------------------------------------------------------

@@ -225,11 +225,12 @@ protected func decodeUtf16(data: Array<UInt8>, defaultBigEndian: Bool): String {
 /// 未知编码按 Latin-1 兜底，绝不抛异常。
 protected func decodeText(data: Array<UInt8>, encoding: UInt8): String {
     match (encoding) {
-        case 0 => decodeLatin1(truncateAtNulByte(data))
+        // 编码 0：GBK 嗅探回退（中文 MP3 常把 GBK 错标为 Latin-1，见 gbk_sniff.cj）
+        case 0 => tryGbkDecode(truncateAtNulByte(data)) ?? decodeLatin1(truncateAtNulByte(data))
         case 1 => decodeUtf16(data, false)
         case 2 => decodeUtf16(data, true)
         case 3 => decodeUtf8Safe(truncateAtNulByte(data))
-        case _ => decodeLatin1(truncateAtNulByte(data))
+        case _ => tryGbkDecode(truncateAtNulByte(data)) ?? decodeLatin1(truncateAtNulByte(data))
     }
 }
 

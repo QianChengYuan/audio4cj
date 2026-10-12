@@ -83,7 +83,7 @@ protected func hdrTestMpeg1(h: Array<UInt8>): Bool {
     (Int64(h[1]) & 0x8) != 0
 }
 
-private func hdrTestNotMpeg25(h: Array<UInt8>): Bool {
+protected func hdrTestNotMpeg25(h: Array<UInt8>): Bool {
     (Int64(h[1]) & 0x10) != 0
 }
 

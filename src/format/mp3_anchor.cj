@@ -91,8 +91,24 @@ protected class Mp3Anchor {
     /// 首帧比特率（kbps；自由格式为 0）。
     protected var bitrateKbps: Int64 = 0
 
+    /// 是否可变比特率：检出 "Xing" 或 "VBRI" 锚点为 true；
+    /// "Info" 标签（LAME 的 CBR 标记）或无锚点为 false。
+    protected var isVbr: Bool = false
+
+    /// MPEG 版本：`MPEG1` / `MPEG2` / `MPEG2.5`（帧头两位组合判定）。
+    protected var mpegVersion: String = ""
+
+    /// 声道模式：0=stereo / 1=joint stereo / 2=dual channel / 3=mono。
+    protected var stereoMode: Int64 = 0
+
     /// Xing/VBRI 声明的总帧数；**-1 表示不可知**。
     protected var totalFrames: Int64 = -1
+
+    /// LAME 头的 encoder delay（PCM 帧数）；**-1 表示未知**（无 LAME 头）。
+    protected var lameDelay: Int64 = -1
+
+    /// LAME 头的 encoder padding（PCM 帧数）；**-1 表示未知**。
+    protected var lamePadding: Int64 = -1
 
     public init() {}
 }
@@ -158,23 +174,45 @@ protected func mp3ParseAnchor(data: Array<UInt8>, bytes: Int64): ?Mp3Anchor {
         2
     }
     a.bitrateKbps = hdrBitrateKbps(hdr)
+    a.stereoMode = hdrGetStereoMode(hdr)
+    // MPEG 版本：帧头 h[1] 的两位（bit4/bit3）—— 11=MPEG1、10=MPEG2、00=MPEG2.5
+    a.mpegVersion = if (hdrTestMpeg1(hdr)) {
+        "MPEG1"
+    } else if (hdrTestNotMpeg25(hdr)) {
+        "MPEG2"
+    } else {
+        "MPEG2.5"
+    }
 
     // Xing/VBRI 里记的是 **MP3 帧数**，需乘每帧样本数才是本库口径的 PCM 帧数
-    let vbrFrames = readVbrFrames(data, bytes, found.offset, hdr)
-    a.totalFrames = if (vbrFrames >= 0) {
-        vbrFrames * a.samplesPerFrame
+    let xing = readVbrFrames(data, bytes, found.offset, hdr)
+    a.totalFrames = if (xing.frames >= 0) {
+        xing.frames * a.samplesPerFrame
     } else {
         -1
     }
+    a.isVbr = xing.isVbr
+    a.lameDelay = xing.lameDelay
+    a.lamePadding = xing.lamePadding
     Some(a)
 }
 
 /// 优先从 Xing/Info，其次从 VBRI 读取总帧数；两者都没有时返回 -1。
-/// 从锚点帧里读出"总帧数"：优先用锚点声明的值，没有就**实测**（沿帧长走一遍）。
-///
-/// 实测是最后手段，代价是整文件扫描；它的意义在于"锚点缺失时仍能报出准确时长"。
-/// 返回 0 表示无法确定（调用方按"不可知"处理，与既有约定一致）。
-private func readVbrFrames(data: Array<UInt8>, bytes: Int64, frameOffset: Int64, hdr: Array<UInt8>): Int64 {
+/// 从锚点帧里读出"总帧数"，并附带 VBR 判定：
+///   · "Xing" / "VBRI" 锚点 ⇒ VBR（isVbr = true）
+///   · "Info" 标签（LAME 写 CBR 时的锚点名）⇒ CBR
+/// 返回 (总帧数, isVbr)；无锚点时 (-1, false)。
+/// Xing/Info/VBRI 锚点解析结果（v0.1.6 增补 LAME gapless 字段）。
+protected struct XingInfo {
+    var frames: Int64 = -1
+    var isVbr: Bool = false
+    // LAME 头的 encoder delay / padding（PCM 帧数）；-1 = 未知（无 LAME 头）
+    var lameDelay: Int64 = -1
+    var lamePadding: Int64 = -1
+}
+
+private func readVbrFrames(data: Array<UInt8>, bytes: Int64, frameOffset: Int64, hdr: Array<UInt8>): XingInfo {
+    var out = XingInfo()
     let mpeg1 = hdrTestMpeg1(hdr)
     let mono = hdrIsMono(hdr)
     let sideInfo = if (mpeg1) {
@@ -201,17 +239,62 @@ private func readVbrFrames(data: Array<UInt8>, bytes: Int64, frameOffset: Int64,
     if (tagEquals(data, xOff, "Xing") || tagEquals(data, xOff, "Info")) {
         let flags = readU32BE(data, xOff + 4)
         if ((flags & 1) != 0 && xOff + 12 <= bytes) {
-            return readU32BE(data, xOff + 8)
+            // "Info" 是 LAME 写 CBR 时的锚点名；"Xing"/"VBRI" 才是 VBR
+            out.isVbr = tagEquals(data, xOff, "Xing")
+            out.frames = readU32BE(data, xOff + 8)
+            let (lameD, lameP) = parseLameHeader(data, bytes, xOff, flags)
+            out.lameDelay = lameD
+            out.lamePadding = lameP
+            return out
         }
     }
 
     // VBRI：固定在帧头之后 32 字节处；其 frames 字段位于 VBRI 起点 +14
     let vOff = frameOffset + HDR_SIZE + 32
     if (tagEquals(data, vOff, "VBRI") && vOff + 18 <= bytes) {
-        return readU32BE(data, vOff + 14)
+        out.frames = readU32BE(data, vOff + 14)
+        out.isVbr = true
+        return out
     }
 
-    -1
+    out
+}
+
+/// 解析 LAME 头的 encoder delay / padding（gapless）。
+///
+/// 位置：紧随锚点的可选字段（flags 逐位回退）之后是 LAME 版本串（"LAME…"，
+/// 9 字节起）；版本串后依次为 rev/method(1) + lowpass(1) + peak(4) + radio(2)
+/// + audiophile(2) + flags(2)，**偏移 21 处的 3 字节**是 big-endian 的
+/// delay/padding 打包值：高 12 位 delay、低 12 位 padding。
+/// 解析结果做合理性夹紧（0..8191），离谱值按未知处理（保守不裁剪）。
+private func parseLameHeader(data: Array<UInt8>, bytes: Int64, xOff: Int64, flags: Int64): (Int64, Int64) {
+    // out 为 struct 值类型，parseLameHeader 直接改调用方的副本无效——改为返回后再赋值
+    // 从 "Xing"/"Info" 之后逐位回退可选字段，定位 LAME 版本串
+    var p = xOff + 4
+    if ((flags & 1) != 0) {
+        p += 4 // frames
+    }
+    if ((flags & 2) != 0) {
+        p += 4 // bytes
+    }
+    if ((flags & 4) != 0) {
+        p += 100 // TOC
+    }
+    if ((flags & 8) != 0) {
+        p += 4 // quality
+    }
+    if (!tagEquals(data, p, "LAME") || p + 24 > bytes) {
+        return (-1, -1)
+    }
+    // 3 字节打包值位于 LAME 版本串起点 +21
+    let v = (Int64(data[p + 21]) << 16) | (Int64(data[p + 22]) << 8) | Int64(data[p + 23])
+    let delay = v >> 12
+    let padding = v & 0xFFF
+    // 合理性：LAME 默认 delay=576，padding 通常 0..3000
+    if (delay <= 8191 && padding <= 8191) {
+        return (delay, padding)
+    }
+    (-1, -1)
 }
 
 /// 扫描输入，定位**第一处成立的同步**；找不到时返回 `frameBytes = 0` 的结果。

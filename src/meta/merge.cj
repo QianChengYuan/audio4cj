@@ -32,8 +32,10 @@ protected func mergeTags(primary: Tag, fallback: Tag): Tag {
     out.track = primary.track ?? fallback.track
     out.trackTotal = primary.trackTotal ?? fallback.trackTotal
     out.disc = primary.disc ?? fallback.disc
+    out.discTotal = primary.discTotal ?? fallback.discTotal
     out.comment = primary.comment ?? fallback.comment
     out.composer = primary.composer ?? fallback.composer
+    out.lyrics = primary.lyrics ?? fallback.lyrics
     out.coverArt = primary.coverArt ?? fallback.coverArt
     out.coverMime = primary.coverMime ?? fallback.coverMime
 

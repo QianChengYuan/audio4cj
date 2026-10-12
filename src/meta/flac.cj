@@ -16,7 +16,7 @@ package audio4cj.meta
  *   1 = PADDING       2 = APPLICATION   3 = SEEKTABLE
  *   4 = **VORBIS_COMMENT**（标签载体）  5 = CUESHEET   6 = PICTURE
  *
- * 本实现只关心类型 4（标签）与类型 6（封面，见下）。
+ * 本实现只关心类型 4（标签）；类型 6（封面 PICTURE 块）尚未实现，留待后续。
  *
  * 输入约定：`data` 为**文件开头的一段字节**（从 "fLaC" 开始）。
  *   VORBIS_COMMENT 块按规范应出现在 STREAMINFO 之后、音频帧之前，

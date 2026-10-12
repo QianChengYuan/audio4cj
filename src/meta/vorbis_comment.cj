@@ -119,8 +119,13 @@ private func applyVorbisEntry(tag: Tag, entry: String): Unit {
     } else if (key == "DISCNUMBER" || key == "DISC") {
         let (cur, _) = parseNumberPair(value)
         tag.disc = cur
+    } else if (key == "DISCTOTAL" || key == "TOTALDISCS") {
+        let (cur, _) = parseNumberPair(value)
+        tag.discTotal = cur
     } else if (key == "COMMENT" || key == "DESCRIPTION") {
         tag.comment = value
+    } else if (key == "LYRICS" || key == "UNSYNCEDLYRICS") {
+        tag.lyrics = value
     } else if (key == "COMPOSER") {
         tag.composer = value
     } else if (key == "METADATA_BLOCK_PICTURE") {

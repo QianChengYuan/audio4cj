@@ -308,6 +308,7 @@ private func mp4ApplyItem(
             tag.trackTotal = total
         } else {
             tag.disc = cur
+            tag.discTotal = total
         }
         return
     }

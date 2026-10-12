@@ -25,18 +25,46 @@ public class AudioInfo {
     /// 总帧数；**-1 表示不可知**（如无索引的流式来源）。
     public let totalFrames: Int64
 
+    /// 比特率（kbps）。MP3 取首帧比特率（VBR 下为**平均值的近似**）；
+    /// WAV/FLAC 可由字节数换算；不可知为 0。
+    public let bitrateKbps: Int64
+
+    /// 是否可变比特率（检出 Xing/VBRI 锚点即 true；"Info" 标签或无锚点为 false）。
+    /// 仅 MP3 有意义。
+    public let isVbr: Bool
+
+    /// MPEG 版本：`MPEG1` / `MPEG2` / `MPEG2.5`；非 MP3 为空串。
+    public let mpegVersion: String
+
+    /// MPEG 层（1/2/3，本库仅承诺 3）；非 MP3 为 0。
+    public let layer: Int64
+
+    /// 声道模式：`stereo` / `joint stereo` / `dual channel` / `mono`；非 MP3 为空串。
+    /// 注意 joint stereo 与 stereo 的 channels 都是 2，但下游声道处理含义不同。
+    public let channelMode: String
+
     public init(
         sampleRate: Int64,
         channels: Int64,
         bitDepth: Int64,
         durationMs: Int64,
-        totalFrames: Int64
+        totalFrames: Int64,
+        bitrateKbps!: Int64 = 0,
+        isVbr!: Bool = false,
+        mpegVersion!: String = "",
+        layer!: Int64 = 0,
+        channelMode!: String = ""
     ) {
         this.sampleRate = sampleRate
         this.channels = channels
         this.bitDepth = bitDepth
         this.durationMs = durationMs
         this.totalFrames = totalFrames
+        this.bitrateKbps = bitrateKbps
+        this.isVbr = isVbr
+        this.mpegVersion = mpegVersion
+        this.layer = layer
+        this.channelMode = channelMode
     }
 }
 

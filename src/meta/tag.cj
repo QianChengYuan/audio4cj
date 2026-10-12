@@ -27,6 +27,8 @@ public class Tag {
     public var track: ?Int64 = None
     public var trackTotal: ?Int64 = None
     public var disc: ?Int64 = None
+    public var discTotal: ?Int64 = None
+    public var lyrics: ?String = None
     public var comment: ?String = None
     public var composer: ?String = None
 

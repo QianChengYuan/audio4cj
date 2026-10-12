@@ -10,6 +10,30 @@
 > 本记录只写"使用者能感知到什么变了"，不复述过程。
 >
 > 本文件是更新记录的**权威副本**：它位于仓库根目录，随制品包分发
+
+## 0.1.6
+
+### 新增
+
+- **`AudioInfo` 暴露 MP3 锚点元数据**（命名默认参数，旧调用不变）：`bitrateKbps`（kbps）、`isVbr`（检出 Xing/VBRI 即 true，`Info` 标签为 CBR）、`mpegVersion`（`MPEG1`/`MPEG2`/`MPEG2.5`）、`layer`、`channelMode`（`stereo`/`joint stereo`/`dual channel`/`mono`）
+- **`Tag.discTotal`**：补齐与 `track/trackTotal` 的对称（ID3v2 `TPOS`、Vorbis `DISCTOTAL`/`TOTALDISCS`、MP4 `disk` atom）
+- **`Tag.lyrics`**：非同步歌词（ID3v2 `USLT`/`ULT`、Vorbis `LYRICS`/`UNSYNCEDLYRICS`）
+- **APEv2 标签读取**（`readTags`/MP3 标签路径自动纳入）：MP3 的标签优先级为 ID3v2 > APEv2 > ID3v1；APE 文本 item 与 front cover（`COVER ART (FRONT)`）均可读，其余键进 `extra`（键名 `APE:<KEY>`）
+- **`AudioFile.openBytes(bytes)`**：从内存字节打开音频（写入临时文件桥接，`close()` 时自动删除）——在线播放场景免手工落盘
+
+### 修复
+
+- **MP3 大 ID3v2 误报损坏**：内嵌大封面可把 ID3v2 推到 64KB 预读窗之外，此前一律误报「找不到合法帧」；现打开时跳过标签区再预读
+- **ID3v2 中文乱码（GBK 嗅探回退）**：大量中文 MP3 把 GBK 内容错标为 ISO-8859-1（编码 0）；现嗅探到 GBK 特征（合法双字节序列 + 贪心配对成功 + 解出 CJK）即按内置 CP936 表解码，未命中特征维持 Latin-1
+- **MP3 gapless（LAME delay/padding 裁剪）**：解析 LAME 头的 encoder delay/padding，解码层裁掉流首/流尾填充样本；`info().durationMs` 同步为有效时长。连续播放不再有首尾静音缝/咔哒
+- **`extra` 键名约定文档化**：ID3v2 的 `TXXX:<描述>` 与其余 `T…` 帧按帧 ID 收入 `extra`（如 `getExtra("TXXX:REPLAYGAIN_TRACK_GAIN")` 可取回放增益）；APE 键 `APE:<KEY>`
+
+### 说明
+
+- 多封面（APIC 重复 / covr 多条目）当前策略为「后出现的覆盖先出现的」，数组化支持留待后续
+- SYLT（同步歌词）、POPM/PCNT/UFID/WXXX/RVA2 等二进制帧暂不解析
+- FLAC 的 PICTURE 块与 Ogg 的 `METADATA_BLOCK_PICTURE` 仍不支持
+
 > （`docs/changelog.md` 仅为兼容旧链接的跳转页）。
 
 ## 0.1.5（待发布）

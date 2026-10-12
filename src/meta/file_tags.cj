@@ -80,9 +80,10 @@ protected func readId3v1FromFile(path: String): Tag {
     result
 }
 
-/// MP3 标签：ID3v2（文件头）优先，其空字段由 ID3v1（文件尾）逐字段回填。
+/// MP3 标签：ID3v2（文件头）> APEv2（文件尾，v0.1.6 起支持）> ID3v1（文件尾 128 字节），
+/// 逐字段回填（primary 优先、fallback 补空）。
 protected func readMp3TagsFromFile(path: String): Tag {
-    mergeTags(readId3v2FromFile(path), readId3v1FromFile(path))
+    mergeTags(readId3v2FromFile(path), mergeTags(readApev2FromFile(path), readId3v1FromFile(path)))
 }
 
 /// FLAC 标签：读取文件头部窗口内的元数据块链，取 `VORBIS_COMMENT` 块。

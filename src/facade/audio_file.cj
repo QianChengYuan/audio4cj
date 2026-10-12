@@ -8,6 +8,10 @@ import audio4cj.probe.*
 import audio4cj.format.*
 import audio4cj.codec.*
 import std.collection.*
+import std.env.*
+import std.fs.*
+import std.sync.*
+import std.time.*
 
 /* ============================================================================
  * AudioFile —— 开发文档 §4.4
@@ -36,6 +40,12 @@ import std.collection.*
  * ========================================================================== */
 public class AudioFile <: Resource {
     private var _closed: Bool = false
+
+    /// openBytes 的临时文件路径；非空表示 close 时需删除（v0.1.6）
+    private var _tempPath: String = ""
+
+    /// 临时文件序号（同进程内唯一）
+    private static let _tmpSeq: AtomicInt64 = AtomicInt64(0)
     private let _path: String
     private let _reader: ?FormatReader
     private let _decoder: ?Decoder
@@ -111,6 +121,20 @@ public class AudioFile <: Resource {
                 openFlac(path, formatInfo, true)
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（${path}）")
         }
+    }
+
+    /// 从内存字节打开音频（v0.1.6）。
+    ///
+    /// 实现：写入临时文件后走 `open(path)`——探测与各解码器当前都以文件为
+    /// I/O 单元，临时文件是**务实桥接**；临时文件在本实例 close 时自动删除，
+    /// 使用方无需感知。在线播放场景（网络字节 → 解码）由此免手工落盘管理。
+    public static func openBytes(bytes: Array<UInt8>): AudioFile {
+        let dir = getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        let tmp = "${dir}/audio4cj_${_tmpSeq.fetchAdd(1)}.tmp"
+        File.writeTo(Path(tmp), bytes)
+        let af = open(tmp)
+        af._tempPath = tmp
+        af
     }
 
     /// 以 FLAC 读取器 + 解码器装配 `AudioFile`。
@@ -271,13 +295,18 @@ public class AudioFile <: Resource {
         _closed
     }
 
-    /// 释放资源（幂等）。会一并关闭底层 reader。
+    /// 释放资源（幂等）。会一并关闭底层 reader；
+    /// openBytes 的临时文件在此一并删除。
     public func close(): Unit {
         if (!_closed) {
             _closed = true
             match (_reader) {
                 case Some(r) => r.close()
                 case None => ()
+            }
+            if (_tempPath != "") {
+                removeIfExists(Path(_tempPath))
+                _tempPath = ""
             }
         }
     }
