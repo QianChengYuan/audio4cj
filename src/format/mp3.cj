@@ -4,6 +4,7 @@ import audio4cj.core.*
 import audio4cj.meta.*
 import audio4cj.pcm.f32ToBytes
 import std.fs.*
+import std.io.*
 import std.time.*
 
 /* ============================================================================
@@ -90,6 +91,10 @@ protected class Mp3FormatReader <: FormatReader {
     private var _bufLen: Int64 = 0
     private var _eof: Bool = false
 
+    /// 音频数据起点（跳过 ID3v2 标签后的偏移；无标签为 0）。
+    /// rewind 重开文件后必须先 seek 到这里，再回填窗口。
+    private var _audioStart: Int64 = 0
+
     /// 单帧解码输出缓冲（复用，避免每帧分配）。
     private var _pcm: Array<Float32>
 
@@ -102,6 +107,26 @@ protected class Mp3FormatReader <: FormatReader {
     protected init(path: String) {
         this._path = path
         this._file = File(path, Read)
+
+        // 若文件以 ID3v2 开头，跳过标签区再预读锚点窗：
+        // 内嵌大封面（APIC）可把标签推到 64KB 预读窗之外——实测一张 80KB 的
+        // ID3v2 使窗口内没有任何音频帧，帧同步报"找不到合法帧"（误报损坏）。
+        let head = Array<UInt8>(10, repeat: 0)
+        let hn = this._file.read(head)
+        if (hn >= 10 && head[0] == 0x49 && head[1] == 0x44 && head[2] == 0x33) { // "ID3"
+            // 标签大小为 4×7bit syncsafe 整数；v2.4 可选 10 字节 footer（flags bit4）
+            let sz = (Int64(head[6] & 0x7F) << 21) | (Int64(head[7] & 0x7F) << 14) | (Int64(head[8] & 0x7F) << 7) |
+                Int64(head[9] & 0x7F)
+            let footer = if ((head[5] & 0x10) != 0) {
+                10
+            } else {
+                0
+            }
+            this._audioStart = 10 + sz + footer
+            this._file.seek(SeekPosition.Begin(this._audioStart))
+        } else if (hn > 0) {
+            this._file.seek(SeekPosition.Begin(0))
+        }
 
         let buf = Array<UInt8>(MP3_WINDOW_BYTES, repeat: 0)
         let pcm = Array<Float32>(MP3_MAX_SAMPLES_PER_FRAME, repeat: 0.0)
@@ -318,6 +343,9 @@ protected class Mp3FormatReader <: FormatReader {
     private func rewind(): Unit {
         _file.close()
         _file = File(_path, Read)
+        if (_audioStart > 0) {
+            _file.seek(SeekPosition.Begin(_audioStart))
+        }
         _bufLen = 0
         _eof = false
         // 必须用完整复位：位池、MDCT 重叠、QMF 状态都要清，否则新流会带上旧状态
