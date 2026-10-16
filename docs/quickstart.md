@@ -27,14 +27,14 @@ audio4cj 是一个 `static` 类型的 cjpm 库工程。**三种引入方式**，
 | 方式 | 写法 | 适用场景 |
 |---|---|---|
 | ① 中心仓 | 以**制品页给出的版本号**为准 | **当前尚无版本上架**（`0.1.2` 及之后的提交均未成功上架）——**现阶段请用方式 ② / ③** |
-| ② **Git 引用** | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.0" }` | **中心仓尚无可用版本时用这种（当前即为此情形）**；`tag` 可换成 `branch = "main"` 或 `commitId = "..."` |
+| ② **Git 引用** | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.6" }` | **中心仓尚无可用版本时用这种（当前即为此情形）**；`tag` 可换成 `branch = "main"` 或 `commitId = "..."`；可用 tag 见仓库 tag 列表 |
 | ③ 本地路径引用 | `audio4cj = { path = "../audio4cj" }` | 本机开发与测试（源码就在本地） |
 
 ```toml
 # 方式 ②：Git 引用（中心仓不可用时的推荐替代）
 # 你的工程 cjpm.toml
 [dependencies]
-audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.0" }
+audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.6" }
 ```
 
 ```toml
