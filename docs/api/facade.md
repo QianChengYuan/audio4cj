@@ -74,7 +74,7 @@ public static func open(path: String): AudioFile
 
 | 容器 | 解码实现 | `bitDepth` 语义 |
 |---|---|---|
-| `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深转换） | `fmt` 中的真实位深（8 / 16 / 24 / 32） |
+| `wav` | 纯仓颉（未压缩容器，其「解码」本质是位深 / 格式转换） | `fmt` 中的真实位深（整型 8 / 16 / 24 / 32；IEEE 浮点仅支持 32 位） |
 | `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
 | `mp3` | **纯仓颉**（解码内核见 `src/format/mp3_*.cj`：帧同步 → Huffman → 反量化 → IMDCT → 多相合成滤波） | 恒为 `32`（表示输出为 float32，而非 32 位整数 PCM） |
 | `ogg` + `flac` | **纯仓颉**（`PureFlacKernel` + `OggFlacByteSource`）—— Ogg 容器先被重建成一条与原生 FLAC 逐字节等同的流（页体重组 + 页 CRC-32 校验），再交给同一套解码逻辑 | `STREAMINFO` 中的真实位深 |

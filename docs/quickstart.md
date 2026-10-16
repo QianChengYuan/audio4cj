@@ -306,7 +306,7 @@ main() {
 ## 六、限制与注意事项
 
 1. **当前可解码 WAV / FLAC / MP3 / Ogg 封装的 FLAC**。OGG/Vorbis、OGG/Opus、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
-2. **32-bit float PCM 暂不支持**，`isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`。
+2. **32 位浮点 WAV 支持，64 位浮点不支持**。`isSupportedPcmFormat(32, isFloatFormat: true)` 返回 `true`、`(64, true)` 返回 `false`。浮点载荷按位重解释、**不做 [-1, 1] 钳位**（越界值原样输出）。
 3. **`AudioFile` 不跨线程共享**。多文件并行处理请为每个文件创建独立实例。
 4. **库不统一采样率**。输出统一为 f32 交错，但采样率沿用源文件，混合不同采样率的音频需自行重采样。
 5. **`None` 不代表错误**。它只表示「该字段不存在」或「流已结束」；错误一律以异常形式抛出。

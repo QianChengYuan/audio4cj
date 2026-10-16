@@ -99,9 +99,9 @@ public func isSupportedPcmFormat(bitsPerSample: Int64, isFloatFormat: Bool): Boo
 
 **返回值**：
 
-- `isFloatFormat == true` → **恒返回 `false`**（32-bit float PCM 暂不支持）；
+- `isFloatFormat == true` → 仅 `bitsPerSample == 32` 返回 `true`（WAV `formatTag = 3`，含 extensible 子格式 3）；
 - `isFloatFormat == false` 且 `bitsPerSample ∈ {8, 16, 24, 32}` → `true`；
-- 其他位深 → `false`。
+- 其他位深 → `false`（含 **64 位浮点**：本库统一表示是 f32，明确拒绝好过静默降精度）。
 
 > 调用 `pcmToF32` 之前应先用本函数校验，避免得到空结果。
 

@@ -336,7 +336,7 @@ protected class WavFormatReader <: FormatReader {
         if (!isSupportedPcmFormat(_bitsPerSample, isFloatFormat())) {
             throw FormatNotSupportedException(
                 "暂不支持的 WAV 编码：formatTag=${_audioFormat}, bits=${_bitsPerSample}" +
-                    "（当前支持 8/16/24/32 位整型 PCM）")
+                    "（当前支持 8/16/24/32 位整型 PCM，以及 32 位 IEEE 浮点 PCM）")
         }
     }
 

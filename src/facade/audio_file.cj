@@ -106,7 +106,8 @@ public class AudioFile <: Resource {
                 let decoder = WavPcmDecoder(
                     reader.bitsPerSample(),
                     reader.channels(),
-                    reader.sampleRate()
+                    reader.sampleRate(),
+                    reader.isFloatFormat()
                 )
                 AudioFile(path, reader, decoder, formatInfo)
             case "flac" => openFlac(path, formatInfo, false)

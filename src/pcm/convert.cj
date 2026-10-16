@@ -10,19 +10,32 @@ package audio4cj.pcm
  *   16 bit  有符号： v / 32768.0
  *   24 bit  有符号： v / 8388608.0
  *   32 bit  有符号： v / 2147483648.0
- *   32 bit  浮点  ： 直接使用（本阶段暂不支持，见下）
+ *   32 bit  浮点  ： **不做数值运算**，直接按位重解释为 f32（见下）
  *
  * 说明：
  *   - 全部按**小端**解析（WAV 规范）
  *   - 负的满量程（如 -32768）映射到 -1.0，正的满量程映射到略小于 1.0，
  *     这是业界通行做法
  *   - 本函数不做声道与采样率变换（本库不统一采样率，见 §5）
+ *
+ * 【32 位浮点为什么走"位重解释"而不是归一化公式】
+ *   浮点 PCM 的载荷本身就是 IEEE-754 单精度样本，只需要换一个视角读取同一块
+ *   内存（`reinterpretF32Bytes`，见 pcm/bitview.cj）。若改成"拆符号/阶码/尾数
+ *   再手工拼回"，就要自己实现舍入，最低位会与参考实现不一致 —— 本项目的判据是
+ *   "逐位相同、容差 0"。位视角转换天然一致，且顺带把 -0.0 / Inf / NaN 原样带过去。
+ *   注意它**不是**取值范围归一化：浮点 WAV 允许 |样本| > 1.0（削波前素材），
+ *   本库据此照原样输出，钳位交给消费方（与既有整型路径的口径一致：整型路径
+ *   也只是除以满量程，不额外限制）。
  * ========================================================================== */
 
 /// 是否为本模块支持的位深 / 格式组合。
+///
+/// 浮点只支持 32 位（WAV `formatTag = 3`，或 extensible 的子格式 3）——
+/// 64 位浮点 WAV 在真实素材里极罕见，且本库统一表示就是 f32，收进来只能降精度，
+/// 故明确不支持而不是静默截断。
 public func isSupportedPcmFormat(bitsPerSample: Int64, isFloatFormat: Bool): Bool {
     if (isFloatFormat) {
-        return false // 32-bit float PCM 暂不支持，见文件头说明
+        return bitsPerSample == 32
     }
     match (bitsPerSample) {
         case 8 | 16 | 24 | 32 => true
@@ -35,11 +48,21 @@ public func bytesPerSample(bitsPerSample: Int64): Int64 {
     (bitsPerSample + 7) / 8
 }
 
-/// 把交错整型 PCM 转换为 f32 交错样本。
+/// 把交错 PCM 转换为 f32 交错样本。
 ///
+/// - 整型：按位深归一化到 [-1.0, 1.0)（见文件头约定）
+/// - 浮点（`isFloatFormat: true`，仅 32 位）：按位重解释，不做数值转换
 /// - data 长度不足一个完整样本时，尾部多余字节被忽略
 /// - 调用方须先用 isSupportedPcmFormat 校验
-public func pcmToF32(data: Array<UInt8>, bitsPerSample: Int64): Array<Float32> {
+public func pcmToF32(data: Array<UInt8>, bitsPerSample: Int64, isFloatFormat!: Bool = false): Array<Float32> {
+    if (isFloatFormat) {
+        // 32 位浮点：载荷即 f32 的小端字节表示，换视角读取即可（见文件头说明）
+        if (bitsPerSample != 32) {
+            return Array<Float32>()
+        }
+        return reinterpretF32Bytes(data)
+    }
+
     let bps = bytesPerSample(bitsPerSample)
     if (bps <= 0) {
         return Array<Float32>()

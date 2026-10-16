@@ -12,7 +12,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | 统一的 PCM 表示 | `AudioBuffer` | **f32 交错**，取值范围 `[-1.0, 1.0]` |
 | 统一的标签模型 | `Tag` | 把 ID3 / Vorbis comment / WAV INFO / MP4 `ilst` 等体系收敛为一个类型 |
 
-> **`bitDepth` 的语义提示**：`AudioInfo.bitDepth` 报告**源位深**（16 / 24 / 32）。
+> **`bitDepth` 的语义提示**：`AudioInfo.bitDepth` 报告**源位深**（16 / 24 / 32；32 位浮点 WAV 同样报告 32）。
 > 但对于有损格式（如 MP3）不存在源位深，此时恒为 `32`，含义是「解码输出为 float32」
 > ——**不是** 32 位整数 PCM。
 >
@@ -143,7 +143,6 @@ try (f = AudioFile.open(path)) {
 |---|---|
 | **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** |
 | **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。结论：在只接受宽许可依赖的前提下**无许可干净的候选库**（候选库的许可证均不合准入线：一个属传染性许可、一个是专有许可） |
-| **32-bit float PCM** | `isSupportedPcmFormat(bits, isFloatFormat: true)` 返回 `false`，暂不支持 |
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
 | **标签写入** | 无，只做读取 |
 | **Speex 的注释头** | 未覆盖。Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03vorbis` / `OpusTags`）都不同，`readTags` 对其返回**空 `Tag`**（不报错） |
