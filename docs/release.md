@@ -133,6 +133,69 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 > 等价形式，实测该组合会让 `cjpm bundle` 在**打包阶段 OOM**（`--skip-lint` 同样触发，
 > 整目录排除则不触发），故最终定为**逐文件白名单**：纯内存用例在 `include` 里逐个登记，
 > 新增用例默认**不**进包，要随包必须显式登记（fail-closed）。
+> **2026-10-16 更正**：那次 OOM 的**根因不是 include 写法，而是默认堆只有 256MB**
+> （见下节"打包阶段 OOM 已定位"）——逐文件白名单仍然保留（fail-closed 的价值独立于
+> 这个 bug），但"整目录 include 会 OOM"这条因果判断作废：它至多是"文件更多、更容易
+> 撞上 256MB 上限"的阈值效应。
+
+## 打包阶段 OOM 已定位：默认堆 256MB，`cjHeapSize=4GB` 即通过（2026-10-16）
+
+**现象**：`cjpm bundle` 过了 lint 之后在打包阶段直接
+`An exception has occurred: Out of memory`，堆统计里
+`allHeapSize 268435456`（= 256MB，`objFragRate 0.99`、`unitCapacity 0.008`——
+不是内存真的用满，而是堆上限本身太小）。
+
+**根因与修法**：`cjpm` 内嵌的 lint / 打包阶段走仓颉运行时默认堆，256MB 对
+本库（2.4 万条目的 GBK 表 + 43 个测试文件 + `cjpm bundle` 默认还要跑一遍
+`cjpm test`）不够用。设环境变量即可：
+
+```bash
+cjHeapSize=4GB python scripts/release_bundle.py    # 脚本内已默认注入，无需手动设
+```
+
+**两个坑**：① 该变量**必须带单位**，写 `cjHeapSize=4096` 只会得到
+`Unsupported cjHeapSize parameter. The unit must be added when configuring with
+positive integer value, it supports 'KB', 'MB', 'GB'.`（然后静默回落到默认值）；
+② 只对 `cjpm bundle` / `cjlint` 这类"工具自身"生效，不影响被编译产物的运行时堆。
+`scripts/release_bundle.py` 的 `run()` 已用 `child_env.setdefault("cjHeapSize", "4GB")`
+注入，手工跑 `cjpm bundle` 时才需要自己带上。
+
+**顺带记牢**：`cjpm bundle` 默认**还会跑 `cjpm test` 与 `cjlint`**，所以它的产物
+日志里会混着测试进度条与 lint 告警；排障时按 `cjpm bundle --skip-test --skip-lint`
+分段跑更快。
+
+## GBK 表触发的 `G.OTH.02` 误报：已做**结构性**消除（2026-10-16）
+
+**现象**：`cjpm bundle` 的 lint 阶段报 **48 条**
+`error: G.OTH.02: AA527302 is sensitive information is hard-coded in the program`，
+**全部落在 `src/meta/gbk_table.cj`**，报错收尾是
+`error: code specifications with level 'MANDATORY' are violated` —— 该文件由
+`3de6fc6`（v0.1.6 的"GBK 嗅探"）引入，**即发布门禁自那时起就是红的**。
+
+**成因**：`config/structural_rule_G_OTH_02.json` 的 `RegexSet` 用
+`\b([a-zA-Z]{0,1}00[1-9]\d{5,6})|\b([a-zA-Z]{0,1}30\d{6})|\b([a-zA-Z]{2}[1-9]\d{5,7})|([a-zA-Z]*kf[1-9]\d{4,9})`
+拦"硬编码证件号"，而 CP936 表条目形如 `AA52` + `7302`（GBK 码 + Unicode 码位）
+连写后恰好命中 `[a-zA-Z]{2}[1-9]\d{5,7}`。**规则本身没错，是数据与它偶然同形。**
+
+**为什么不用注释豁免**：`// cjlint-ignore -start !G.OTH.02` 确实能过本地门禁
+（实测 `cjlint -f src/ -c .` 归零），但**中心仓侧的外部扫描器未必认这条注释**，
+而"安全问题"正是 audio4cj 上架被拒的口径 —— 拿注释去赌对方实现，风险不对等。
+改做**结构性消除**：表内每条目改成 `AA52.7302.`（10 字符：GBK 4 + `.` +
+Unicode 4 + `.`），源码里任何连续十六进制串都 ≤4 字符，**任何按 8 位证件号
+设计的正则都不可能再命中**；运行时字符串与解码逻辑同步改为步长 10
+（`GBK_TABLE_ENTRIES = GBK_TABLE_HEX.size / 10`，`gbkLookup` 取
+`[mid*10, mid*10+4)` 与 `[mid*10+5, mid*10+9)`）。
+
+**踩过的坑（别再走一遍）**：
+- **把长串切成 4 字符字面量用 `+` 连接 → `cjlint` 直接段错误**（exit 139，
+  约 6000 个字面量的一条 `+` 链把它压垮）；15 万字符的表配 `+` 链最多撑到
+  原先的 750 个字面量。分隔符方案不增加字面量个数，所以安全。
+- 报错列号相隔恰好 8（`261:6` / `261:14` / `261:22`），说明 cjlint 是**按单个
+  字符串字面量**扫描的 —— 这既解释了成因，也是"切碎字面量"这条思路的来源。
+- **注释里也不能出现那个 8 位串**：修完数据后仍报 1 条，命中位置正是文件头
+  注释里举的反例。文档里提到它时务必写成 `AA52.7302` 这种带分隔符的形式。
+- 生成器 `tools_gen_gbk.ps1` 已同步改为 `'{0:X2}{1:X2}.{2:X4}.'`、每行 25 条目，
+  重新生成不会再退回旧格式。
 
 ## 测试素材不随包分发，包内验证靠"纯内存用例"（随包使用者的必读项）
 

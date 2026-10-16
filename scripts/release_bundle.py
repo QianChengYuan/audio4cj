@@ -48,6 +48,7 @@
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -216,11 +217,25 @@ def log(msg: str = "") -> None:
 
 
 def run(cmd, cwd=None, check=True):
-    """执行外部命令；失败即终止（避免在错误状态上继续打包）。"""
+    """执行外部命令；失败即终止（避免在错误状态上继续打包）。
+
+    cjHeapSize：cjpm bundle 内嵌的 lint / 打包阶段默认只有 256MB 堆，本库
+    （2.4 万条目 GBK 表 + 43 个测试文件）会在打包阶段报
+    `An exception has occurred: Out of memory`；4GB 实测稳定通过。
+    该变量**必须带单位**，写 `cjHeapSize=4096` 会得到
+    "Unsupported cjHeapSize parameter. The unit must be added ..."。
+    """
     printable = " ".join(str(c) for c in cmd)
     log(f"$ {printable}" + (f"    (cwd={cwd})" if cwd else ""))
+    child_env = dict(os.environ)
+    child_env.setdefault("cjHeapSize", "4GB")
     proc = subprocess.run(
-        [str(c) for c in cmd], cwd=cwd, capture_output=True, text=True, errors="replace"
+        [str(c) for c in cmd],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env=child_env,
     )
     if proc.stdout.strip():
         log(proc.stdout.rstrip())

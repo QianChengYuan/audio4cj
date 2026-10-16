@@ -125,19 +125,8 @@ private func utf8OrEmpty(data: Array<UInt8>): String {
     }
 }
 
-/// 按文件头字节嗅探图片 MIME（只认 JPEG/PNG，够覆盖现实场景）
-private func sniffImageMime(data: Array<UInt8>, from: Int64): ?String {
-    if (from + 3 > Int64(data.size)) {
-        return None
-    }
-    if (data[from] == 0xFF && data[from + 1] == 0xD8) {
-        return Some("image/jpeg")
-    }
-    if (data[from] == 0x89 && data[from + 1] == 0x50 && data[from + 2] == 0x4E && data[from + 3] == 0x47) {
-        return Some("image/png")
-    }
-    None
-}
+/// 按文件头字节嗅探图片 MIME —— 实现在 picture.cj（`sniffImageMime`），
+/// 与 FLAC PICTURE / Vorbis `METADATA_BLOCK_PICTURE` 共用同一份，避免多份漂移。
 
 /// key 归一化为大写（APE 的 key 大小写不敏感）
 private func asciiUpper(s: String): String {

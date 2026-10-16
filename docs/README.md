@@ -147,8 +147,6 @@ try (f = AudioFile.open(path)) {
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
 | **标签写入** | 无，只做读取 |
 | **Speex 的注释头** | 未覆盖。Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03vorbis` / `OpusTags`）都不同，`readTags` 对其返回**空 `Tag`**（不报错） |
-| **Vorbis comment 的 `METADATA_BLOCK_PICTURE`** | 未覆盖（需要 base64 解码），且该条目会被**显式跳过** —— 避免把数十至数百 KB 的 base64 文本塞进 `Tag.extra` |
-| **FLAC 的 `PICTURE` 块（封面）** | 未覆盖。原生 FLAC 与 Ogg-FLAC 的封面块均未解析。注意 **MP4 的 `covr` 与 ID3v2 的 `APIC` 已支持** |
 | **MP4 的 `moov` 位于文件中部** | 未覆盖。标签读取覆盖 `moov` 在**文件头**（faststart）与**文件尾**（主流封装工具的默认行为）两种布局；理论上 `moov` 只会在这两端，但若遇到中间布局的文件则读不到标签 |
 | **APE / WavPack 等容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException` |
 | **实时流传输（RTP / RTSP / WebRTC 等）** | 无任何规划，整个实时协议栈均缺失 |

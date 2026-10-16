@@ -11,6 +11,20 @@
 >
 > 本文件是更新记录的**权威副本**：它位于仓库根目录，随制品包分发
 
+## 0.1.7
+
+### 新增
+
+- **FLAC 封面：`PICTURE` 块（元数据块类型 6）**——原生 FLAC 与 Ogg-FLAC 的封面此前一律读不到（`Tag.coverArt` 恒为 `None`），现映射到既有的 `Tag.coverArt` / `Tag.coverMime`。同一文件有多个 `PICTURE` 块时 **front cover（图片类型 3）优先**，同类型先到者胜；MIME 缺失的畸形块按魔数（JPEG / PNG / GIF / BMP）兜底
+- **Vorbis comment 的 `METADATA_BLOCK_PICTURE`**（base64 编码的同一 PICTURE 结构）——原生 FLAC 与 Ogg 容器共用。此前该条目被**显式跳过**（避免把数十至数百 KB 的 base64 灌进 `Tag.extra`），现在解出图片本体填进 `coverArt`，解不出时仍静默跳过、不落 `extra`
+- 两条载体共用同一份 PICTURE 解析与 base64 解码实现（零外部依赖，未引入任何第三方库）：同文件两者并存时**注释头优先、`PICTURE` 块补空**
+
+### 修复
+
+- **FLAC 元数据块链遍历过早返回**：此前一遇到 `VORBIS_COMMENT` 就返回，位于其**之后**的 `PICTURE` 块永远不会被看到；现遍历完整条块链再合并
+- **APEv2 封面的 MIME 嗅探越界读**：原实现以 `from + 3 > size` 判断可读性，恰好 3 字节剩余时会读到数组外；现改为按实际需要的最长魔数（4 字节）判断，并顺带识别 GIF / BMP
+- **发布门禁两处阻塞**（只影响从源码构建/打包的人，不影响已编译制品的使用者）：① `src/meta/gbk_table.cj` 的 CP936 表条目连写成 8 位十六进制后，与 `cjlint` 的 `G.OTH.02`（禁止硬编码证件号）规则**偶然同形**，48 处 MANDATORY 违规让 `cjpm bundle` 自 0.1.6 起失败——现改为条目内插分隔符（`AA52.7302.`，步长 10）做**结构性**消除，不再依赖注释豁免；② `cjpm bundle` 自带 `cjpm test` + 打包阶段默认堆仅 256MB，本库会在打包阶段 `Out of memory`——`scripts/release_bundle.py` 现默认注入 `cjHeapSize=4GB`
+
 ## 0.1.6
 
 ### 新增

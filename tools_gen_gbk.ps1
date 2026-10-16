@@ -1,4 +1,4 @@
-# 生成 GBK(CP936) 映射表数据行（每行 32 条目，每条目 8 hex 字符：GBK首 GBK次 Unicode）
+# 生成 GBK(CP936) 映射表数据行（每行 25 条目，每条目 10 字符：GBK首2 GBK次2 '.' Unicode4 '.'）
 $enc = [System.Text.Encoding]::GetEncoding(936)
 $entries = New-Object System.Collections.Generic.List[object]
 for ($lead = 0x81; $lead -le 0xFE; $lead++) {
@@ -16,11 +16,14 @@ for ($lead = 0x81; $lead -le 0xFE; $lead++) {
 }
 $sorted = $entries | Sort-Object code
 $out = New-Object System.Collections.Generic.List[string]
-for ($i = 0; $i -lt $sorted.Count; $i += 32) {
-    $end = [Math]::Min($i + 32, $sorted.Count)
-    $hexes = $sorted[$i..($end - 1)] | ForEach-Object { '{0:X2}{1:X2}{2:X4}' -f (($_.code -shr 8) -band 0xFF), ($_.code -band 0xFF), $_.uni }
+for ($i = 0; $i -lt $sorted.Count; $i += 25) {
+    $end = [Math]::Min($i + 25, $sorted.Count)
+    # 每条目 10 字符：GBK 首字节 + GBK 次字节 + '.' + Unicode + '.'。
+    # 条目内插 '.' 是为把连续十六进制串压到 4 字符以内，避开 cjlint 的
+    # G.OTH.02「硬编码证件号」误报（解码侧按步长 10 取两段，见 gbk_table.cj）。
+    $hexes = $sorted[$i..($end - 1)] | ForEach-Object { '{0:X2}{1:X2}.{2:X4}.' -f (($_.code -shr 8) -band 0xFF), ($_.code -band 0xFF), $_.uni }
     $line = ($hexes -join '')
-    if ($i + 32 -lt $sorted.Count) {
+    if ($i + 25 -lt $sorted.Count) {
         $out.Add('    "' + $line + '" +')
     } else {
         $out.Add('    "' + $line + '"')

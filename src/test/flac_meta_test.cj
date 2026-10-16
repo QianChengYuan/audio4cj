@@ -2,6 +2,7 @@ package audio4cj.test
 
 import audio4cj.core.CorruptedFileException
 import audio4cj.core.FormatNotSupportedException
+import audio4cj.facade.AudioFile
 import audio4cj.format.PureFlacKernel
 import audio4cj.format.parseStreamInfo
 import std.fs.*
@@ -197,5 +198,33 @@ class FlacMetaTest {
         if (info.bitsPerSample < 4) {
             @Fail("真实文件的位深不应低于 4，实得 ${info.bitsPerSample}")
         }
+    }
+
+    /// 真实素材的封面块（元数据块类型 6）必须被读出来。
+    ///
+    /// `testdata/flac/flac_cover.flac` 的块序是 STREAMINFO → PICTURE → VORBIS_COMMENT
+    /// → PADDING：封面块**在**注释块之前，正好覆盖"遍历块链时不能一遇到
+    /// VORBIS_COMMENT 就返回"这条实现要求（旧实现就是那样，会漏掉封面）。
+    /// 该素材的图片是 111 字节 PNG、图片类型 0（Other）。
+    @TestCase
+    func coverArtIsReadFromRealFixture() {
+        if (gsSkipIfNoFixtures("coverArtIsReadFromRealFixture")) {
+            return
+        }
+
+        let tag = AudioFile.readTags("testdata/flac/flac_cover.flac")
+        let art = tag.coverArt.getOrThrow()
+        @Expect(tag.coverMime.getOrThrow(), "image/png")
+        @Expect(art.size, 111)
+        // PNG 文件签名，确认取到的是图片本体而不是长度字段或描述
+        @Expect(art[0], 0x89u8)
+        @Expect(art[1], 0x50u8)
+        @Expect(art[2], 0x4Eu8)
+        @Expect(art[3], 0x47u8)
+
+        // 反例：同一批素材里不带封面的那个，不得凭空造出封面
+        let plain = AudioFile.readTags("testdata/flac/flac_tagged.flac")
+        @Assert(plain.coverArt.isNone())
+        @Assert(plain.coverMime.isNone())
     }
 }

@@ -210,11 +210,12 @@ func dumpExtras(tag: Tag): Unit {
 | ID3v1 解析（MP3 文件尾 128 字节） | ✅ 已实现 |
 | ID3v2.2 / 2.3 / 2.4 解析（MP3 文件头） | ✅ 已实现 |
 | Vorbis comment 解析（FLAC 元数据块） | ✅ 已实现 |
+| **Vorbis `METADATA_BLOCK_PICTURE`**（base64 封面） | ✅ 已实现 |
 | **Ogg 页重组**（页头、段表、跨页续传、多逻辑流隔离） | ✅ 已实现 |
 | **OGG 标签**（Vorbis / Opus / FLAC-in-Ogg） | ✅ 已实现 |
 | **MP4 `ilst` 标签**（含 64 位尺寸与 `meta` 的 FullBox 偏移；`moov` 在文件头或文件尾均可定位） | ✅ 已实现 |
 | 多体系合并（ID3v2 优先于 ID3v1） | ✅ 已实现 |
-| FLAC `PICTURE` 块（封面） | ⏳ 未覆盖 |
+| FLAC `PICTURE` 块（封面） | ✅ 已实现 |
 | Speex 注释头 | ⏳ 未覆盖（见下） |
 | APE tag 解析 | ⏳ 未排期 |
 | 标签**写入** | ⏳ 未排期（本库只读） |
@@ -233,14 +234,14 @@ func dumpExtras(tag: Tag): Unit {
 | `disc` | `TPOS` / `TPA` | — | `DISCNUMBER` | — | `disk`（**二进制**） |
 | `comment` | `COMM` / `COM` | ✔ | `COMMENT` / `DESCRIPTION` | `ICMT` | `©cmt` |
 | `composer` | `TCOM` / `TCM` | — | `COMPOSER` | `IMUS` | `©wrt` |
-| `coverArt` / `coverMime` | `APIC` / `PIC` | — | ⏳（`METADATA_BLOCK_PICTURE`） | — | `covr`（PNG / JPEG） |
+| `coverArt` / `coverMime` | `APIC` / `PIC` | — | `METADATA_BLOCK_PICTURE`（base64） | — | `covr`（PNG / JPEG） |
 | `extra` | 未映射的 `T***` 帧、`TXXX:<描述>` | — | 其余大写键 | 其余 4 字符 ID | 其余原子（`©` 渲染为 `c`） |
 
 ### 3.2 已知限制
 
 - **Speex 注释头未覆盖**：Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03"vorbis"` / `"OpusTags"`）都不同，因此对 Speex 返回**空 `Tag`**（不报错）；
-- **FLAC 的 `PICTURE` 块未覆盖**（原生 FLAC 与 Ogg-FLAC 均如此）。注意 **MP4 的 `covr` 与 ID3v2 的 `APIC` 已支持封面**；
-- **Vorbis comment 的 `METADATA_BLOCK_PICTURE` 被显式跳过**：解析它需要 base64 解码，尚未实现。跳过而不是放进 `extra`，是为了避免把数十至数百 KB 的 base64 文本灌进 `Tag`；
+- **FLAC 封面的两条载体**：原生 FLAC 的 `PICTURE` 块（元数据块类型 6）与 Vorbis comment 的 `METADATA_BLOCK_PICTURE`（base64 编码的同一结构）**均已支持**，两者共用同一份解析实现。同一文件两者并存时**注释头优先、`PICTURE` 块补空**；同一文件有多个 `PICTURE` 块时 **front cover（图片类型 3）优先**，同类型先到者胜；
+- **封面条目不会被塞进 `extra`**：`METADATA_BLOCK_PICTURE` 的 base64 文本可达数十至数百 KB，且对使用者没有可用的文本语义 —— 解不出图片时**静默跳过**，而不是把它灌进 `Tag.extra`；
 - **MP4 的 `moov` 只覆盖文件头与文件尾两种布局**：先查头部窗口（faststart），未命中再查尾部窗口（主流封装工具的默认行为）。理论上 `moov` 只在这两端，若遇到中间布局的文件则读不到标签；
 - **OGG 只取首个逻辑流的注释头**：Ogg 允许一个文件内复用多条逻辑流（音视频复用即为典型），本实现只解析**首个带 BOS 标志**的流，不把不同 serial 的包混拼；
 - **不解析 ID3v2 的扩展头内容**：仅跳过，不影响标签字段；

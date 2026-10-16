@@ -262,7 +262,9 @@ main() {
     let mp4Title = mp4.title ?? "(无)"
     println("M4A 标题: ${mp4Title}")
 
-    // 封面：MP4 的 covr、ID3v2 的 APIC 都映射到同一对字段
+    // 封面：所有体系都映射到同一对字段
+    //   ID3v2 的 APIC、MP4 的 covr、FLAC 的 PICTURE 块、
+    //   Vorbis comment 的 METADATA_BLOCK_PICTURE（base64，原生 FLAC 与 Ogg 均适用）
     if (let Some(art) <- mp4.coverArt) {
         let mime = mp4.coverMime ?? "未知"
         println("封面: ${art.size} 字节（${mime}）")

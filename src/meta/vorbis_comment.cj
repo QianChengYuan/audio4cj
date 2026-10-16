@@ -23,8 +23,8 @@ import audio4cj.pcm.readUInt32LE
  *   - 字段值为 UTF-8；条目内除第一个 '=' 外，'=' 属于值的一部分；
  *   - 条目顺序不保证，同名条目可重复（本实现为后者覆盖前者）。
  *
- * 未覆盖：`METADATA_BLOCK_PICTURE`（FLAC 的 base64 封面）留待 M4 —— 它需要
- *   base64 解码与 PICTURE 块结构解析，属封面专项工作。
+ * 封面：`METADATA_BLOCK_PICTURE` 是 base64 编码的 FLAC PICTURE 块，已支持
+ *   （解码与结构解析在 picture.cj，与 FLAC 元数据块类型 6 共用同一份实现）。
  * ========================================================================== */
 
 /// Vorbis comment 条目数的处理上限（防畸形数据造成长循环）。
@@ -129,15 +129,33 @@ private func applyVorbisEntry(tag: Tag, entry: String): Unit {
     } else if (key == "COMPOSER") {
         tag.composer = value
     } else if (key == "METADATA_BLOCK_PICTURE") {
-        // 封面：base64 编码的 FLAC PICTURE 块。解析它需要 base64 解码与
-        // PICTURE 块结构支持，尚未实现（见文件头"未覆盖"）。
+        // 封面：base64 编码的 FLAC PICTURE 块。解码与结构解析都在 picture.cj，
+        // 与 FLAC 文件里真正的 PICTURE 块（元数据块类型 6）共用同一份实现。
         //
-        // 此处**显式跳过**而不是放进 extra：一张普通封面 base64 之后可达
-        // 数十至数百 KB，塞进 extra 会让 Tag 体量失控；而它对使用者也没有
-        // 任何可用的文本语义。宁可留空，也不要塞一个巨型不可用字符串。
-        ()
+        // 解析失败（非法 base64、结构越界、MIME 为 "-->"）时静默跳过。
+        // 注意**不能**把原值放进 extra：一张普通封面 base64 之后可达数十至
+        // 数百 KB，塞进 extra 会让 Tag 体量失控；它对使用者也没有可用的文本语义。
+        applyPictureEntry(tag, value)
     } else {
         // 冷门字段（ENCODER / PERFORMER / COPYRIGHT / …）进 extra 兜底
         tag.putExtra(key, value)
+    }
+}
+
+/// 处理 `METADATA_BLOCK_PICTURE` 条目：base64 解码 → 解析 PICTURE 块 → 填封面。
+///
+/// 同一块内出现多条时**先到者胜**（与其余字段"后者覆盖前者"不同：封面是
+/// 大对象，取第一条可解析的即可，避免后续条目反复覆盖造成无谓开销）。
+private func applyPictureEntry(tag: Tag, value: String): Unit {
+    if (tag.coverArt.isSome()) {
+        return
+    }
+    if (let Some(raw) <- base64Decode(value)) {
+        if (let Some(pic) <- parseFlacPictureBlock(raw)) {
+            tag.coverArt = Some(pic.data)
+            if (pic.mime.size > 0) {
+                tag.coverMime = Some(pic.mime)
+            }
+        }
     }
 }

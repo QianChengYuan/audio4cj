@@ -14,33 +14,44 @@ package audio4cj.meta
  * 块类型：
  *   0 = STREAMINFO（必有，且必须是第一块）
  *   1 = PADDING       2 = APPLICATION   3 = SEEKTABLE
- *   4 = **VORBIS_COMMENT**（标签载体）  5 = CUESHEET   6 = PICTURE
+ *   4 = **VORBIS_COMMENT**（标签载体）  5 = CUESHEET   6 = **PICTURE**（封面）
  *
- * 本实现只关心类型 4（标签）；类型 6（封面 PICTURE 块）尚未实现，留待后续。
+ * 本实现关心类型 4（标签）与类型 6（封面）；其余块只按长度跳过。
  *
  * 输入约定：`data` 为**文件开头的一段字节**（从 "fLaC" 开始）。
- *   VORBIS_COMMENT 块按规范应出现在 STREAMINFO 之后、音频帧之前，
+ *   VORBIS_COMMENT / PICTURE 按规范应出现在 STREAMINFO 之后、音频帧之前，
  *   因此取文件头部足够长度即可覆盖；若在给定范围内未找到，
  *   返回空 Tag（而不是报错 —— 该文件可能只是没有标签）。
  *
- * 未覆盖：PICTURE 块（类型 6）。它的结构与 ID3v2 的 APIC 不同
- *   （MIME 与描述均为 4 字节大端长度前缀），留待 M4 与 FLAC 解码一并实现。
+ * 封面优先级：Vorbis comment 的 `METADATA_BLOCK_PICTURE`（注释头在块链里通常
+ *   在前，且是用户显式嵌入的那一份）优先，PICTURE 块只**补空**；同一文件有
+ *   多个 PICTURE 块时，front cover（图片类型 3）优先于其他类型，
+ *   同类型则先到者胜。两条载体都走 `parseFlacPictureBlock`（picture.cj）。
  * ========================================================================== */
 
 /// FLAC 元数据块链的遍历上限（防畸形数据造成长循环）。
 private let MAX_FLAC_BLOCKS: Int64 = 1024
 
-/// 解析 FLAC 元数据块链，提取标签。
+/// 封面优先选择的图片类型：FLAC 规范里 3 = Cover (front)。
+private let FLAC_PICTURE_TYPE_FRONT: Int64 = 3
+
+/// 解析 FLAC 元数据块链，提取标签与封面。
 ///
 /// - `data`：文件开头从 "fLaC" 开始的字节
-/// - 返回：从 `VORBIS_COMMENT` 块解析出的 `Tag`；无该块或结构非法时返回**空 Tag**
+/// - 返回：`VORBIS_COMMENT` 块解析出的 `Tag`（含 `PICTURE` 块补入的封面）；
+///   两块皆无或结构非法时返回**空 Tag**
 protected func parseFlacMetadata(data: Array<UInt8>): Tag {
+    var tag = Tag()
     if (data.size < 4) {
-        return Tag()
+        return tag
     }
     if (!matchAsciiAt(data, 0, "fLaC")) {
-        return Tag()
+        return tag
     }
+
+    var sawVorbisComment = false
+    var bestPicture: ?FlacPicture = None
+    var bestIsFront = false
 
     var offset: Int64 = 4
     var guard: Int64 = 0
@@ -64,9 +75,19 @@ protected func parseFlacMetadata(data: Array<UInt8>): Tag {
             break
         }
 
-        // 类型 4 = VORBIS_COMMENT
-        if (blockType == 4) {
-            return parseVorbisComment(safeSlice(data, bodyStart, len))
+        // 类型 4 = VORBIS_COMMENT（只认第一块）
+        if (blockType == 4 && !sawVorbisComment) {
+            sawVorbisComment = true
+            tag = parseVorbisComment(safeSlice(data, bodyStart, len))
+        } else if (blockType == 6) {
+            // 多块时优先 front cover，同类型先到者胜
+            if (let Some(pic) <- parseFlacPictureBlock(safeSlice(data, bodyStart, len))) {
+                let isFront = pic.picType == FLAC_PICTURE_TYPE_FRONT
+                if (bestPicture.isNone() || (isFront && !bestIsFront)) {
+                    bestPicture = Some(pic)
+                    bestIsFront = isFront
+                }
+            }
         }
 
         if (isLast) {
@@ -75,5 +96,15 @@ protected func parseFlacMetadata(data: Array<UInt8>): Tag {
         offset = bodyStart + len
     }
 
-    Tag()
+    // PICTURE 块只为空封面兜底：注释头里的 METADATA_BLOCK_PICTURE 优先
+    if (tag.coverArt.isNone()) {
+        if (let Some(pic) <- bestPicture) {
+            tag.coverArt = Some(pic.data)
+            if (pic.mime.size > 0) {
+                tag.coverMime = Some(pic.mime)
+            }
+        }
+    }
+
+    tag
 }
