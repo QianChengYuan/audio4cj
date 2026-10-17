@@ -26,15 +26,21 @@ audio4cj 是一个 `static` 类型的 cjpm 库工程。**三种引入方式**，
 
 | 方式 | 写法 | 适用场景 |
 |---|---|---|
-| ① 中心仓 | 以**制品页给出的版本号**为准 | **当前尚无版本上架**（`0.1.2` 及之后的提交均未成功上架）——**现阶段请用方式 ② / ③** |
-| ② **Git 引用** | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.6" }` | **中心仓尚无可用版本时用这种（当前即为此情形）**；`tag` 可换成 `branch = "main"` 或 `commitId = "..."`；可用 tag 见仓库 tag 列表 |
+| ① **中心仓（推荐）** | `audio4cj = "0.1.9"` | **2026-10-17 起已上架**；以[制品页](https://pkg.cangjie-lang.cn/)给出的版本号为准，可直接 `cjpm build` |
+| ② Git 引用 | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.9" }` | 需要某个**尚未发版**的提交（或中心仓暂不可达）时；`tag` 可换成 `branch = "main"` 或 `commitId = "..."` |
 | ③ 本地路径引用 | `audio4cj = { path = "../audio4cj" }` | 本机开发与测试（源码就在本地） |
 
 ```toml
-# 方式 ②：Git 引用（中心仓不可用时的推荐替代）
+# 方式 ①：中心仓（推荐）
 # 你的工程 cjpm.toml
 [dependencies]
-audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.6" }
+audio4cj = "0.1.9"
+```
+
+```toml
+# 方式 ②：Git 引用（需要未发布提交时）
+[dependencies]
+audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.9" }
 ```
 
 ```toml
@@ -43,13 +49,12 @@ audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.6" }
 audio4cj = { path = "../audio4cj" }
 ```
 
-> **中心仓审核未通过时怎么办**：本库**暂缓中心仓发布**，改用方式 ②（Git 引用）或
-> 方式 ③（本地路径引用）。二者都**没有额外前置条件** —— 本库是纯仓颉实现，
-> **不依赖任何 C 库，也没有需要预置的二进制产物**，拿到源码用 SDK 自带的 `cjpm`
-> 即可直接 `cjpm build`（`check` 与 `build` 先后随意）。
+> 三种方式**都没有额外前置条件** —— 本库是纯仓颉实现，**不依赖任何 C 库，
+> 也没有需要预置的二进制产物**，用 SDK 自带的 `cjpm` 即可直接 `cjpm build`
+> （`check` 与 `build` 先后随意）。
 >
 > 从中心仓引入时请以**制品页给出的版本号为准**（本仓库 `cjpm.toml` 里的 `version`
-> 是**待发布**版本）。**当前中心仓尚无本库的任何版本**，因此请先用方式 ② / ③。
+> 是**最新版本**，可能尚未同步到中心仓；两者不一致时以制品页为准）。
 
 随后显式导入所需类型（**根包不做聚合导出**，每个类型都要单独 `import`）：
 
