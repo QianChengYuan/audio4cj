@@ -16,6 +16,11 @@
 
 ### 新增
 
+- **FLAC 标签写入**：`writeTags` 的支持范围从 MP3 扩展到 FLAC —— 载体为
+  Vorbis comment 块（UTF-8 文本，封面走 `METADATA_BLOCK_PICTURE` 条目）。
+  既有元数据块（STREAMINFO / SEEKTABLE / PICTURE / PADDING …）逐位保留，
+  音频帧原样平移（SEEKTABLE 的偏移是相对首帧的，平移安全），原子落盘；
+  无损性经"写入前解码留底、写入后逐样本比对"验证
 - **FLAC 编码支持 24 位**：`flacBytes(buffer, bitsPerSample!: 24)`——s24 口径
   与 `wavBytes` 一致（v × 2^23，向零截断 + 钳位），16 位行为不变。
   24 位的核心价值：16 位会归零的微小信号（幅度 < 2⁻¹⁵）在 s24 下精确保留，

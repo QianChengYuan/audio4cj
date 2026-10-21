@@ -185,3 +185,74 @@ protected func base64Decode(text: String): ?Array<UInt8> {
     }
     out.toArray()
 }
+
+/// base64 编码（标准字母表 + `=` 补位，与 `base64Decode` 互逆）。
+///
+/// 为什么手写：同 `base64Decode` —— std 无 base64，本库坚持零外部依赖。
+/// 用途：把封面写入 Vorbis comment 的 `METADATA_BLOCK_PICTURE` 条目时编码
+/// PICTURE 块体。输出不分 行（Ogg/FLAC 生态的通行做法，读侧也容忍换行但
+/// 写侧统一不产生）。
+protected func base64Encode(data: Array<UInt8>): String {
+    let table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    let chars = ArrayList<UInt8>()
+    var i: Int64 = 0
+    while (i + 3 <= data.size) {
+        let n = (Int64(data[i]) << 16) | (Int64(data[i + 1]) << 8) | Int64(data[i + 2])
+        chars.add(UInt8(table.toArray()[(n >> 18) & 0x3F]))
+        chars.add(UInt8(table.toArray()[(n >> 12) & 0x3F]))
+        chars.add(UInt8(table.toArray()[(n >> 6) & 0x3F]))
+        chars.add(UInt8(table.toArray()[n & 0x3F]))
+        i += 3
+    }
+    let rest = data.size - i
+    if (rest == 1) {
+        let n = Int64(data[i]) << 16
+        chars.add(UInt8(table.toArray()[(n >> 18) & 0x3F]))
+        chars.add(UInt8(table.toArray()[(n >> 12) & 0x3F]))
+        chars.add(UInt8(0x3D)) // '='
+        chars.add(UInt8(0x3D))
+    } else if (rest == 2) {
+        let n = (Int64(data[i]) << 16) | (Int64(data[i + 1]) << 8)
+        chars.add(UInt8(table.toArray()[(n >> 18) & 0x3F]))
+        chars.add(UInt8(table.toArray()[(n >> 12) & 0x3F]))
+        chars.add(UInt8(table.toArray()[(n >> 6) & 0x3F]))
+        chars.add(UInt8(0x3D))
+    }
+    String.fromUtf8(chars.toArray())
+}
+
+// ---------------------------------------------------------------------------
+// PICTURE 块序列化（parse 的逆变换）—— 标签写入用
+// ---------------------------------------------------------------------------
+
+/// 组装一个 FLAC PICTURE 块体（4 字节大端的字段 + 图片数据）。
+///
+/// 与 `parseFlacPictureBlock` 严格对偶：描述恒空、宽/高/色深/色数填 0
+/// （规范允许未知时写 0，读侧不依赖它们），数据为图片原始字节。
+protected func serializeFlacPictureBlock(picType: Int64, mime: String, data: Array<UInt8>): Array<UInt8> {
+    let out = ArrayList<UInt8>()
+    putU32BE(out, UInt32(picType))
+    let mimeBytes = mime.toArray()
+    putU32BE(out, UInt32(mimeBytes.size))
+    for (b in mimeBytes) {
+        out.add(b)
+    }
+    putU32BE(out, 0) // 描述长度（恒空）
+    putU32BE(out, 0) // 宽
+    putU32BE(out, 0) // 高
+    putU32BE(out, 0) // 色深
+    putU32BE(out, 0) // 调色板色数
+    putU32BE(out, UInt32(data.size))
+    for (b in data) {
+        out.add(b)
+    }
+    out.toArray()
+}
+
+/// 追加一个大端 32 位整数（与 id3v2_write 的同名逻辑一致，此处独立持有）。
+private func putU32BE(out: ArrayList<UInt8>, v: UInt32): Unit {
+    out.add(UInt8((v >> 24) & 0xFFu32))
+    out.add(UInt8((v >> 16) & 0xFFu32))
+    out.add(UInt8((v >> 8) & 0xFFu32))
+    out.add(UInt8(v & 0xFFu32))
+}

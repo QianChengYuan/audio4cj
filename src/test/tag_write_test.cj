@@ -155,10 +155,12 @@ class TagWriteTest {
         @Assert(after.album.isSome() || beforeAlbum.isNone())
     }
 
-    /// 非 MP3 容器写入必须抛 FormatNotSupportedException，且原文件不被改动。
+    /// 非 MP3/FLAC 容器写入必须抛 FormatNotSupportedException，且原文件不被改动。
+    ///
+    /// v0.2.0 起 FLAC 已支持写入，这里的"非 MP3"素材改用 WAV（MP4/OGG 同理）。
     @TestCase
     func nonMp3RejectedWithoutMutation() {
-        let path = wtWrite("a4cj_tw_reject.flac", readWholeOf("testdata/flac/flac_s16_44100_stereo.flac"))
+        let path = wtWrite("a4cj_tw_reject.wav", readWholeOf("testdata/wav/wav_s16_44100_stereo.wav"))
         let before = readWholeOf(path)
 
         let t = Tag()

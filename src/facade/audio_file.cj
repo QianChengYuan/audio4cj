@@ -253,17 +253,24 @@ public class AudioFile <: Resource {
     ///
     /// 写后 `readTags(path)` 可读回一致的字段（多值/编码细节除外）。
     ///
+    /// 支持的容器与载体：
+    ///   - MP3 → ID3v2.3（v0.2.0 起）
+    ///   - FLAC → Vorbis comment（v0.2.0 起）
+    ///
     /// 抛出：
     ///   - 文件不存在 / 无权限 → `std.fs` 的 `FSException`
-    ///   - 非 MP3 容器（含无法识别的格式）→ `FormatNotSupportedException`
-    ///   - 标签序列化结果超上限 → `Audio4CjException`
+    ///   - 其余容器（含无法识别的格式）→ `FormatNotSupportedException`
+    ///   - 标签序列化结果超上限 / 块链损坏 → `Audio4CjException`
     public static func writeTags(path: String, tag: Tag): Unit {
         let probe = detectFile(path)
-        if (probe.container != "mp3") {
+        if (probe.container == "mp3") {
+            writeMp3TagsToFile(path, tag)
+        } else if (probe.container == "flac") {
+            writeFlacTagsToFile(path, tag)
+        } else {
             throw FormatNotSupportedException(
-                "标签写入目前仅支持 MP3（ID3v2.3）安全子集：${formatLabel(probe)}（${path}）")
+                "标签写入目前仅支持 MP3（ID3v2.3）与 FLAC（Vorbis comment）安全子集：${formatLabel(probe)}（${path}）")
         }
-        writeMp3TagsToFile(path, tag)
     }
 
     /// 文件路径。

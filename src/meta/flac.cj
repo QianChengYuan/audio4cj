@@ -33,7 +33,7 @@ package audio4cj.meta
 private let MAX_FLAC_BLOCKS: Int64 = 1024
 
 /// 封面优先选择的图片类型：FLAC 规范里 3 = Cover (front)。
-private let FLAC_PICTURE_TYPE_FRONT: Int64 = 3
+protected let FLAC_PICTURE_TYPE_FRONT: Int64 = 3
 
 /// 解析 FLAC 元数据块链，提取标签与封面。
 ///

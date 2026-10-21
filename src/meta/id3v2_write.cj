@@ -181,7 +181,7 @@ private func apicFrame(art: Array<UInt8>, mime: String): ArrayList<UInt8> {
 // ---------------------------------------------------------------------------
 
 /// 数字或缺失的占位渲染（`TRCK` / `TPOS` 用 "n" 或 "n/total"）。
-private func numberPairText(cur: ?Int64, total: ?Int64): String {
+protected func numberPairText(cur: ?Int64, total: ?Int64): String {
     let c = match (cur) {
         case Some(v) => v.toString()
         case None => return ""

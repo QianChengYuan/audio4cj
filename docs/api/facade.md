@@ -335,25 +335,25 @@ main() {
 public static func writeTags(path: String, tag: Tag): Unit
 ```
 
-**写入标签 —— 目前仅支持 MP3 的 ID3v2.3，属于「安全子集」。**
+**写入标签 —— 支持 MP3（ID3v2.3）与 FLAC（Vorbis comment），属于「安全子集」。**
 
 安全子集的边界（违反这些保证的场景不会发生，但也请勿预期更多能力）：
 
-| 保证 | 说明 |
-|---|---|
-| **音频帧逐位不动** | 新标签前置（或替换旧 ID3v2）；音频帧、APEv2 / ID3v1 尾部字节原样保留 |
-| 只输出 ID3v2.3 | 文本统一 UTF-16（带 BOM）——兼容性最好的组合 |
-| 只写标准字段 | `title` / `artist` / `album` / `albumArtist` / `year` / `genre` / `track` / `trackTotal` / `disc` / `discTotal` / `lyrics` / `comment` / `composer` / `coverArt` + `coverMime`；**`extra` 兜底字段不写入** |
-| 原子落盘 | 先写 `<path>.a4cj_tmp` 再换名覆盖；任一步失败，原文件完整保留 |
+| 保证 | MP3 | FLAC |
+|---|---|---|
+| **音频数据逐位不动** | 音频帧、APEv2 / ID3v1 尾部原样保留 | 音频帧原样平移；STREAMINFO / SEEKTABLE / PICTURE / PADDING 等既有块逐位保留（SEEKTABLE 的偏移是相对首帧的，平移安全） |
+| 载体与编码 | 只输出 ID3v2.3，文本统一 UTF-16（带 BOM） | VORBIS_COMMENT 块，文本 UTF-8；封面写 `METADATA_BLOCK_PICTURE` 条目（base64） |
+| 只写标准字段 | 同左：`title` / `artist` / `album` / `albumArtist` / `year` / `genre` / `track` / `trackTotal` / `disc` / `discTotal` / `lyrics` / `comment` / `composer` / `coverArt` + `coverMime`；**`extra` 兜底字段不写入** | 同左 |
+| 原子落盘 | 先写 `<path>.a4cj_tmp` 再换名覆盖；任一步失败，原文件完整保留 | 同左 |
 
-写后 `readTags(path)` 可读回一致的标准字段值。`None` 字段不产生帧（连续写两次，第二次的值完整替换第一次）。
+写后 `readTags(path)` 可读回一致的标准字段值。`None` 字段不产生帧/条目（连续写两次，第二次的值完整替换第一次）。
 
 **抛出**：
 
 | 情形 | 异常 |
 |---|---|
-| 非 MP3 容器（含无法识别的格式） | `FormatNotSupportedException` |
-| 标签序列化结果超过 16 MB 上限 | `Audio4CjException` |
+| MP3 / FLAC 之外的容器（含无法识别的格式） | `FormatNotSupportedException` |
+| 标签序列化结果超过上限（MP3 16 MB）/ 块链损坏 | `Audio4CjException` |
 | 文件不存在 / 无权限 / 换名失败 | `std.fs` 的 `FSException` |
 
 ```cangjie
@@ -371,9 +371,9 @@ main() {
 }
 ```
 
-> **为什么 `extra` 不写**：它的键格式在各标签体系间有歧义（裸帧 ID、`TXXX:` 前缀、`APE:` 前缀……），
-> 盲目回写会写出无法可靠归属的帧。安全子集原则：不确定的部分宁可丢弃也不写错。
-> FLAC / WAV / OGG / MP4 的写入尚未实现，调用即抛 `FormatNotSupportedException`。
+> **为什么 `extra` 不写**：它的键格式在各标签体系间有歧义（裸帧 ID、`TXXX:` 前缀、`APE:` 前缀、
+> Vorbis 的自由键名……），盲目回写会写出无法可靠归属的字段。安全子集原则：不确定的部分宁可丢弃也不写错。
+> WAV / OGG / MP4 的写入尚未实现，调用即抛 `FormatNotSupportedException`。
 
 ### 3.12 `format` 与 `tracks`（M6 新增）
 

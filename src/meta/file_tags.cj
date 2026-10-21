@@ -271,3 +271,123 @@ protected func readMp4TagsFromFile(path: String): Tag {
 
     result
 }
+
+// ---------------------------------------------------------------------------
+// FLAC 标签写入 —— 审查改进方向 3.4 第二步（v0.2.0）
+// ---------------------------------------------------------------------------
+
+/// FLAC 元数据块链遍历上限（与 flac.cj 的 MAX_FLAC_BLOCKS 同口径）。
+private let FLAC_WRITE_MAX_BLOCKS: Int64 = 1024
+
+/// FLAC 块链头部的字节量："fLaC" + 至少一个 STREAMINFO 块（4 头 + 34 体）。
+private let FLAC_MIN_HEAD_BYTES: Int64 = 42
+
+/// 把 `tag` 写入 FLAC 文件（Vorbis comment，安全子集）。
+///
+/// 流程：读全文件 → 走头部块链，**逐位保留**全部既有块（STREAMINFO /
+/// SEEKTABLE / PICTURE / PADDING / …），只剥掉旧 VORBIS_COMMENT；
+/// 然后拼接：保留块（修正 isLast 标志）+ 新 VORBIS_COMMENT + 音频帧字节
+/// → 写临时文件 → 原子换名。
+///
+/// 封面策略：经新 Vorbis comment 的 `METADATA_BLOCK_PICTURE` 条目携带
+/// （base64）。文件里既有的独立 PICTURE 块**原样保留** —— 读侧约定注释头
+/// 优先、PICTURE 只补空，因此新注释头的封面会生效，旧封面成为兜底；
+/// 这样避免"写入器擅自删除用户既有块"的副作用（与 MP3 写入器保留 APEv2 /
+/// ID3v1 尾部同一原则）。
+///
+/// SEEKTABLE 平移安全性：定位点的 stream_offset 是**相对首个音频帧**的
+/// 字节偏移（flac_meta.cj），头部变长/变短不影响其正确性。
+///
+/// 抛出：
+///   - 非 FLAC 文件（缺 "fLaC" 或块链损坏）→ `Audio4CjException`
+///   - 文件不存在 / 无权限 → `std.fs` 的 `FSException`
+///   - 临时文件写入或换名失败 → 底层 `FSException`（此时原文件未被触碰）
+protected func writeFlacTagsToFile(path: String, tag: Tag): Unit {
+    var data: Array<UInt8> = Array<UInt8>()
+    try (f = File(path, Read)) {
+        let buf = Array<UInt8>(f.length, repeat: 0)
+        let got = f.read(buf)
+        data = safeSlice(buf, 0, got)
+    }
+
+    if (data.size < FLAC_MIN_HEAD_BYTES || !matchAsciiAt(data, 0, "fLaC")) {
+        throw Audio4CjException("FLAC 标签写入：文件缺少合法的块链头（${path}）")
+    }
+
+    // ---- 走块链，收集保留块与音频起点 ----
+    let keptBlocks = ArrayList<UInt8>()
+    var audioStart: Int64 = -1
+    var offset: Int64 = 4
+    var guardCounter: Int64 = 0
+
+    while (offset + 4 <= data.size) {
+        guardCounter += 1
+        if (guardCounter > FLAC_WRITE_MAX_BLOCKS) {
+            throw Audio4CjException("FLAC 标签写入：块链超出遍历上限（${path}）")
+        }
+
+        let head = data[offset]
+        let isLast = (head & 0x80u8) != 0u8
+        let blockType = head & 0x7Fu8
+        let len = (Int64(data[offset + 1]) << 16) | (Int64(data[offset + 2]) << 8) | Int64(data[offset + 3])
+        let bodyStart = offset + 4
+        if (bodyStart + len > data.size) {
+            throw Audio4CjException("FLAC 标签写入：块体越界（偏移 ${offset}，${path}）")
+        }
+
+        if (isLast) {
+            // 原块链的终点：其块体结束后就是音频帧区
+            if (blockType != 4u8) {
+                // 保留该块，但 isLast 标志移交（后面还有新 VORBIS_COMMENT）
+                let block = safeSlice(data, offset, 4 + len)
+                block[0] = block[0] & 0x7Fu8
+                for (b in block) {
+                    keptBlocks.add(b)
+                }
+            }
+            audioStart = bodyStart + len
+            break
+        }
+
+        if (blockType != 4u8) {
+            // 非 VORBIS_COMMENT：整块（头 + 体）逐位保留
+            for (b in safeSlice(data, offset, 4 + len)) {
+                keptBlocks.add(b)
+            }
+        }
+        offset = bodyStart + len
+    }
+
+    if (audioStart < 0) {
+        throw Audio4CjException("FLAC 标签写入：块链没有终止块（${path}）")
+    }
+
+    // ---- 组装新块链 ----
+    let newComment = serializeVorbisComment(tag)
+    let out = ArrayList<UInt8>()
+    for (b in data[0..4]) { // "fLaC" 魔数
+        out.add(b)
+    }
+    for (b in keptBlocks) {
+        out.add(b)
+    }
+    // 新 VORBIS_COMMENT：类型 4，isLast = 1
+    out.add(0x80u8 | 4u8)
+    out.add(UInt8((Int64(newComment.size) >> 16) & 0xFF))
+    out.add(UInt8((Int64(newComment.size) >> 8) & 0xFF))
+    out.add(UInt8(Int64(newComment.size) & 0xFF))
+    for (b in newComment) {
+        out.add(b)
+    }
+    // 音频帧区原样平移
+    for (b in safeSlice(data, audioStart, data.size - audioStart)) {
+        out.add(b)
+    }
+
+    // 原子落盘
+    let tmpPath = "${path}.a4cj_tmp"
+    try (f = File(tmpPath, Write)) {
+        f.write(out.toArray())
+    }
+    rename(Path(tmpPath), to: Path(path), overwrite: true)
+}
