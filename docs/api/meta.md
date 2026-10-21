@@ -1,6 +1,6 @@
 # `audio4cj.meta` API 参考
 
-> 统一标签模型层。把 ID3v1 / ID3v2 / Vorbis comment / WAV LIST/INFO / MP4 `ilst` 等不同标签体系收敛为同一个类型。
+> 统一标签模型层。把 ID3v1 / ID3v2 / APEv2 / Vorbis comment / WAV LIST/INFO / MP4 `ilst` 等不同标签体系收敛为同一个类型。
 >
 > ```cangjie
 > import audio4cj.meta.Tag
@@ -214,17 +214,17 @@ func dumpExtras(tag: Tag): Unit {
 | **Ogg 页重组**（页头、段表、跨页续传、多逻辑流隔离） | ✅ 已实现 |
 | **OGG 标签**（Vorbis / Opus / FLAC-in-Ogg） | ✅ 已实现 |
 | **MP4 `ilst` 标签**（含 64 位尺寸与 `meta` 的 FullBox 偏移；`moov` 在文件头或文件尾均可定位） | ✅ 已实现 |
-| 多体系合并（ID3v2 优先于 ID3v1） | ✅ 已实现 |
+| 多体系合并（MP3：ID3v2 > APEv2 > ID3v1） | ✅ 已实现 |
 | FLAC `PICTURE` 块（封面） | ✅ 已实现 |
 | Speex 注释头 | ⏳ 未覆盖（见下） |
-| APE tag 解析 | ⏳ 未排期 |
+| APE tag 解析 | ⏳ **独立 APE 容器**未排期；**MP3 文件尾的 APEv2 已支持**（按 ID3v2 > APEv2 > ID3v1 合并） |
 | 标签**写入**（v0.2.0，安全子集） | ✅ MP3（ID3v2.3）/ FLAC（Vorbis comment）；其余容器不支持 —— 入口见 [facade.md 的 `writeTags`](facade.md#3121-writetags静态v020-新增安全子集) |
 
 ### 3.1 各体系的字段覆盖
 
 下表为**读取侧**的键名映射；写入侧（v0.2.0，MP3 / FLAC）使用同一行的键/帧名产生数据
 （如写入 FLAC 时 `year` 产 `DATE` 条目、`trackTotal` 与 `track` 合成 `TRACKNUMBER` 的 `n/total`），
-因此写读往返对表内全部标准字段成立。`extra` 与 WAV INFO / MP4 / ID3v1 体系**只读不写**。
+因此写读往返对表内全部标准字段成立。`extra` 与 WAV INFO / MP4 / ID3v1 / APEv2 体系**只读不写**。
 
 | `Tag` 字段 | ID3v2 | ID3v1 | Vorbis comment | WAV INFO | MP4 `ilst` |
 |---|---|---|---|---|---|
@@ -240,6 +240,10 @@ func dumpExtras(tag: Tag): Unit {
 | `composer` | `TCOM` / `TCM` | — | `COMPOSER` | `IMUS` | `©wrt` |
 | `coverArt` / `coverMime` | `APIC` / `PIC` | — | `METADATA_BLOCK_PICTURE`（base64） | — | `covr`（PNG / JPEG） |
 | `extra` | 未映射的 `T***` 帧、`TXXX:<描述>` | — | 其余大写键 | 其余 4 字符 ID | 其余原子（`©` 渲染为 `c`） |
+
+> **MP3 的 APEv2 尾标签**也参与合并（优先级 **ID3v2 > APEv2 > ID3v1**）：APE 文本 item 与
+> front cover（`COVER ART (FRONT)`）映射到同一 `Tag`，其余键以 `APE:<KEY>` 进入 `extra`。
+> 上表列的是 ID3v2 / ID3v1 的键名映射；APEv2 的完整键名表见 `src/meta/apev2.cj`。
 
 ### 3.2 已知限制
 
@@ -285,7 +289,7 @@ main() {
 
 | 容器 | 标签来源 | 合并策略 |
 |---|---|---|
-| mp3 | ID3v2（文件头）+ ID3v1（文件尾 128 字节） | ID3v2 优先，为空字段由 ID3v1 回填 |
+| mp3 | ID3v2（文件头）+ APEv2（文件尾）+ ID3v1（文件尾 128 字节） | ID3v2 优先，空字段依次由 APEv2、ID3v1 回填 |
 | flac | `VORBIS_COMMENT` 元数据块 | — |
 | wav | `LIST/INFO` 子块 | — |
 | ogg | 首个逻辑流的注释头（Vorbis comment；Opus 为 `OpusTags`） | — |

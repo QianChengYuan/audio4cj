@@ -143,14 +143,13 @@ public class AudioFile <: Resource {
                 formatInfoOf(probe))
             case "wav" => assembleWav(WavFormatReader(MemoryByteSource(bytes), "<memory:wav>"), "<memory:wav>",
                 formatInfoOf(probe))
-            case "flac" => openFlac(MemoryByteSource(bytes), "<memory:flac>", formatInfoOf(probe), false)
+            case "flac" => openFlac(MemoryByteSource(bytes), "<memory:flac>", formatInfoOf(probe))
             case "ogg" =>
                 // 与 open() 同理：容器级与编码级两道关卡分开（见 open 的注释）
                 if (probe.codec != "flac") {
                     throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（<memory:ogg>）")
                 }
-                openFlac(OggFlacByteSource(MemoryByteSource(bytes), "<memory:ogg>"), "<memory:ogg>", formatInfoOf(probe),
-                    true)
+                openFlac(OggFlacByteSource(MemoryByteSource(bytes), "<memory:ogg>"), "<memory:ogg>", formatInfoOf(probe))
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（<memory>）")
         }
     }
@@ -168,8 +167,9 @@ public class AudioFile <: Resource {
     }
 
     /// FLAC 装配的内存直通入口：调用方提供字节源（openBytes 用 MemoryByteSource）。
-    private static func openFlac(source: ByteSource, path: String, formatInfo: FormatInfo, oggWrapped: Bool): AudioFile {
-        let reader = FlacFormatReader(source, path, oggWrapped)
+    /// 容器差异已由字节源本身确定，无需再传 `oggWrapped`。
+    private static func openFlac(source: ByteSource, path: String, formatInfo: FormatInfo): AudioFile {
+        let reader = FlacFormatReader(source, path)
         flacAudioFile(reader, path, formatInfo)
     }
 

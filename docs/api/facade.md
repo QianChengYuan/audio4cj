@@ -312,7 +312,7 @@ public static func readTags(path: String): Tag
 
 | 容器 | 标签来源 | 合并策略 |
 |---|---|---|
-| `mp3` | ID3v2（文件头）+ ID3v1（文件尾 128 字节） | ID3v2 优先，其空字段由 ID3v1 回填 |
+| `mp3` | ID3v2（文件头）+ APEv2（文件尾）+ ID3v1（文件尾 128 字节） | ID3v2 优先，空字段依次由 APEv2、ID3v1 回填 |
 | `flac` | `VORBIS_COMMENT` 元数据块 | — |
 | `wav` | `LIST/INFO` 子块 | — |
 | `ogg` | 页重组后取注释头：Vorbis 与 Opus 走 Vorbis comment；FLAC-in-Ogg 复原 FLAC 元数据块链后走块解析 | — |

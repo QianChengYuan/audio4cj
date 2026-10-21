@@ -77,8 +77,8 @@ protected class FlacFormatReader <: FormatReader {
     /// 从**调用方提供的字节源**构造（openBytes 内存直通用）。
     ///
     /// 源的所有权移入内核；`path` 仅作错误信息与路径标识（内存源传 `<memory:…>`）。
-    protected init(source: ByteSource, path: String, oggWrapped: Bool) {
-        this(PureFlacKernel(source, path, oggWrapped), path)
+    protected init(source: ByteSource, path: String) {
+        this(PureFlacKernel(source, path), path)
     }
 
     /// 公共主体：内核已就绪，快照音频参数并校验合法性。

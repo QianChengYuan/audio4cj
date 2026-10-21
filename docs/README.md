@@ -27,7 +27,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 > **MP3 曾是最后一个依赖 C 库的格式**（当初被移出过一版），现由本库自己的解码内核
 > （`src/format/mp3_*.cj`）承担，与其余格式一样**不引入任何 C 依赖**。
 >
-> **标签读取覆盖更广**：WAV / FLAC / MP3 / **OGG**（Vorbis、Opus、FLAC-in-Ogg）/ **MP4**（`ilst`）。
+> **标签读取覆盖更广**：WAV / FLAC / MP3（ID3v1/v2 + APEv2 尾标签）/ **OGG**（Vorbis、Opus、FLAC-in-Ogg）/ **MP4**（`ilst`）。
 
 标签读取有两个入口：`AudioFile.metadata()`（打开文件后读取，要求容器可解码）与 **`AudioFile.readTags(path)`**（**不要求解码能力** —— Ogg/Vorbis、MP4 等尚不能解码的容器同样能读出标签）。
 
@@ -47,7 +47,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M7** | **纯仓颉化收官**：FLAC / Ogg-FLAC / **MP3** 全部改为纯仓颉实现，C 依赖整体移除（MP3 是最后一块） | ✅ 已完成 |
 | **M5** | 流式与健壮性（有界队列背压 `AsyncFrameStream`、随机与异常输入回归、长时运行与并发测试） | ✅ 已完成 |
 | **M6 前置** | 容器与质量基线扩展（OGG 页重组与 MP4 `ilst` 标签读取、**Ogg 封装 FLAC 解码**、探测层 Ogg 子编码区分、golden PCM 三方比对基线） | ✅ 已完成 |
-| **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | 🚧 进行中 |
+| **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | ✅ 已完成（0.1.8 起上架；0.2.0 已上架） |
 | **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 | **M8（0.1.5）** | **FLAC 编码**（新包 `audio4cj.encode`：`flacBytes`，16 位；roundtrip 逐样本零误差 + ffmpeg 交叉解码 MD5 一致） | ✅ 已完成 |
 | **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏）+ **FLAC 标签写入**（Vorbis comment，安全子集）+ **openBytes 全容器免落盘直通**（ByteSource 泛化：FLAC 内核缓存标签块、Ogg 页重组吃内存源） | ✅ 已完成 |
@@ -62,6 +62,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
   - [`audio4cj.meta`](api/meta.md) —— 统一标签模型 `Tag` 与各体系解析器
   - [`audio4cj.stream`](api/stream.md) —— `FrameStream` 同步流式读取、`AsyncFrameStream` 异步背压、协作式取消
   - [`audio4cj.facade`](api/facade.md) —— `AudioFile` 门面（主入口）
+  - [`audio4cj.encode`](api/encode.md) —— `flacBytes`：把 `AudioBuffer` 编码为完整 FLAC 文件映像（16 / 24 位）
 - **[依赖许可证台账](../LICENSES.md)** —— 第三方依赖的来源、许可证与审计流程
 
 ## 四、六条核心契约
@@ -135,12 +136,13 @@ try (f = AudioFile.open(path)) {
 > ——仓颉 std 是否提供内存统计 API 尚未核实。未测项不写成已测项。
 >
 > **诚实标注 2**：测试套件**不依赖任何外部工具**（golden 基准已随仓库入库，无损互证本身不需要外部工具），
-> 因此**在源码仓库内**可完整运行（当前 **246 / 246**，`SKIPPED = 0`）。
-> ⚠ 制品包交付**产品代码、公开文档、许可证，以及一组纯内存用例**：包内含 14 个测试文件、
-> 81 个用例（不读 `testdata/` 语料、不写任何文件），解包后 `cjpm test` 即可跑通、
-> **不要求工作目录可写**；**`testdata/` 语料不随包**（二进制，`cjpm bundle` 本就不打包），
-> 依赖语料与会写盘的用例都留在源码仓库。要跑含语料与外部基准比对的**全量 246 条**，
-> 请从源码仓库获取。
+> 因此**在源码仓库内**可完整运行（2026-10-21 实测 **321 / 321**，`SKIPPED = 0`，SDK 1.2.0；
+> CI 另按最低支持版本 1.1.0 验证同一套用例）。
+> ⚠ 制品包交付**产品代码、公开文档、许可证，以及一组纯内存用例**：包内含 **16 个纯内存测试文件**
+> （不读 `testdata/` 语料、不写任何文件；当前清单见 `cjpm.toml` 的 `include` 白名单），
+> 解包后 `cjpm test` 即可跑通、**不要求工作目录可写**；包内用例数以包内 `cjpm test` 实测为准。
+> **`testdata/` 语料不随包**（二进制，`cjpm bundle` 本就不打包），依赖语料与会写盘的用例
+> 都留在源码仓库。要跑含语料与外部基准比对的**全量用例**，请从源码仓库获取。
 
 ## 六、尚未实现
 
@@ -153,7 +155,7 @@ try (f = AudioFile.open(path)) {
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
 | **Speex 的注释头** | 未覆盖。Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03vorbis` / `OpusTags`）都不同，`readTags` 对其返回**空 `Tag`**（不报错） |
 | **MP4 的 `moov` 位于文件中部** | 未覆盖。标签读取覆盖 `moov` 在**文件头**（faststart）与**文件尾**（主流封装工具的默认行为）两种布局；理论上 `moov` 只会在这两端，但若遇到中间布局的文件则读不到标签 |
-| **APE / WavPack 等容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException` |
+| **独立 APE / WavPack 容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException`。**注意**：MP3 文件尾的 APEv2 标签已支持读取（作为 ID3v2 / ID3v1 的补充），这里指的是独立的 APE 容器 |
 | **实时流传输（RTP / RTSP / WebRTC 等）** | 无任何规划，整个实时协议栈均缺失 |
 
 ## 七、包与导入

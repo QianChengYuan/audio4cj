@@ -51,7 +51,7 @@ public class PcmStats {
         this.lufs = lufs
     }
 
-    public static func EMPTY(): PcmStats {
+    public static func empty(): PcmStats {
         PcmStats(0.0, 0.0, -200.0, 0)
     }
 }
@@ -76,7 +76,7 @@ public func analyzeBuffer(buf: AudioBuffer): PcmStats {
 public func analyzeSamples(samples: Array<Float32>, channels: Int64): PcmStats {
     let n = samples.size
     if (n == 0) {
-        return PcmStats.EMPTY()
+        return PcmStats.empty()
     }
 
     var peak: Float64 = 0.0

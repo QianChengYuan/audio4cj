@@ -273,6 +273,8 @@ public class PcmStats {
     public let rmsDbfs: Float64    // 20*log10(rms)
     public let lufs: Float64       // 近似综合响度（简化口径，见下）
     public let sampleCount: Int64  // 样本总数（含全部声道）
+
+    public static func empty(): PcmStats  // 全零统计快照（peak/rms = 0，dBFS/LUFS = -200）
 }
 
 public func analyzeBuffer(buf: AudioBuffer): PcmStats

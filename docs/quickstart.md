@@ -26,21 +26,21 @@ audio4cj 是一个 `static` 类型的 cjpm 库工程。**三种引入方式**，
 
 | 方式 | 写法 | 适用场景 |
 |---|---|---|
-| ① **中心仓（推荐）** | `audio4cj = "0.1.9"` | **2026-10-17 起已上架**；以[制品页](https://pkg.cangjie-lang.cn/)给出的版本号为准，可直接 `cjpm build` |
-| ② Git 引用 | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.9" }` | 需要某个**尚未发版**的提交（或中心仓暂不可达）时；`tag` 可换成 `branch = "main"` 或 `commitId = "..."` |
+| ① **中心仓（推荐）** | `audio4cj = "0.2.0"` | **2026-10-21 起已上架**；以[制品页](https://pkg.cangjie-lang.cn/)给出的版本号为准，可直接 `cjpm build` |
+| ② Git 引用 | `audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", branch = "main" }` | 需要**最新源码**或某个**尚未发版**的提交（或中心仓暂不可达）时；也可换成 `commitId = "..."` 固定提交 |
 | ③ 本地路径引用 | `audio4cj = { path = "../audio4cj" }` | 本机开发与测试（源码就在本地） |
 
 ```toml
 # 方式 ①：中心仓（推荐）
 # 你的工程 cjpm.toml
 [dependencies]
-audio4cj = "0.1.9"
+audio4cj = "0.2.0"
 ```
 
 ```toml
-# 方式 ②：Git 引用（需要未发布提交时）
+# 方式 ②：Git 引用（需要最新源码 / 未发布提交时）
 [dependencies]
-audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", tag = "v0.1.9" }
+audio4cj = { git = "https://gitcode.com/yuan_1992/audio4cj", branch = "main" }
 ```
 
 ```toml
@@ -53,8 +53,8 @@ audio4cj = { path = "../audio4cj" }
 > 也没有需要预置的二进制产物**，用 SDK 自带的 `cjpm` 即可直接 `cjpm build`
 > （`check` 与 `build` 先后随意）。
 >
-> 从中心仓引入时请以**制品页给出的版本号为准**（本仓库 `cjpm.toml` 里的 `version`
-> 是**最新版本**，可能尚未同步到中心仓；两者不一致时以制品页为准）。
+> 中心仓当前上架 **0.2.0**；本仓库 `cjpm.toml` 里的 `version` 是**当前源码版本**，
+> 若与中心仓不一致，以制品页给出的版本号为准。
 
 随后显式导入所需类型（**根包不做聚合导出**，每个类型都要单独 `import`）：
 
@@ -80,12 +80,13 @@ cjpm clean          # 清理构建产物
 **没有任何 C 构建步骤。** 解码全部为纯仓颉实现，`cjpm build` / `cjpm test` 只编译仓颉代码。
 
 > 测试套件**不依赖任何外部工具**，也不需要联网。
-> ⚠ 制品包只交付**产品代码、公开文档、许可证，以及一组纯内存用例**（14 个测试文件、
-> 81 个用例：不读 `testdata/` 语料、不写任何文件）——解包后 `cjpm test` 即可跑通，
-> **不要求工作目录可写**。**`testdata/` 语料不随包**（它是二进制，`cjpm bundle` 本就不打包），
-> 依赖语料与会写盘的用例都留在源码仓库。
+> ⚠ 制品包只交付**产品代码、公开文档、许可证，以及一组纯内存用例**（**16 个纯内存测试文件**：
+> 不读 `testdata/` 语料、不写任何文件；当前清单见 `cjpm.toml` 的 `include` 白名单）——
+> 解包后 `cjpm test` 即可跑通，**不要求工作目录可写**。**`testdata/` 语料不随包**
+> （它是二进制，`cjpm bundle` 本就不打包），依赖语料与会写盘的用例都留在源码仓库。
 >
-> 想跑含真实语料与外部基准比对的**全量 246 条**，请从**源码仓库**获取（`testdata/` 已入库）。
+> 想跑含真实语料与外部基准比对的**全量用例**，请从**源码仓库**获取（`testdata/` 已入库；
+> 2026-10-21 实测 321 / 321 通过，`SKIPPED = 0`，SDK 1.2.0）。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例
@@ -220,7 +221,7 @@ main() {
 }
 ```
 
-支持 **MP3**（ID3v2 + ID3v1 合并）、**FLAC**（Vorbis comment）、**WAV**（LIST/INFO）、
+支持 **MP3**（ID3v2 + APEv2 + ID3v1 合并）、**FLAC**（Vorbis comment）、**WAV**（LIST/INFO）、
 **OGG**（Vorbis comment，含 Opus 的 `OpusTags` 与 FLAC-in-Ogg）、**MP4**（`ilst` 原子）。
 **无法识别**的容器（如 APE / WavPack）会抛 `FormatNotSupportedException`；
 容器可识别但无标签（如 Speex 的注释头尚未覆盖）则返回**空 `Tag`**，不抛异常。
@@ -240,7 +241,7 @@ main() {
     tag.track = 3
     tag.trackTotal = 12
 
-    AudioFile.writeTags("./song.mp3", tag)    // FLAC 同样支持
+    AudioFile.writeTags("./song.mp3", tag)    // 原生 FLAC 同样支持
 }
 ```
 
@@ -302,6 +303,50 @@ main() {
 > **容器可识别但读不出标签时会怎样？** 返回**空 `Tag`**，不抛异常（契约 1）。
 > 只有**无法识别**的容器、或**结构损坏到无法继续**才会抛异常。
 > 例如 Speex 的注释机制尚未覆盖，读它得到的就是空 `Tag` 而非报错。
+
+### 示例 10：编码 FLAC / 打包 WAV（v0.2.0 支持 24 位）
+
+```cangjie
+import audio4cj.encode.flacBytes
+import audio4cj.facade.AudioFile
+import audio4cj.pcm.wavBytes
+import std.fs.*
+
+main() {
+    try (f = AudioFile.open("./in.wav")) {
+        let pcm = f.readAll()
+        File.writeTo(Path("./out16.flac"), flacBytes(pcm))                       // 16 位
+        File.writeTo(Path("./out24.flac"), flacBytes(pcm, bitsPerSample: 24))    // 24 位
+        File.writeTo(Path("./out.wav"), wavBytes(pcm))                           // 16 位 WAV
+    }
+}
+```
+
+> `flacBytes` 支持 16 / 24 位，`wavBytes` 支持 8 / 16 / 24 / 32 位；两者都沿用输入
+> `AudioBuffer` 的采样率与声道数，**不做重采样**。压缩率与已知边界见 [api/encode.md](api/encode.md)。
+
+### 示例 11：PCM 电平分析与峰值包络（v0.2.0）
+
+```cangjie
+import audio4cj.facade.AudioFile
+import audio4cj.pcm.{analyzeBuffer, peakEnvelope}
+
+main() {
+    try (f = AudioFile.open("./song.flac")) {
+        let pcm = f.readAll(maxFrames: 1_000_000)
+
+        let st = analyzeBuffer(pcm)
+        println("peak=${st.peak}, RMS=${st.rms}, LUFS=${st.lufs}")
+
+        // 把整段音频压成 100 个峰值点，可直接用于 UI 波形
+        let env = peakEnvelope(pcm, 100)
+        println("包络点: ${env.size}")
+    }
+}
+```
+
+> LUFS 采用 K 加权瞬时响度的**未加权简化口径**，适合波形概览与窄带测试信号；
+> 广播级计量需外接专业库。完整口径见 [api/pcm.md](api/pcm.md)。
 
 ## 五、异常处理范式
 

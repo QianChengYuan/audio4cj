@@ -203,7 +203,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
             OggFlacByteSource(path)
         } else {
             FileByteSource(path)
-        }, path, oggWrapped)
+        }, path)
     }
 
     /// 从**调用方提供的字节源**构造（openBytes 内存直通用）。
@@ -211,7 +211,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 源的所有权移入内核：失败时关闭，成功后随内核生命周期关闭。
     /// `path` 仅用于错误信息与 `FlacFormatReader` 的路径标识
     /// （内存源时传 `<memory:flac>` / `<memory:ogg>` 这类可读标识）。
-    protected init(source: ByteSource, path: String, oggWrapped: Bool) {
+    protected init(source: ByteSource, path: String) {
         this._path = path
         let (info, firstFrameOffset, seekPoints, tags) = PureFlacKernel.readMetadataOrClose(source, true)
 
