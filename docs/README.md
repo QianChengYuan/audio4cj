@@ -31,7 +31,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 
 标签读取有两个入口：`AudioFile.metadata()`（打开文件后读取，要求容器可解码）与 **`AudioFile.readTags(path)`**（**不要求解码能力** —— Ogg/Vorbis、MP4 等尚不能解码的容器同样能读出标签）。
 
-**标签写入（v0.2.0，安全子集）**：**`AudioFile.writeTags(path, tag)`** 支持 MP3（ID3v2.3）与 FLAC（Vorbis comment）—— 音频数据逐位不动（标签替换、既有块保留），只写标准字段，原子落盘。详见 [api/facade.md](api/facade.md#3111-writetags静态v020-新增安全子集)。
+**标签写入（v0.2.0，安全子集）**：**`AudioFile.writeTags(path, tag)`** 支持 MP3（ID3v2.3）与 FLAC（Vorbis comment）—— 音频数据逐位不动（标签替换、既有块保留），只写标准字段，原子落盘。详见 [api/facade.md](api/facade.md#3121-writetags静态v020-新增安全子集)。
 
 设计上有六条贯穿全局的契约，使用前请务必先读 [核心契约](#四六条核心契约)。
 
@@ -50,7 +50,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | 🚧 进行中 |
 | **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 | **M8（0.1.5）** | **FLAC 编码**（新包 `audio4cj.encode`：`flacBytes`，16 位；roundtrip 逐样本零误差 + ffmpeg 交叉解码 MD5 一致） | ✅ 已完成 |
-| **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏）+ **FLAC 标签写入**（Vorbis comment，安全子集） | ✅ 已完成 |
+| **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏）+ **FLAC 标签写入**（Vorbis comment，安全子集）+ **openBytes 全容器免落盘直通**（ByteSource 泛化：FLAC 内核缓存标签块、Ogg 页重组吃内存源） | ✅ 已完成 |
 
 ## 三、文档索引
 

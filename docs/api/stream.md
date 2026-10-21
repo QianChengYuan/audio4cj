@@ -116,7 +116,7 @@ try (f = AudioFile.open("./demo.wav")) {
 - 用 `try-with-resources` 管理 `AudioFile` 即可，**不必手动 `close()` 流**——`AudioFile.close()` 会连带关闭它；
 - 若确实需要在同一文件上多次遍历，请**重新 `AudioFile.open()`**，而不是复用同一个实例。
 
-> 补充：`AudioFile.readAll()` 与 `readFrames()` 内部也会创建流并在结束时关闭它，因此**它们同样会消耗掉该 `AudioFile` 的 reader**。详见 [facade.md](facade.md#38-readall-与-readframes-的副作用)。
+> 补充：`AudioFile.readAll()` 与 `readFrames()` 内部也会创建流并在结束时关闭它，因此**它们同样会消耗掉该 `AudioFile` 的 reader**。详见 [facade.md](facade.md#39-readall-与-readframes-的副作用)。
 
 ## 四、使用示例
 

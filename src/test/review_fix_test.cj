@@ -2,6 +2,7 @@ package audio4cj.test
 
 import audio4cj.core.*
 import audio4cj.facade.AudioFile
+import audio4cj.meta.Tag
 import audio4cj.pcm.AudioBuffer
 import audio4cj.stream.AsyncFrameStream
 import std.collection.ArrayList
@@ -399,29 +400,28 @@ class ReviewFixRegressionTest {
     // 2026-10-21 审查修复回归
     // -----------------------------------------------------------------
 
-    /// P2-1：`openBytes` 对损坏字节流抛异常时，临时文件必须被清理，
-    /// 不得在临时目录残留（历史缺陷：open() 失败时 _tempPath 尚未登记）。
+    /// P2-1：`openBytes` 对损坏字节流抛异常时不得残留临时文件。
+    ///
+    /// 【v0.2.0 后的口径】全容器已内存直通、不再产生临时文件 —— 本用例从
+    /// 「验证清理逻辑」转为「验证根本不落盘」：损坏字节在任何容器上都应在
+    /// **进入装配之前或装配内部**直接抛异常，全程无文件系统写入。
     @TestCase
     func openBytesCleansTempFileOnFailure() {
-        // 探测可通过（"fLaC" 头）但打开必失败的截断字节：走到临时文件桥接路径，
-        // open(tmp) 抛异常后 catch 分支必须删除临时文件。
-        // （v0.2.0 ByteSource 泛化后 MP3/WAV 已免落盘直通，只有 FLAC 系仍走桥接，
-        // 因此守护素材必须选 FLAC。）
+        // 探测可通过（"fLaC" 头）但打开必失败的截断字节
         let junk = rfPrefix(rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac"), 24)
 
         @AssertThrows[Audio4CjException](AudioFile.openBytes(junk))
 
-        // 临时目录里不得残留 audio4cj_*.tmp（用例运行前后都不该有）
+        // 临时目录里不得出现 audio4cj_*（用例运行前后都不该有）
         let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
         for (e in Directory.readFrom(dir)) {
             @Assert(!e.name.startsWith("audio4cj_"))
         }
     }
 
-    /// P2-1 的正向路径：合法字节流 openBytes 成功后 close，临时文件同样被删除。
+    /// P2-1 的正向路径：合法字节流 openBytes 成功后 close，同样不落盘。
     @TestCase
     func openBytesSuccessPathAlsoCleansUp() {
-        // FLAC 仍走临时文件桥接（MP3/WAV 已内存直通，不产生临时文件）
         let bytes = rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         let f = AudioFile.openBytes(bytes)
         @Assert(f.info().sampleRate > 0)
@@ -433,13 +433,13 @@ class ReviewFixRegressionTest {
         }
     }
 
-    /// P2-1 的补充路径（v0.2.0 修复）：readAll/readFrames 消费完即置 _closed
-    /// （drain 的"半关闭"），此后 close() 幂等跳过 —— 若清理只挂在 close 的
-    /// `if (!_closed)` 分支里，临时文件就会在此路径泄漏。实测：openBytes +
-    /// readAll + close 净残留 1 个 .tmp。清理必须挂在所有置关闭状态的路径上。
+    /// P2-1 的补充路径：readAll 的"半关闭"（drain）路径同样不落盘。
+    ///
+    /// 【历史说明】v0.1.6～v0.1.9 该路径曾泄漏临时文件（清理必须挂在所有
+    /// 置关闭状态的路径上）；v0.2.0 内存直通后无临时文件，保留用例作为
+    /// 「readAll + close 之后对象状态自洽」的守护。
     @TestCase
     func openBytesReadAllPathAlsoCleansUp() {
-        // FLAC 仍走临时文件桥接（MP3/WAV 已内存直通，不产生临时文件）
         let bytes = rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         let f = AudioFile.openBytes(bytes)
         let out = f.readAll()
@@ -453,10 +453,11 @@ class ReviewFixRegressionTest {
         }
     }
 
-    /// ByteSource 泛化（v0.2.0）：MP3 / WAV 的 openBytes 免落盘直通。
+    /// ByteSource 泛化（v0.2.0）：全部容器的 openBytes 免落盘直通。
     ///
-    /// 守护口径：打开前后临时目录的 `audio4cj_` 文件数**不增**（旧实现每会话
-    /// 净增 1，直到 close；直通后应为 0 增长），且解码结果与文件路径打开一致。
+    /// 守护口径：打开前后临时目录的 `audio4cj_` 文件数**不增**，且解码结果
+    /// 与文件路径打开一致。FLAC 的 metadata() 走内核缓存（零 I/O），
+    /// Ogg-FLAC 的页重组直接吃内存源 —— 两者均不再依赖文件路径。
     @TestCase
     func openBytesMp3WavNoTempFile() {
         let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
@@ -482,6 +483,26 @@ class ReviewFixRegressionTest {
             @Expect(f.readAll().frameCount, wavFrames)
         }
 
+        // FLAC：直通路径（元数据扫描缓存标签块，metadata() 零 I/O）
+        let flac = AudioFile.openBytes(rfReadWhole("testdata/flac/flac_tagged.flac"))
+        @Assert(flac.info().sampleRate > 0)
+        let flacTag = flac.metadata()
+        @Assert(flacTag.title.isSome()) // flac_tagged 带注释头，内核缓存路径必须解析出标题
+        let flacFrames = flac.readAll().frameCount
+        flac.close()
+        try (f = AudioFile.open("testdata/flac/flac_tagged.flac")) {
+            @Expect(f.readAll().frameCount, flacFrames)
+        }
+
+        // Ogg-FLAC：直通路径（页重组吃内存源）
+        let ogg = AudioFile.openBytes(rfReadWhole("testdata/ogg/ogg_flac.oga"))
+        @Assert(ogg.info().sampleRate > 0)
+        let oggFrames = ogg.readAll().frameCount
+        ogg.close()
+        try (f = AudioFile.open("testdata/ogg/ogg_flac.oga")) {
+            @Expect(f.readAll().frameCount, oggFrames)
+        }
+
         @Expect(countTempFiles(dir), countBefore)
     }
 
@@ -494,6 +515,62 @@ class ReviewFixRegressionTest {
             }
         }
         n
+    }
+
+    /// ByteSource 泛化第二阶段（v0.2.0）：FLAC 内存直通的**语义完整性**。
+    ///
+    /// openBytesMp3WavNoTempFile 已验证"不落盘 + 帧数一致"，本用例进一步钉死：
+    ///   1. metadata() 走内核缓存路径 —— 封面（PICTURE 块）必须取到，与文件路径
+    ///      打开的结果逐字段一致（这是缓存路径独有的风险点：块收集在解码内核，
+    ///      装配在 meta 层，两条代码路径的衔接处最容易漂移）；
+    ///   2. seek + rewind（reopen 语义）在内存源上照常工作 ——
+    ///      读几帧后 seekTo(0) 再读，须与首次读取逐样本一致。
+    @TestCase
+    func openBytesFlacMetadataAndSeek() {
+        let bytes = rfReadWhole("testdata/flac/flac_cover.flac")
+
+        // 1) metadata：内存直通与文件路径打开结果逐字段一致（封面走 PICTURE 块）
+        let fromFile = AudioFile.open("testdata/flac/flac_cover.flac").metadata()
+        let memAf = AudioFile.openBytes(bytes)
+        let fromMem = memAf.metadata()
+        memAf.close()
+        @Expect(fromFile.title, fromMem.title)
+        @Expect(fromFile.artist, fromMem.artist)
+        @Assert(fromMem.coverArt.isSome())
+        if (let Some(a) <- fromFile.coverArt) {
+            if (let Some(b) <- fromMem.coverArt) {
+                @Expect(a.size, b.size)
+            } else {
+                @Assert(false)
+            }
+        }
+
+        // 2) seek / rewind：内存源的 reopen 必须回到流起点，逐样本复现
+        let f2 = AudioFile.openBytes(bytes)
+        let first = f2.readFrames(16)
+        @Assert(first.frameCount > 0)
+        // 注意 readFrames 的 drain 是"半关闭"：seek 须在首次读取前完成语义校验。
+        // 改为：打开两个实例，一个只 seek，一个先读后对照 —— 或者简单点，
+        // 直接用 stream() 低层接口避免 drain 副作用。这里用后者。
+        f2.close()
+        let f3 = AudioFile.openBytes(bytes)
+        let s = f3.stream()
+        let buf1 = s.next()
+        @Assert(buf1.isSome())
+        @Expect(f3.seekTo(0), 0)
+        let buf2 = s.next()
+        @Assert(buf2.isSome())
+        // seekTo(0) 后重新读到的首块必须与首次读取逐样本一致
+        let b1 = buf1.getOrThrow()
+        let b2 = buf2.getOrThrow()
+        @Expect(b1.frameCount, b2.frameCount)
+        var i: Int64 = 0
+        while (i < b1.samples.size) {
+            @Expect(b1.samples[i], b2.samples[i])
+            i += 1
+        }
+        s.close()
+        f3.close()
     }
 
     /// P2-2：MP3 无 Xing/VBRI 锚点时，durationEstimated 必须为 true；

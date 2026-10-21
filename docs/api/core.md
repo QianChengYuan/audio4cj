@@ -174,7 +174,7 @@ public class Track {
 
 ### 2.3 `FormatInfo`
 
-容器与编码描述，由 `AudioFile.format()` 返回（见 [facade.md](facade.md#312-format-与-tracksm6-新增)）。
+容器与编码描述，由 `AudioFile.format()` 返回（见 [facade.md](facade.md#313-format-与-tracksm6-新增)）。
 
 ```cangjie
 public class FormatInfo {

@@ -60,6 +60,34 @@ private let FLAC_MIN_FRAME_BYTES: Int64 = 16
 /// 窗口容量的下限（避免极短视频或异常 STREAMINFO 给出过小的窗口）。
 private let FLAC_MIN_WINDOW_BYTES: Int64 = 8192
 
+/// VORBIS_COMMENT（标签载体）块类型号，与 meta 层的约定一致（flac_meta.cj）。
+protected let FLAC_BLOCK_VORBIS_COMMENT: Int64 = 4
+
+/// PICTURE（封面）块类型号。
+protected let FLAC_BLOCK_PICTURE: Int64 = 6
+
+/// 单个标签块缓存的上限（字节）。
+///
+/// 块长度是文件里的 24 位字段、未经验证（理论最大 16 MB），按它直接分配
+/// 会中招「声明长度远超实际」的畸形文件 —— 与 SEEKTABLE 截断防的是同一类
+/// 问题。超限块跳过缓存、照旧 skip：封面/注释缺失只影响标签完整性，
+/// 不影响解码正确性，截断比报错更合适。8 MB 已远超正常封面（几百 KB 量级）。
+protected let FLAC_TAG_BLOCK_CACHE_LIMIT: Int64 = 8 * 1024 * 1024
+
+/// 元数据扫描时顺带收集的标签块（VORBIS_COMMENT + 全部 PICTURE 块体）。
+///
+/// `vorbis` 为 None 表示块链中没有 VORBIS_COMMENT 块（或被上限挡下）；
+/// `pics` 按出现顺序排列，交 meta 层的 `flacTagFromBlocks` 按既有优先级装配。
+protected class FlacTagBlocks {
+    protected let vorbis: ?Array<UInt8>
+    protected let pics: ArrayList<Array<UInt8>>
+
+    protected init(vorbis: ?Array<UInt8>, pics: ArrayList<Array<UInt8>>) {
+        this.vorbis = vorbis
+        this.pics = pics
+    }
+}
+
 /// 规范允许的最坏一帧的字节数 —— 用于确定窗口容量。
 ///
 /// 最坏情况：所有声道都用 VERBATIM（未压缩）存储，且 side 声道多一位。
@@ -169,26 +197,44 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 这里不重新识别：两个判断点一旦分歧，就会出现"按 A 判定的容器、
     /// 按 B 选的字节源"这种最难查的错。
     protected init(path: String, oggWrapped: Bool) {
-        this._path = path
-
-        // 容器差异**只体现在这一处**：字节是裸文件本身，还是 Ogg 页体的重建流
-        let source: ByteSource = if (oggWrapped) {
+        // 容器差异**只体现在这一处**：字节是裸文件本身，还是 Ogg 页体的重建流。
+        // this(...) 委托必须是构造器首条语句，故源在委托表达式里构建。
+        this(if (oggWrapped) {
             OggFlacByteSource(path)
         } else {
             FileByteSource(path)
-        }
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadataOrClose(source)
+        }, path, oggWrapped)
+    }
+
+    /// 从**调用方提供的字节源**构造（openBytes 内存直通用）。
+    ///
+    /// 源的所有权移入内核：失败时关闭，成功后随内核生命周期关闭。
+    /// `path` 仅用于错误信息与 `FlacFormatReader` 的路径标识
+    /// （内存源时传 `<memory:flac>` / `<memory:ogg>` 这类可读标识）。
+    protected init(source: ByteSource, path: String, oggWrapped: Bool) {
+        this._path = path
+        let (info, firstFrameOffset, seekPoints, tags) = PureFlacKernel.readMetadataOrClose(source, true)
 
         this._info = info
         this._source = source
         this._firstFrameOffset = firstFrameOffset
         this._seekPoints = seekPoints
+        this._tagBlocks = tags
         this._cursor = firstFrameOffset
         this._windowFileOffset = firstFrameOffset
         this._worstFrameBytes = worstCaseFrameBytes(info)
         this._window = Array<UInt8>(windowBytes(info), repeat: 0)
         this._reader = BitReader(this._window)
         this._scale = Float32(Int64(1) << (info.bitsPerSample - 1))
+    }
+
+    /// 元数据扫描时缓存的标签块（见 readMetadata 的 collectTags 说明）。
+    /// metadata() 据此**零 I/O** 装配标签。
+    private let _tagBlocks: ?FlacTagBlocks
+
+    /// 缓存的标签块（构造时即收集，恒非 None —— init 路径总以 collectTags=true 扫描）。
+    protected func cachedTagBlocks(): ?FlacTagBlocks {
+        _tagBlocks
     }
 
     // ------------------------------------------------------------------
@@ -200,9 +246,10 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 构造失败的实例永远不会被使用者持有，也就没人能再调用 close()，
     /// 句柄会随之泄漏 —— 表现为该文件无法被删除或移动（FlacFormatReader.init
     /// 的注释记录了同一类现象）。把清理收在这里，init 因而保持一条直线。
-    private static func readMetadataOrClose(source: ByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+    private static func readMetadataOrClose(source: ByteSource, collectTags: Bool): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>, 
+        ?FlacTagBlocks) {
         let parsed = try {
-            PureFlacKernel.readMetadata(source)
+            PureFlacKernel.readMetadata(source, collectTags)
         } catch (e: Exception) {
             source.close()
             throw e
@@ -210,11 +257,23 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         parsed
     }
 
-    /// 解析元数据块链，返回 (STREAMINFO, 首帧字节偏移, SEEKTABLE 定位点)。
+    /// 解析元数据块链，返回 (STREAMINFO, 首帧字节偏移, SEEKTABLE 定位点, 标签块缓存)。
     /// 返回时**源的读取位置**恰好落在首帧起点。
     ///
     /// SEEKTABLE 是可选块：没有时返回空列表，seek 退化为从头解码（正确性不受影响）。
-    private static func readMetadata(source: ByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+    ///
+    /// `collectTags` 决定是否顺带缓存标签块（VORBIS_COMMENT / PICTURE 块体）：
+    ///   - init 路径传 `true` —— 此时扫过块链，读块体的边际成本是零，
+    ///     缓存下来后 `FlacFormatReader.metadata()` 即可零 I/O 工作，
+    ///     内存直通（openBytes）也不再依赖文件路径；
+    ///   - repositionTo / rewind 的重扫传 `false` —— 那两次只为校验 STREAMINFO
+    ///     未变，缓存标签纯属浪费（封面块可达 MB 级）。
+    ///
+    /// 【缓存上限】块长度是文件里的 24 位字段、未经验证（与 SEEKTABLE 的处理
+    /// 同一风险），故单块超过 `FLAC_TAG_BLOCK_CACHE_LIMIT` 时**跳过缓存**、
+    /// 照旧 skip —— 超大封面宁可取不到，也不做无界分配。
+    private static func readMetadata(source: ByteSource, collectTags: Bool): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>, 
+        ?FlacTagBlocks) {
         // 标记 + 首块头（复用经过测试的 parseStreamInfo，故按它期望的布局拼接）
         let prefix = source.readExact(FLAC_MARKER_SIZE + 4)
         let firstLen = (Int64(prefix[FLAC_MARKER_SIZE + 1]) << 16) | (Int64(prefix[FLAC_MARKER_SIZE + 2]) << 8) | Int64(prefix[FLAC_MARKER_SIZE +
@@ -237,8 +296,11 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         }
         let info = parseStreamInfo(assembled)
 
-        // 跳过其余元数据块；其中 SEEKTABLE（类型 3）要读出来供 seek 使用
+        // 跳过其余元数据块；其中 SEEKTABLE（类型 3）要读出来供 seek 使用，
+        // VORBIS_COMMENT（4）/ PICTURE（6）在 collectTags 时读体缓存
         var seekPoints = ArrayList<FlacSeekPoint>()
+        var vorbis: ?Array<UInt8> = None
+        let pics = ArrayList<Array<UInt8>>()
         var isLast = (Int64(prefix[FLAC_MARKER_SIZE]) & 0x80) != 0
         var offset = FLAC_MARKER_SIZE + 4 + firstLen
         var guard: Int64 = 0
@@ -268,12 +330,22 @@ protected class PureFlacKernel <: FlacDecodeKernel {
                     seekPoints = parseSeekTable(source.readExact(want))
                 }
                 source.skip(len - want)
+            } else if (collectTags && blockType == FLAC_BLOCK_VORBIS_COMMENT && len > 0 && vorbis.isNone() && len <=
+                FLAC_TAG_BLOCK_CACHE_LIMIT) {
+                vorbis = Some(source.readExact(len))
+            } else if (collectTags && blockType == FLAC_BLOCK_PICTURE && len > 0 && len <= FLAC_TAG_BLOCK_CACHE_LIMIT) {
+                pics.add(source.readExact(len))
             } else {
                 source.skip(len)
             }
             offset += 4 + len
         }
-        (info, offset, seekPoints)
+        let tags: ?FlacTagBlocks = if (collectTags) {
+            Some(FlacTagBlocks(vorbis, pics))
+        } else {
+            None
+        }
+        (info, offset, seekPoints, tags)
     }
 
     // ------------------------------------------------------------------
@@ -693,7 +765,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 却按定位点记账 —— 结果是静默的错位音频（本文件其它地方踩过同类坑）。
     private func repositionTo(offsetFromFirstFrame: Int64, sampleNumber: Int64): Bool {
         _source.reopen()
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_source)
+        let (info, firstFrameOffset, seekPoints, _) = PureFlacKernel.readMetadata(_source, false)
         if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
             .channels) {
             return false // 文件在两次打开之间被替换
@@ -715,7 +787,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 重开文件并回到首帧（同时清空窗口与 pending 状态）。
     private func rewind(): Bool {
         _source.reopen()
-        let (info, firstFrameOffset, seekPoints) = PureFlacKernel.readMetadata(_source)
+        let (info, firstFrameOffset, seekPoints, _) = PureFlacKernel.readMetadata(_source, false)
         if (info.totalSamples != _info.totalSamples || info.sampleRate != _info.sampleRate || info.channels != _info
             .channels) {
             return false // 文件在两次打开之间被替换

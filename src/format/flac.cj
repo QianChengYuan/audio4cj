@@ -44,6 +44,10 @@ protected class FlacFormatReader <: FormatReader {
     private let _path: String
     private let _kernel: FlacDecodeKernel
 
+    /// 同一内核实例的**具体类型**引用：标签块缓存是 PureFlacKernel 的实现细节，
+    /// 不进 FlacDecodeKernel 契约（标签不是解码内核的职责），故用收窄类型取用。
+    private let _pure: PureFlacKernel
+
     private let _sampleRate: Int64
     private let _channels: Int64
     private let _bitsPerSample: Int64
@@ -65,12 +69,27 @@ protected class FlacFormatReader <: FormatReader {
     /// 出现分歧，会出现"按 A 判定的容器、按 B 选的字节源"这种最难查的错。
     /// 调用方本来就在两个 case 分支里，把已知事实传下来成本为零。
     public init(path: String, oggWrapped: Bool) {
+        // 容器差异**只体现在这一处**：字节是裸文件本身，还是 Ogg 页体的重建流。
+        // this(...) 委托必须是构造器首条语句，故内核在委托表达式里构建。
+        this(PureFlacKernel(path, oggWrapped), path)
+    }
+
+    /// 从**调用方提供的字节源**构造（openBytes 内存直通用）。
+    ///
+    /// 源的所有权移入内核；`path` 仅作错误信息与路径标识（内存源传 `<memory:…>`）。
+    protected init(source: ByteSource, path: String, oggWrapped: Bool) {
+        this(PureFlacKernel(source, path, oggWrapped), path)
+    }
+
+    /// 公共主体：内核已就绪，快照音频参数并校验合法性。
+    private init(kernel: PureFlacKernel, path: String) {
         this._path = path
+        this._pure = kernel
 
         // 唯一的生产内核。此处曾是一个 if/else 在两个内核间二选一
         // （原生走纯仓颉、Ogg 走第三方 C 库）；Ogg 源落地后收敛为一处 ——
         // 容器差异已经下沉到字节源，本层不再需要分支。
-        this._kernel = PureFlacKernel(path, oggWrapped)
+        this._kernel = kernel
 
         this._sampleRate = _kernel.sampleRate()
         this._channels = _kernel.channels()
@@ -165,12 +184,17 @@ protected class FlacFormatReader <: FormatReader {
         _framesConsumed * 1000 / _sampleRate
     }
 
-    /// 读取标签：委托 meta 层的文件级读取（与 `AudioFile.readTags` 共用同一实现）。
+    /// 读取标签：优先用内核元数据扫描时**缓存的标签块**装配（零 I/O）；
+    /// 缓存缺失时回退 meta 层的文件级读取（防御路径，正常不触发）。
     ///
     /// 无标签时返回**空 Tag**（各字段为 None），绝不返回 None。
     public func metadata(): Tag {
         checkOpen()
-        readFlacTagsFromFile(_path)
+        if (let Some(blocks) <- _pure.cachedTagBlocks()) {
+            flacTagFromBlocks(blocks.vorbis, blocks.pics)
+        } else {
+            readFlacTagsFromFile(_path)
+        }
     }
 
     public func info(): AudioInfo {

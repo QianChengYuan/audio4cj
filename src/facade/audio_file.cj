@@ -41,11 +41,6 @@ import std.time.*
 public class AudioFile <: Resource {
     private var _closed: Bool = false
 
-    /// openBytes 的临时文件路径；非空表示 close 时需删除（v0.1.6）
-    private var _tempPath: String = ""
-
-    /// 临时文件序号（同进程内唯一）
-    private static let _tmpSeq: AtomicInt64 = AtomicInt64(0)
     private let _path: String
     private let _reader: ?FormatReader
     private let _decoder: ?Decoder
@@ -116,22 +111,17 @@ public class AudioFile <: Resource {
         }
     }
 
-    /// 从内存字节打开音频（v0.1.6；v0.2.0 起 MP3 / WAV 免落盘直通）。
+    /// 从内存字节打开音频（v0.1.6；v0.2.0 起全部容器免落盘直通）。
     ///
-    /// 实现（ByteSource 泛化，审查改进方向 3.1）：
-    ///   - **MP3 / WAV**：探测头部后构造 `MemoryByteSource` 直接喂给读取器，
-    ///     全程不触碰文件系统；
-    ///   - **FLAC / Ogg-FLAC**：读取器与标签路径仍以文件为 I/O 单元（FLAC 的
-    ///     `metadata()` 委托文件级实现，Ogg 源无随机定位能力），走临时文件
-    ///     桥接 —— 临时文件在本实例 close 时自动删除，使用方无需感知。
+    /// 实现（ByteSource 泛化，审查改进方向 3.1）：探测头部后构造
+    /// `MemoryByteSource` 直接喂给读取器，**全程不触碰文件系统**：
+    ///   - MP3 / WAV：内存源 + 内存直装（v0.2.0 上半程落地）；
+    ///   - FLAC：内核在元数据扫描时顺带缓存标签块，`metadata()` 零 I/O，
+    ///     标签读取不再依赖文件路径；
+    ///   - Ogg-FLAC：页重组对源的要求本就只有顺序读 + reopen，换成内存源即可。
     ///
-    /// 桥接路径的失败清理（v0.2.0 修复）：`open(tmp)` 抛异常时临时文件尚未
-    /// 登记到 `_tempPath`，若不主动清理，用户连续换台/切歌会在临时目录堆积
-    /// 垃圾文件 —— 这正是本 API 的高频使用场景。故 catch 后删除再 rethrow。
-    ///
-    /// 临时目录选取（v0.2.0 修复）：跨平台顺序为 `TMPDIR`（Linux/macOS 惯例）
-    /// → `TEMP` → `TMP`（Windows 惯例）→ 当前目录兜底；文件名混入时间戳，
-    /// 避免在多用户机器上出现固定可预测的文件名（symlink 攻击面）。
+    /// 内存源**持有调用方数组不拷贝**（MemoryByteSource 的契约），故 openBytes
+    /// 的内存占用 ≈ 传入数组 + 解码窗口（有界、与时长无关），无隐藏的翻倍。
     public static func openBytes(bytes: Array<UInt8>): AudioFile {
         let headLen = if (bytes.size < PROBE_HEAD_SIZE) {
             bytes.size
@@ -153,19 +143,15 @@ public class AudioFile <: Resource {
                 formatInfoOf(probe))
             case "wav" => assembleWav(WavFormatReader(MemoryByteSource(bytes), "<memory:wav>"), "<memory:wav>",
                 formatInfoOf(probe))
-            case _ =>
-                // FLAC / Ogg-FLAC：临时文件桥接（读取器与标签路径仍以文件为单元）
-                let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
-                let tmp = "${dir}/audio4cj_${_tmpSeq.fetchAdd(1)}_${DateTime.now().toUnixTimeStamp().toMilliseconds()}.tmp"
-                File.writeTo(Path(tmp), bytes)
-                try {
-                    let af = open(tmp)
-                    af._tempPath = tmp
-                    af
-                } catch (e: Exception) {
-                    removeIfExists(Path(tmp))
-                    throw e
+            case "flac" => openFlac(MemoryByteSource(bytes), "<memory:flac>", formatInfoOf(probe), false)
+            case "ogg" =>
+                // 与 open() 同理：容器级与编码级两道关卡分开（见 open 的注释）
+                if (probe.codec != "flac") {
+                    throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（<memory:ogg>）")
                 }
+                openFlac(OggFlacByteSource(MemoryByteSource(bytes), "<memory:ogg>"), "<memory:ogg>", formatInfoOf(probe),
+                    true)
+            case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（<memory>）")
         }
     }
 
@@ -178,6 +164,17 @@ public class AudioFile <: Resource {
     /// 无需让下层的读取器再识别一次。
     private static func openFlac(path: String, formatInfo: FormatInfo, oggWrapped: Bool): AudioFile {
         let reader = FlacFormatReader(path, oggWrapped)
+        flacAudioFile(reader, path, formatInfo)
+    }
+
+    /// FLAC 装配的内存直通入口：调用方提供字节源（openBytes 用 MemoryByteSource）。
+    private static func openFlac(source: ByteSource, path: String, formatInfo: FormatInfo, oggWrapped: Bool): AudioFile {
+        let reader = FlacFormatReader(source, path, oggWrapped)
+        flacAudioFile(reader, path, formatInfo)
+    }
+
+    /// FLAC 装配的共享主体：读取器 + 解码器 + 格式快照。
+    private static func flacAudioFile(reader: FlacFormatReader, path: String, formatInfo: FormatInfo): AudioFile {
         let decoder = FlacPcmDecoder(
             reader.sampleRate(),
             reader.channels(),
@@ -376,8 +373,10 @@ public class AudioFile <: Resource {
         _closed
     }
 
-    /// 释放资源（幂等）。会一并关闭底层 reader；
-    /// openBytes 的临时文件在此一并删除。
+    /// 释放资源（幂等）。会一并关闭底层 reader。
+    ///
+    /// 【历史说明】v0.1.6～v0.1.9 的 openBytes 用临时文件桥接 FLAC/Ogg，
+    /// 这里负责清理；v0.2.0 全容器内存直通后不再有临时文件，该方法退役。
     public func close(): Unit {
         if (!_closed) {
             _closed = true
@@ -385,21 +384,6 @@ public class AudioFile <: Resource {
                 case Some(r) => r.close()
                 case None => ()
             }
-            removeTempFile()
-        }
-    }
-
-    /// 删除 openBytes 桥接用的临时文件（幂等）。
-    ///
-    /// 【为什么 close 之外 drain 也要调】readAll/readFrames 消费完即视为资源
-    /// 已释放（drain 里 s.close() 关掉共享 reader 后置 _closed）—— 但这只关了
-    /// 句柄；若此后使用者再调 close()，`if (!_closed)` 已不成立，临时文件的
-    /// 清理就被跳过了。清理必须挂在**所有**把对象置为已关闭的路径上，
-    /// 否则在线播放场景（openBytes + readAll 是其最典型组合）会持续泄漏临时文件。
-    private func removeTempFile(): Unit {
-        if (_tempPath != "") {
-            removeIfExists(Path(_tempPath))
-            _tempPath = ""
         }
     }
 
@@ -479,7 +463,6 @@ public class AudioFile <: Resource {
         // 自相矛盾（历史缺陷）。readAll/readFrames 是一次性便捷 API，
         // 消费完即视为资源已释放；需要继续分块读取请自行持有 stream()。
         _closed = true
-        removeTempFile()
 
         mergeChunks(chunks, sampleRate, channels, limitFrames)
     }

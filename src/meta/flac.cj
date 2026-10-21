@@ -1,5 +1,7 @@
 package audio4cj.meta
 
+import std.collection.ArrayList
+
 /* ============================================================================
  * FLAC 元数据块链解析 —— 开发文档 §10 M3（Vorbis comment 的容器接入）
  *
@@ -49,9 +51,8 @@ protected func parseFlacMetadata(data: Array<UInt8>): Tag {
         return tag
     }
 
-    var sawVorbisComment = false
-    var bestPicture: ?FlacPicture = None
-    var bestIsFront = false
+    var vorbis: ?Array<UInt8> = None
+    let pics = ArrayList<Array<UInt8>>()
 
     var offset: Int64 = 4
     var guard: Int64 = 0
@@ -76,24 +77,45 @@ protected func parseFlacMetadata(data: Array<UInt8>): Tag {
         }
 
         // 类型 4 = VORBIS_COMMENT（只认第一块）
-        if (blockType == 4 && !sawVorbisComment) {
-            sawVorbisComment = true
-            tag = parseVorbisComment(safeSlice(data, bodyStart, len))
+        if (blockType == 4 && vorbis.isNone()) {
+            vorbis = Some(safeSlice(data, bodyStart, len))
         } else if (blockType == 6) {
-            // 多块时优先 front cover，同类型先到者胜
-            if (let Some(pic) <- parseFlacPictureBlock(safeSlice(data, bodyStart, len))) {
-                let isFront = pic.picType == FLAC_PICTURE_TYPE_FRONT
-                if (bestPicture.isNone() || (isFront && !bestIsFront)) {
-                    bestPicture = Some(pic)
-                    bestIsFront = isFront
-                }
-            }
+            pics.add(safeSlice(data, bodyStart, len))
         }
 
         if (isLast) {
             break
         }
         offset = bodyStart + len
+    }
+
+    flacTagFromBlocks(vorbis, pics)
+}
+
+/// 由**已收集**的 FLAC 标签块装配 `Tag`（与 `parseFlacMetadata` 共用同一套优先级）。
+///
+/// 封面优先级与块链扫描版完全一致：注释头里的 `METADATA_BLOCK_PICTURE` 优先，
+/// PICTURE 块只补空；多个 PICTURE 块时 front cover（类型 3）优先，同类型先到者胜。
+///
+/// 该函数是 `FlacFormatReader.metadata()` 的数据通路：解码内核在元数据扫描时
+/// 顺带缓存这两类块体，标签读取因此**零额外 I/O**，内存直通（openBytes）下
+/// 也不再依赖文件路径。
+protected func flacTagFromBlocks(vorbis: ?Array<UInt8>, pics: ArrayList<Array<UInt8>>): Tag {
+    var tag = Tag()
+    if (let Some(v) <- vorbis) {
+        tag = parseVorbisComment(v)
+    }
+
+    var bestPicture: ?FlacPicture = None
+    var bestIsFront = false
+    for (body in pics) {
+        if (let Some(pic) <- parseFlacPictureBlock(body)) {
+            let isFront = pic.picType == FLAC_PICTURE_TYPE_FRONT
+            if (bestPicture.isNone() || (isFront && !bestIsFront)) {
+                bestPicture = Some(pic)
+                bestIsFront = isFront
+            }
+        }
     }
 
     // PICTURE 块只为空封面兜底：注释头里的 METADATA_BLOCK_PICTURE 优先

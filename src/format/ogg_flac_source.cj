@@ -3,7 +3,6 @@ package audio4cj.format
 import audio4cj.core.CorruptedFileException
 import audio4cj.core.FormatNotSupportedException
 import audio4cj.pcm.readUInt32LE
-import std.fs.*
 
 /* ============================================================================
  * Ogg 封装的 FLAC —— 字节源（纯仓颉）
@@ -74,7 +73,8 @@ private let OGG_CRC_FIELD_OFFSET: Int64 = 22
 /// Ogg 封装的 FLAC 字节源。
 protected class OggFlacByteSource <: ByteSource {
     private let _path: String
-    private var _file: File
+    /// 页体字节来源（裸文件或内存 —— 与 FLAC 解码层同一抽象，见 byte_source.cj）。
+    private var _src: ByteSource
     private var _closed: Bool = false
 
     /// 选定逻辑流的 serial（文件中第一个带 BOS 的页面所属的流）。
@@ -94,14 +94,29 @@ protected class OggFlacByteSource <: ByteSource {
 
     protected init(path: String) {
         this._path = path
-        this._file = File(path, Read)
+        this._src = FileByteSource(path)
         try {
             startStream()
         } catch (e: Exception) {
             // 构造失败时该对象永远不会被使用者持有，也就没人能再调用 close()，
             // 句柄会随之泄漏（表现为该文件无法被删除或移动）。
             // 与 FlacFormatReader.init 处理同一类问题的方式一致。
-            this._file.close()
+            this._src.close()
+            throw e
+        }
+    }
+
+    /// 从**调用方提供的字节源**构造（openBytes 内存直通用）。
+    ///
+    /// 本类对源的要求只有顺序读（readSome / readExact）与 reopen —— 页重组
+    /// 从不回退，正好是 ByteSource（非 seekable）就够的最小面。源所有权移入。
+    protected init(source: ByteSource, path: String) {
+        this._path = path
+        this._src = source
+        try {
+            startStream()
+        } catch (e: Exception) {
+            source.close()
             throw e
         }
     }
@@ -177,8 +192,7 @@ protected class OggFlacByteSource <: ByteSource {
     }
 
     public func reopen(): Unit {
-        _file.close()
-        _file = File(_path, Read)
+        _src.reopen()
 
         // 源内部状态一并复位：否则会把上一个流的页缓存/选定 serial 带进来
         _serial = -1
@@ -195,7 +209,7 @@ protected class OggFlacByteSource <: ByteSource {
     public func close(): Unit {
         if (!_closed) {
             _closed = true
-            _file.close()
+            _src.close()
         }
     }
 
@@ -342,7 +356,7 @@ protected class OggFlacByteSource <: ByteSource {
         var got: Int64 = 0
         while (got < n) {
             let scratch = Array<UInt8>(n - got, repeat: 0)
-            let r = _file.read(scratch)
+            let r = _src.readSome(scratch)
             if (r <= 0) {
                 if (got == 0) {
                     return Array<UInt8>(0, repeat: 0)

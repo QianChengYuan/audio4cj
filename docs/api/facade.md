@@ -83,7 +83,7 @@ public static func open(path: String): AudioFile
 
 其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
 但异常信息会写明**具体的子编码**（如 `ogg/opus`），而不是笼统的"不支持"；这些容器的**标签**多数可用
-[`readTags`](#311-readtags静态m3-新增) 读取。
+[`readTags`](#312-readtags静态m3-新增) 读取。
 
 > **关于 Ogg-FLAC 的 `totalFrames`**：Ogg 封装 FLAC 的 `STREAMINFO` 常把总样本数写成 0
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
@@ -109,7 +109,31 @@ main() {
 }
 ```
 
-### 3.2 `path`
+### 3.2 `openBytes`（静态，v0.1.6 新增；v0.2.0 起全容器免落盘直通）
+
+```cangjie
+public static func openBytes(bytes: Array<UInt8>): AudioFile
+```
+
+从**内存字节**打开音频，语义与 [`open`](#31-open) 完全一致（探测 → 绑定后端），
+区别只在字节来源 —— **全程不触碰文件系统**。
+
+- 异常：`FormatNotSupportedException`、`CorruptedFileException`（**不会**抛
+  `FSException` —— 没有文件）；
+- 内存占用：传入数组（**持有不拷贝**）+ 有界解码窗口，与音频时长无关；
+- 标签照常可读：`metadata()` 在 FLAC 上走解码内核的标签块缓存（零 I/O），
+  MP3 / WAV / Ogg-FLAC 同样不依赖文件路径；
+- 路径标识：`path` 返回 `<memory:容器>` 形式的可读标识（如 `<memory:flac>`），
+  只用于错误信息与日志。
+
+```cangjie
+let bytes = readFromNetwork()          // 你的字节来源（HTTP 分片、asset 等）
+try (f = AudioFile.openBytes(bytes)) {
+    println(f.info().sampleRate)
+}
+```
+
+### 3.3 `path`
 
 ```cangjie
 public prop path: String
@@ -117,7 +141,7 @@ public prop path: String
 
 返回打开该文件时使用的路径（原样保存，不做规范化）。**只读属性**。
 
-### 3.3 `metadata`
+### 3.4 `metadata`
 
 ```cangjie
 public func metadata(): Tag
@@ -131,7 +155,7 @@ public func metadata(): Tag
 
 > M2 阶段该方法是占位实现，对 WAV 返回空 `Tag`；M3 落地后返回真实解析结果。
 
-### 3.4 `info`
+### 3.5 `info`
 
 ```cangjie
 public func info(): AudioInfo
@@ -148,7 +172,7 @@ try (f = AudioFile.open("./demo.wav")) {
 }
 ```
 
-### 3.5 `stream`
+### 3.6 `stream`
 
 ```cangjie
 public func stream(): FrameStream
@@ -163,7 +187,7 @@ public func stream(): FrameStream
 
 **抛出**：`ClosedResourceException`。
 
-### 3.6 `readAll`
+### 3.7 `readAll`
 
 ```cangjie
 public func readAll(maxFrames!: Int64 = 10_000_000): AudioBuffer
@@ -190,7 +214,7 @@ try (f = AudioFile.open("./short.wav")) {
 
 > ⚠️ **内存警告**：f32 交错下 44.1 kHz 立体声 **1 小时约 1.27 GB**。处理长音频请用 `stream()`。
 
-### 3.7 `readFrames`
+### 3.8 `readFrames`
 
 ```cangjie
 public func readFrames(count: Int64): AudioBuffer
@@ -212,7 +236,7 @@ try (f = AudioFile.open("./demo.wav")) {
 }
 ```
 
-### 3.8 `readAll` 与 `readFrames` 的副作用
+### 3.9 `readAll` 与 `readFrames` 的副作用
 
 **这是使用本类时最容易踩的坑**：
 
@@ -237,7 +261,7 @@ try (f = AudioFile.open("./demo.wav")) {
 - 若需「先 seek 再读取」，请**先 `seekTo()` 再 `readFrames()`**（顺序不能颠倒）；
 - 优先使用 `stream()` 并在 `try-with-resources` 中管理 `AudioFile`，不要手动关闭流。
 
-### 3.9 `seekTo`
+### 3.10 `seekTo`
 
 ```cangjie
 public func seekTo(timestampMs: Int64): Int64
@@ -258,7 +282,7 @@ public func seekTo(timestampMs: Int64): Int64
 | 对象已关闭 | `ClosedResourceException` |
 | 该格式不支持寻址 | `SeekNotSupportedException` |
 
-### 3.10 `isClosed` 与 `close`
+### 3.11 `isClosed` 与 `close`
 
 ```cangjie
 public func isClosed(): Bool
@@ -270,7 +294,7 @@ public func close(): Unit
 > `readAll()` / `readFrames()` 也会把关闭状态置位（它们读完即关闭共享 reader，详见 §3.8），
 > 因此调用过这两者之一后 `isClosed()` 返回 `true`。
 
-### 3.11 `readTags`（静态，M3 新增）
+### 3.12 `readTags`（静态，M3 新增）
 
 ```cangjie
 public static func readTags(path: String): Tag
@@ -331,7 +355,7 @@ main() {
 
 > **与 `metadata()` 的关系**：两者返回同一 `Tag` 模型。`metadata()` 需要先成功 `open()`（因而仅对可解码格式有效），`readTags()` 直连解析器、不依赖解码链路。对 WAV 而言两者结果一致（共用同一 INFO 解析）。
 
-### 3.11.1 `writeTags`（静态，v0.2.0 新增，安全子集）
+### 3.12.1 `writeTags`（静态，v0.2.0 新增，安全子集）
 
 ```cangjie
 public static func writeTags(path: String, tag: Tag): Unit
@@ -377,7 +401,7 @@ main() {
 > Vorbis 的自由键名……），盲目回写会写出无法可靠归属的字段。安全子集原则：不确定的部分宁可丢弃也不写错。
 > WAV / OGG / MP4 的写入尚未实现，调用即抛 `FormatNotSupportedException`。
 
-### 3.12 `format` 与 `tracks`（M6 新增）
+### 3.13 `format` 与 `tracks`（M6 新增）
 
 ```cangjie
 public func format(): FormatInfo

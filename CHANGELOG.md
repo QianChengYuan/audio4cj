@@ -16,6 +16,11 @@
 
 ### 新增
 
+- **`openBytes` 全容器免落盘直通**：FLAC 与 Ogg-FLAC 从内存字节打开时不再
+  写入临时文件（v0.2.0 上半程已覆盖 MP3 / WAV）。FLAC 解码内核在元数据扫描时
+  顺带缓存标签块（VORBIS_COMMENT / PICTURE），`metadata()` 零 I/O；Ogg 页重组
+  对字节源的要求本就只有顺序读 + reopen，内存源直接可用。内存占用：
+  传入数组（不拷贝）+ 有界解码窗口，与音频时长无关
 - **FLAC 标签写入**：`writeTags` 的支持范围从 MP3 扩展到 FLAC —— 载体为
   Vorbis comment 块（UTF-8 文本，封面走 `METADATA_BLOCK_PICTURE` 条目）。
   既有元数据块（STREAMINFO / SEEKTABLE / PICTURE / PADDING …）逐位保留，
