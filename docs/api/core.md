@@ -146,6 +146,7 @@ public class AudioInfo {
 | `bitDepth` | `Int64` | **源位深**：`16` / `24` / `32`；值 `32` 也用于表示 float32。**有损格式（如 MP3）恒为 32** —— 无源位深，该值表示「解码输出为 float32」，**不应**理解为 32 位整数 PCM |
 | `durationMs` | `Int64` | 时长（毫秒） |
 | `totalFrames` | `Int64` | 总帧数；**`-1` 表示不可知**（如无索引的流式来源） |
+| `durationEstimated` | `Bool` | 时长与总帧数是否为**估算值**（v0.2.0）。MP3 无 Xing/VBRI 锚点时按首帧比特率估算：CBR 准确、VBR 仅为近似，此时为 `true`，`durationMs` / `totalFrames` 不应用于精确展示（如进度条定位）。WAV / FLAC / Ogg-FLAC 从容器精确读出，恒为 `false` |
 
 > `totalFrames` 的 `-1` 是一个**哨兵值**而非 `Option`。判断时请显式检查 `>= 0`。
 
