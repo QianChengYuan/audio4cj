@@ -43,6 +43,14 @@ public class AudioInfo {
     /// 注意 joint stereo 与 stereo 的 channels 都是 2，但下游声道处理含义不同。
     public let channelMode: String
 
+    /// 时长与总帧数是否为**估算值**（v0.2.0）。
+    ///
+    /// MP3 无 Xing/VBRI 锚点时，总帧数按首帧比特率估算：CBR 下准确、VBR 下
+    /// 仅为近似。此字段为 `true` 时，`durationMs` / `totalFrames` 不可用于
+    /// 精确展示（如进度条定位），上层应自行提示"时长为估计值"。
+    /// WAV / FLAC / Ogg-FLAC 从容器精确读出，恒为 `false`。
+    public let durationEstimated: Bool
+
     public init(
         sampleRate: Int64,
         channels: Int64,
@@ -53,7 +61,8 @@ public class AudioInfo {
         isVbr!: Bool = false,
         mpegVersion!: String = "",
         layer!: Int64 = 0,
-        channelMode!: String = ""
+        channelMode!: String = "",
+        durationEstimated!: Bool = false
     ) {
         this.sampleRate = sampleRate
         this.channels = channels
@@ -65,6 +74,7 @@ public class AudioInfo {
         this.mpegVersion = mpegVersion
         this.layer = layer
         this.channelMode = channelMode
+        this.durationEstimated = durationEstimated
     }
 }
 

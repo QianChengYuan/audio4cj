@@ -6,6 +6,7 @@ import audio4cj.pcm.AudioBuffer
 import audio4cj.stream.AsyncFrameStream
 import std.collection.ArrayList
 import std.collection.concurrent.*
+import std.env.*
 import std.fs.*
 import std.sync.*
 import std.time.*
@@ -392,5 +393,60 @@ class ReviewFixRegressionTest {
         @Assert(part.frameCount > 0)
         @Assert(f.isClosed())
         @AssertThrows[ClosedResourceException](f.readFrames(100))
+    }
+
+    // -----------------------------------------------------------------
+    // 2026-10-21 审查修复回归
+    // -----------------------------------------------------------------
+
+    /// P2-1：`openBytes` 对损坏字节流抛异常时，临时文件必须被清理，
+    /// 不得在临时目录残留（历史缺陷：open() 失败时 _tempPath 尚未登记）。
+    @TestCase
+    func openBytesCleansTempFileOnFailure() {
+        // 无法识别的格式：open(tmp) 必然抛 FormatNotSupportedException
+        let junk: Array<UInt8> = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+            0x0E, 0x0F]
+
+        @AssertThrows[Audio4CjException](AudioFile.openBytes(junk))
+
+        // 临时目录里不得残留 audio4cj_*.tmp（用例运行前后都不该有）
+        let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        for (e in Directory.readFrom(dir)) {
+            @Assert(!e.name.startsWith("audio4cj_"))
+        }
+    }
+
+    /// P2-1 的正向路径：合法字节流 openBytes 成功后 close，临时文件同样被删除。
+    @TestCase
+    func openBytesSuccessPathAlsoCleansUp() {
+        let bytes = rfReadWhole("testdata/wav/wav_s16_44100_stereo.wav")
+        let f = AudioFile.openBytes(bytes)
+        @Assert(f.info().sampleRate > 0)
+        f.close()
+
+        let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        for (e in Directory.readFrom(dir)) {
+            @Assert(!e.name.startsWith("audio4cj_"))
+        }
+    }
+
+    /// P2-2：MP3 无 Xing/VBRI 锚点时，durationEstimated 必须为 true；
+    /// 有锚点（或非 MP3 格式）时必须为 false。
+    @TestCase
+    func durationEstimatedReflectsEstimation() {
+        // WAV / FLAC 从容器精确读出，恒为 false
+        try (f = AudioFile.open("testdata/wav/wav_s16_44100_stereo.wav")) {
+            @Assert(!f.info().durationEstimated)
+        }
+        try (f = AudioFile.open("testdata/flac/flac_s16_44100_stereo.flac")) {
+            @Assert(!f.info().durationEstimated)
+        }
+        // 无锚点的裸 MP3（由 mp3_cbr_128k.mp3 剥掉 Info 锚点帧构造，现成素材）
+        try (f = AudioFile.open("testdata/mp3/mp3_noanchor_cbr.mp3")) {
+            let info = f.info()
+            @Assert(info.durationEstimated)
+            @Assert(info.totalFrames > 0)
+            @Assert(info.durationMs > 0)
+        }
     }
 }

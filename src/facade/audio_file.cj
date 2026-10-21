@@ -129,13 +129,26 @@ public class AudioFile <: Resource {
     /// 实现：写入临时文件后走 `open(path)`——探测与各解码器当前都以文件为
     /// I/O 单元，临时文件是**务实桥接**；临时文件在本实例 close 时自动删除，
     /// 使用方无需感知。在线播放场景（网络字节 → 解码）由此免手工落盘管理。
+    ///
+    /// 失败路径（v0.2.0 修复）：`open(tmp)` 抛异常时临时文件尚未登记到
+    /// `_tempPath`，若不主动清理，用户连续换台/切歌会在临时目录堆积垃圾文件
+    /// ——这正是本 API 的高频使用场景。故 catch 后删除再 rethrow。
+    ///
+    /// 临时目录选取（v0.2.0 修复）：跨平台顺序为 `TMPDIR`（Linux/macOS 惯例）
+    /// → `TEMP` → `TMP`（Windows 惯例）→ 当前目录兜底；文件名混入时间戳，
+    /// 避免在多用户机器上出现固定可预测的文件名（symlink 攻击面）。
     public static func openBytes(bytes: Array<UInt8>): AudioFile {
-        let dir = getVariable("TEMP") ?? getVariable("TMP") ?? "."
-        let tmp = "${dir}/audio4cj_${_tmpSeq.fetchAdd(1)}.tmp"
+        let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        let tmp = "${dir}/audio4cj_${_tmpSeq.fetchAdd(1)}_${DateTime.now().toUnixTimeStamp().toMilliseconds()}.tmp"
         File.writeTo(Path(tmp), bytes)
-        let af = open(tmp)
-        af._tempPath = tmp
-        af
+        try {
+            let af = open(tmp)
+            af._tempPath = tmp
+            af
+        } catch (e: Exception) {
+            removeIfExists(Path(tmp))
+            throw e
+        }
     }
 
     /// 以 FLAC 读取器 + 解码器装配 `AudioFile`。

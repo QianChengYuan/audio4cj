@@ -140,7 +140,7 @@ tools/
 m0-poc/
 
 # ---------------------------------------------------------------------------
-# Python（历史素材生成脚本 sctiptr/*.py；现行来源是 scripts/gen_testdata.{sh,ps1}）
+# Python（素材生成脚本 scripts/*.py；现行来源是 scripts/gen_testdata.{sh,ps1}）
 # ---------------------------------------------------------------------------
 __pycache__/
 *.pyc
@@ -185,3 +185,6 @@ __pycache__/
 *.tmp
 Thumbs.db
 .DS_Store
+
+# JiuwenSwarm runtime file operation logs
+.agent_history/

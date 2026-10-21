@@ -67,7 +67,7 @@
 3. **不得试图把二进制塞进包**：`cjpm bundle` 不打包二进制（素材、库产物都不行），
    这是平台行为；包内测试不得依赖任何素材。
 4. **包内不得出现**：`开发文档/`、`.codebuddy/`、`.vscode/`、`tools/`、`m0-poc/`、`musics/`、
-   `sctiptr/`、`scripts/`、`config/`、`examples/`、`testdata/`、`target/`、`third-party/`、`libs/`、
+   `scripts/`、`scripts/`、`config/`、`examples/`、`testdata/`、`target/`、`third-party/`、`libs/`、
    内部工程文档（`docs/release.md`、`docs/codec-expansion-assessment.md`、
    `docs/decode-deviation-localization-evaluation.md`），以及本文件 `CODEBUDDY.md`。
 5. **发布**：`cjpm publish` 不可逆且无 dry-run，**只由维护者手动执行**，不放进 CI、不代跑。

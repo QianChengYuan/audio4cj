@@ -16,14 +16,14 @@
 #
 # 授权：本脚本生成的全部素材均由**合成信号**编码而来，不含任何第三方版权内容。
 #
-# 与仓库内 sctiptr/*.py 的关系：两者产出同一套素材（时长常量、标签字段、
+# 与仓库内 scripts/*.py 的关系：两者产出同一套素材（时长常量、标签字段、
 #   封面做法均对齐）。本脚本是**自包含**版本 —— 只依赖 ffmpeg，不依赖 Python，
 #   因而适合随包分发、供使用者直接运行。
 # ============================================================================
 set -euo pipefail
 
 OUT="${1:-testdata}"
-# 时长常量与 sctiptr/gen_audio_fixtures.py 严格对齐（改一处必须改另一处）
+# 时长常量与 scripts/gen_audio_fixtures.py 严格对齐（改一处必须改另一处）
 DUR_REF=3        # 参考信号时长（秒）
 DUR_MATRIX=1     # 位深 / 声道 / 采样率矩阵样本时长
 DUR_TAGGED=2     # 带标签样本时长（稍长，便于验证时长计算）
@@ -257,7 +257,7 @@ echo ">>> 生成 MANIFEST.tsv ..."
 {
   printf '# path\tcontainer\tcodec\n'
   printf '# 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，作为探测层识别矩阵测试的对照基准。\n'
-  printf '# container/codec 由本脚本按扩展名与文件名保守识别；权威值与原 sctiptr/gen_audio_fixtures.py 的 sniff() 一致（只有 Ogg 才带子编码）。\n'
+  printf '# container/codec 由本脚本按扩展名与文件名保守识别；权威值与原 scripts/gen_audio_fixtures.py 的 sniff() 一致（只有 Ogg 才带子编码）。\n'
   find "$OUT" -type f \( -name '*.wav' -o -name '*.flac' -o -name '*.mp3' \
        -o -name '*.ogg' -o -name '*.oga' -o -name '*.opus' -o -name '*.spx' \
        -o -name '*.aac' -o -name '*.m4a' \) | LC_ALL=C sort | while read -r f; do

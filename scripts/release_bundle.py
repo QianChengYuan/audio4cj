@@ -129,7 +129,7 @@ FORBIDDEN = [
     ("tools/", set()),  # 已废弃的 cjbind 开发工具
     ("m0-poc/", set()),  # M0 历史验证工程
     ("musics/", set()),  # 本机测试素材
-    ("sctiptr/", set()),  # 历史素材生成脚本（Python）
+    ("scripts/gen_audio_fixtures.py", set()),  # 历史素材生成脚本（Python）
     ("scripts/", set()),  # 开发者脚本（打包、素材生成、发布）一律不进包
     ("config/", set()),  # cjlint 规则集：只服务于仓库侧 CI，消费者不需要（同类已上架包均无此目录）
     ("examples/", set()),  # 示例工程（独立模块，消费者按需从仓库取）

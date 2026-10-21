@@ -109,7 +109,7 @@ CI 中由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) �
 | `开发文档/` | 内部设计留痕 |
 | `.vscode/` | 本机路径与用户名 |
 | `.codebuddy/` | 本机助手工作数据 |
-| `.github/`、`tools/`、`m0-poc/`、`musics/`、`sctiptr/` | 消费者不需要 |
+| `.github/`、`tools/`、`m0-poc/`、`musics/`、`scripts/` | 消费者不需要 |
 | `scripts/` | 开发者脚本（打包 / 素材生成 / 发布）一律不进包 |
 | `config/` | cjlint 规则集：只服务于仓库侧 CI，消费者不需要 |
 | `testdata/` | **测试素材不随包分发**（`cjpm bundle` 不打包二进制，机制上做不到；详见下节） |

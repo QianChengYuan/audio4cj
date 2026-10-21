@@ -39,8 +39,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 时长常量与 scripts/gen_testdata.sh、sctiptr/gen_audio_fixtures.py 严格对齐
-# （sctiptr/ 下的 Python 为**历史实现**，现行来源是这两个脚本；改一处必须改全）。
+# 时长常量与 scripts/gen_testdata.sh、scripts/gen_audio_fixtures.py 严格对齐
+# （scripts/ 下的 Python 为**历史实现**，现行来源是这两个脚本；改一处必须改全）。
 $DurRef    = 3   # 参考信号时长（秒）
 $DurMatrix = 1   # 位深 / 声道 / 采样率矩阵样本时长
 $DurTagged = 2   # 带标签样本时长（稍长，便于验证时长计算）
@@ -317,7 +317,7 @@ $sorted = [string[]]$relFiles
 $manifest = New-Object System.Collections.Generic.List[string]
 $manifest.Add("# path`tcontainer`tcodec")
 $manifest.Add("# 由 scripts/gen_testdata.sh 或 scripts/gen_testdata.ps1 生成，作为探测层识别矩阵测试的对照基准。")
-$manifest.Add("# container/codec 由本脚本按扩展名与文件名保守识别；权威值与原 sctiptr/gen_audio_fixtures.py 的 sniff() 一致（只有 Ogg 才带子编码）。")
+$manifest.Add("# container/codec 由本脚本按扩展名与文件名保守识别；权威值与原 scripts/gen_audio_fixtures.py 的 sniff() 一致（只有 Ogg 才带子编码）。")
 foreach ($rel in $sorted) {
     $c = ""
     $codec = ""

@@ -87,6 +87,9 @@ protected class Mp3FormatReader <: FormatReader {
     /// 有 LAME 头时为裁剪后的有效帧数（init 末尾收紧，故为 var）。
     private var _totalFrames: Int64
 
+    /// 总帧数是否为估算值（无 Xing/VBRI 时按首帧比特率估算）。
+    private let _durationEstimated: Bool
+
     /// 首帧锚点元数据（v0.1.6 起经 info() 暴露）
     private let _bitrateKbps: Int64
     private let _isVbr: Bool
@@ -173,10 +176,15 @@ protected class Mp3FormatReader <: FormatReader {
         this._sampleRate = a.sampleRate
         this._channels = a.channels
         var total = a.totalFrames
+        // 无 Xing/VBRI 锚点时按首帧比特率估算：CBR 准确，VBR 仅为近似，
+        // 经 durationEstimated 如实告知调用方（v0.2.0）。
+        var estimated = false
         if (total < 0) {
             total = estimateTotalFrames(this._file.length, a)
+            estimated = true
         }
         this._totalFrames = total
+        this._durationEstimated = estimated
         this._bitrateKbps = a.bitrateKbps
         this._isVbr = a.isVbr
         this._mpegVersion = a.mpegVersion
@@ -368,7 +376,7 @@ protected class Mp3FormatReader <: FormatReader {
 
         // bitDepth 恒为 32：有损格式不存在源位深，32 表示"输出为 float32"（见 AudioInfo 文档）
         AudioInfo(_sampleRate, _channels, 32, durationMs, _totalFrames, bitrateKbps: _bitrateKbps, isVbr: _isVbr,
-            mpegVersion: _mpegVersion, layer: _layer, channelMode: _channelMode)
+            mpegVersion: _mpegVersion, layer: _layer, channelMode: _channelMode, durationEstimated: _durationEstimated)
     }
 
     // ------------------------------------------------------------------
