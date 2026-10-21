@@ -218,9 +218,13 @@ func dumpExtras(tag: Tag): Unit {
 | FLAC `PICTURE` 块（封面） | ✅ 已实现 |
 | Speex 注释头 | ⏳ 未覆盖（见下） |
 | APE tag 解析 | ⏳ 未排期 |
-| 标签**写入** | ⏳ 未排期（本库只读） |
+| 标签**写入**（v0.2.0，安全子集） | ✅ MP3（ID3v2.3）/ FLAC（Vorbis comment）；其余容器不支持 —— 入口见 [facade.md 的 `writeTags`](facade.md#3111-writetags静态v020-新增安全子集) |
 
 ### 3.1 各体系的字段覆盖
+
+下表为**读取侧**的键名映射；写入侧（v0.2.0，MP3 / FLAC）使用同一行的键/帧名产生数据
+（如写入 FLAC 时 `year` 产 `DATE` 条目、`trackTotal` 与 `track` 合成 `TRACKNUMBER` 的 `n/total`），
+因此写读往返对表内全部标准字段成立。`extra` 与 WAV INFO / MP4 / ID3v1 体系**只读不写**。
 
 | `Tag` 字段 | ID3v2 | ID3v1 | Vorbis comment | WAV INFO | MP4 `ilst` |
 |---|---|---|---|---|---|
@@ -239,6 +243,7 @@ func dumpExtras(tag: Tag): Unit {
 
 ### 3.2 已知限制
 
+- **标签写入是安全子集**（v0.2.0）：只覆盖 MP3（ID3v2.3）与 FLAC（Vorbis comment）两个容器；只写**有值的标准字段**，`extra` 兜底字段不回写（键名体系歧义，宁可丢弃也不写错）；音频数据逐位保留，原子落盘。详见 [facade.md 的 `writeTags`](facade.md#3111-writetags静态v020-新增安全子集)；
 - **Speex 注释头未覆盖**：Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03"vorbis"` / `"OpusTags"`）都不同，因此对 Speex 返回**空 `Tag`**（不报错）；
 - **FLAC 封面的两条载体**：原生 FLAC 的 `PICTURE` 块（元数据块类型 6）与 Vorbis comment 的 `METADATA_BLOCK_PICTURE`（base64 编码的同一结构）**均已支持**，两者共用同一份解析实现。同一文件两者并存时**注释头优先、`PICTURE` 块补空**；同一文件有多个 `PICTURE` 块时 **front cover（图片类型 3）优先**，同类型先到者胜；
 - **封面条目不会被塞进 `extra`**：`METADATA_BLOCK_PICTURE` 的 base64 文本可达数十至数百 KB，且对使用者没有可用的文本语义 —— 解不出图片时**静默跳过**，而不是把它灌进 `Tag.extra`；

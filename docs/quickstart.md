@@ -225,7 +225,29 @@ main() {
 **无法识别**的容器（如 APE / WavPack）会抛 `FormatNotSupportedException`；
 容器可识别但无标签（如 Speex 的注释头尚未覆盖）则返回**空 `Tag`**，不抛异常。
 
-### 示例 7：异步流式读取（解码与消费并行）
+### 示例 7：写入标签（v0.2.0 新增）
+
+**MP3 与 FLAC** 支持 `writeTags`（安全子集）：只写标准字段，音频数据逐位保留，原子落盘：
+
+```cangjie
+import audio4cj.facade.AudioFile
+import audio4cj.meta.Tag
+
+main() {
+    let tag = Tag()
+    tag.title = "新歌名"
+    tag.artist = "新歌手"
+    tag.track = 3
+    tag.trackTotal = 12
+
+    AudioFile.writeTags("./song.mp3", tag)    // FLAC 同样支持
+}
+```
+
+写入后 `readTags(path)` 可读回一致的字段；连续写两次，第二次的值完整替换第一次。
+`extra` 兜底字段不回写；WAV / OGG / MP4 的写入暂不支持。
+
+### 示例 8：异步流式读取（解码与消费并行）
 
 `FrameStream` 是同步拉取——**调用 `next()` 时才解码**。如果消费侧较慢（写磁盘、重采样、推送设备），解码与消费就在互相等待。`AsyncFrameStream` 让解码在后台线程进行，用**有界队列**把数据交给消费线程，两侧并行；队列满时后台线程自动停下，这就是**背压**，内存占用由队列容量封顶。
 
@@ -249,7 +271,7 @@ main() {
 > 每块最多 16384 帧，立体声下约 128 KiB。因此 `queueCapacity: 4` 的内存上限约 0.5 MB，
 > **与音频总时长无关**。`close()` 会等待后台线程真正退出（不汇合会导致解码被静默截断）。
 
-### 示例 8：从 OGG / MP4 读标签（不需要能解码）
+### 示例 9：从 OGG / MP4 读标签（不需要能解码）
 
 `readTags()` **不要求容器可解码**。Ogg/Vorbis、Opus、MP4 这些尚不能解码的容器也能读出标签 —— 因为它们与可解码格式共用同一套解析器（Vorbis comment / `ilst` 原子）。
 

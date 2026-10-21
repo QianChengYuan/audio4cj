@@ -258,7 +258,55 @@ try (f = AudioFile.open("./song.flac")) {
 }
 ```
 
-## 六、完整示例：手工构造 PCM 并转换
+## 六、PCM 分析工具（v0.2.0 新增）
+
+纯 PCM 上层统计：峰值 / RMS / dBFS / LUFS / 波形峰值包络。全部为**纯函数**（无状态、可并发调用），
+空输入返回 0 值标量或空数组，**绝不抛异常**（统计空数据不是错误）。
+
+### 6.1 `PcmStats` 与 `analyzeBuffer`
+
+```cangjie
+public class PcmStats {
+    public let peak: Float64       // 峰值绝对值，[0.0, 1.0]
+    public let rms: Float64        // RMS 电平
+    public let peakDbfs: Float64   // 20*log10(peak)
+    public let rmsDbfs: Float64    // 20*log10(rms)
+    public let lufs: Float64       // 近似综合响度（简化口径，见下）
+    public let sampleCount: Int64  // 样本总数（含全部声道）
+}
+
+public func analyzeBuffer(buf: AudioBuffer): PcmStats
+public func analyzeSamples(samples: Array<Float32>, channels: Int64): PcmStats
+```
+
+| 字段 | 口径 |
+|---|---|
+| `peakDbfs` / `rmsDbfs` | dBFS 以满幅正弦（峰值 1.0）为 0 dB 参照；全零缓冲钳为 **-200.0**（避免负无穷不可序列化） |
+| `lufs` | **未加权简化**：`-0.691 + 10*log10(通道平均能量)`，按**帧数**归一（立体声与等电平单声道读数一致）。K 加权滤波（完整 ITU-R BS.1770）不在范围内 —— **广播级计量请外接专业库**，此值适合波形概览与相对比较 |
+
+```cangjie
+import audio4cj.pcm.*
+
+try (f = AudioFile.open("./song.flac")) {
+    let st = analyzeBuffer(f.readAll())
+    println("峰值 ${st.peakDbfs} dBFS，响度约 ${st.lufs} LUFS")
+}
+```
+
+### 6.2 `peakEnvelope`
+
+```cangjie
+public func peakEnvelope(buf: AudioBuffer, bins: Int64): Array<Float32>
+```
+
+波形峰值包络，面向 **UI 波形绘制**：把整个缓冲按帧均分为 `bins` 桶，每桶取所有声道样本的最大绝对值（[0.0, 1.0]）。
+帧数不足 `bins` 时点数自动缩到帧数；`bins <= 0` 或空缓冲返回空数组。
+
+```cangjie
+let env = peakEnvelope(buf, 200)   // 进度条宽度 200px → 200 个包络点
+```
+
+## 七、完整示例：手工构造 PCM 并转换
 
 ```cangjie
 import audio4cj.pcm.AudioBuffer

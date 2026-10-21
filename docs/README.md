@@ -151,7 +151,6 @@ try (f = AudioFile.open(path)) {
 | **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** |
 | **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。结论：在只接受宽许可依赖的前提下**无许可干净的候选库**（候选库的许可证均不合准入线：一个属传染性许可、一个是专有许可） |
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
-| **标签写入** | 无，只做读取 |
 | **Speex 的注释头** | 未覆盖。Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03vorbis` / `OpusTags`）都不同，`readTags` 对其返回**空 `Tag`**（不报错） |
 | **MP4 的 `moov` 位于文件中部** | 未覆盖。标签读取覆盖 `moov` 在**文件头**（faststart）与**文件尾**（主流封装工具的默认行为）两种布局；理论上 `moov` 只会在这两端，但若遇到中间布局的文件则读不到标签 |
 | **APE / WavPack 等容器的标签** | 未排期。`readTags` 对这些容器抛 `FormatNotSupportedException` |

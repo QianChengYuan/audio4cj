@@ -11,7 +11,9 @@
 ```cangjie
 public class AudioFile <: Resource {
     public static func open(path: String): AudioFile
+    public static func openBytes(bytes: Array<UInt8>): AudioFile
     public static func readTags(path: String): Tag
+    public static func writeTags(path: String, tag: Tag): Unit
     public prop path: String
     public func metadata(): Tag
     public func info(): AudioInfo
