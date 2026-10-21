@@ -14,8 +14,9 @@ public func flacBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<By
 
 - 输入：`AudioBuffer`（f32 交错，[-1.0, 1.0]，采样率/声道数取自 buffer）
 - 输出：完整 FLAC 文件映像（`fLaC` 头 + STREAMINFO + 逐帧），可直接写盘
-- `bitsPerSample`：目前仅支持 **16**（s16 口径，与 `wavBytes` 的缩放一致），
-  其余值抛 `Audio4CjException`；声道数超出 1..8 同样抛出
+- `bitsPerSample`：支持 **16 / 24**（s16 / s24 口径，与 `wavBytes` 的缩放一致：
+  v × 2^(bits−1)，向零截断 + 钳位），其余值抛 `Audio4CjException`；
+  声道数超出 1..8 同样抛出
 
 ### 编码策略
 
@@ -30,6 +31,7 @@ public func flacBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<By
 ### 已知边界
 
 - 压缩率低于 libFLAC（无立体声 left/side/right 联合编码、搜索阶有限）
+- 非 16/24 位深不支持（8/20/32 位抛 `Audio4CjException`）
 - 非实时：逐位写入有优化空间
 - 不做重采样：采样率直接透传
 
@@ -42,5 +44,6 @@ import std.fs.*
 try (f = AudioFile.open("in.wav")) {
     let buf = f.readAll()
     File.writeTo(Path("./out.flac"), flacBytes(buf, bitsPerSample: 16))
+    // 24 位：flacBytes(buf, bitsPerSample: 24)
 }
 ```

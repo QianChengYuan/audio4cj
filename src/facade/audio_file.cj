@@ -345,10 +345,21 @@ public class AudioFile <: Resource {
                 case Some(r) => r.close()
                 case None => ()
             }
-            if (_tempPath != "") {
-                removeIfExists(Path(_tempPath))
-                _tempPath = ""
-            }
+            removeTempFile()
+        }
+    }
+
+    /// 删除 openBytes 桥接用的临时文件（幂等）。
+    ///
+    /// 【为什么 close 之外 drain 也要调】readAll/readFrames 消费完即视为资源
+    /// 已释放（drain 里 s.close() 关掉共享 reader 后置 _closed）—— 但这只关了
+    /// 句柄；若此后使用者再调 close()，`if (!_closed)` 已不成立，临时文件的
+    /// 清理就被跳过了。清理必须挂在**所有**把对象置为已关闭的路径上，
+    /// 否则在线播放场景（openBytes + readAll 是其最典型组合）会持续泄漏临时文件。
+    private func removeTempFile(): Unit {
+        if (_tempPath != "") {
+            removeIfExists(Path(_tempPath))
+            _tempPath = ""
         }
     }
 
@@ -428,6 +439,7 @@ public class AudioFile <: Resource {
         // 自相矛盾（历史缺陷）。readAll/readFrames 是一次性便捷 API，
         // 消费完即视为资源已释放；需要继续分块读取请自行持有 stream()。
         _closed = true
+        removeTempFile()
 
         mergeChunks(chunks, sampleRate, channels, limitFrames)
     }

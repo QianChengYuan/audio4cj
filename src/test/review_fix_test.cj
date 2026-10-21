@@ -430,6 +430,25 @@ class ReviewFixRegressionTest {
         }
     }
 
+    /// P2-1 的补充路径（v0.2.0 修复）：readAll/readFrames 消费完即置 _closed
+    /// （drain 的"半关闭"），此后 close() 幂等跳过 —— 若清理只挂在 close 的
+    /// `if (!_closed)` 分支里，临时文件就会在此路径泄漏。实测：openBytes +
+    /// readAll + close 净残留 1 个 .tmp。清理必须挂在所有置关闭状态的路径上。
+    @TestCase
+    func openBytesReadAllPathAlsoCleansUp() {
+        let bytes = rfReadWhole("testdata/wav/wav_s16_44100_stereo.wav")
+        let f = AudioFile.openBytes(bytes)
+        let out = f.readAll()
+        @Assert(out.frameCount > 0)
+        // readAll 之后对象已"半关闭"，close() 是幂等收尾（也可能被使用者省略）
+        f.close()
+
+        let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        for (e in Directory.readFrom(dir)) {
+            @Assert(!e.name.startsWith("audio4cj_"))
+        }
+    }
+
     /// P2-2：MP3 无 Xing/VBRI 锚点时，durationEstimated 必须为 true；
     /// 有锚点（或非 MP3 格式）时必须为 false。
     @TestCase

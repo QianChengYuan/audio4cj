@@ -6,7 +6,7 @@
 //   - 定长分帧（4096 帧，尾帧允许更短）
 //   - 子帧类型自动择优：constant / verbatim / fixed 预测阶 0..4
 //   - 残差：单分区（分区阶 0）Rice 编码，k 参数按最小位长遍历 0..14
-//   - 位深：仅 16（s16 口径，与 wavBytes 的缩放一致）
+//   - 位深：16 / 24（s16 / s24 口径，与 wavBytes 的缩放一致）
 //   - CRC：帧头 CRC-8 / 帧 CRC-16 复用 format 包的 crc8Of / crc16Of
 //     （protected 同模块可见；表生成与解码侧同源，保证两侧一致）
 //
@@ -161,7 +161,14 @@ internal struct FixedPlan {
 private func pickFixedPlan(samples: Array<Int64>, count: Int64, bits: Int32): FixedPlan {
     var plan = FixedPlan()
     var bestCost: Int64 = Int64.Max
-    for (order in 0..5) {
+    // 预热样本 order 个 + 至少 1 个残差 → order ≤ count - 1；
+    // 短块（含尾块 < 5 帧）若仍按 0..4 遍历会对负长度分配数组而崩溃。
+    let maxOrder = if (count - 1 < 4) {
+        count - 1
+    } else {
+        4
+    }
+    for (order in 0..maxOrder + 1) {
         let res = Array<Int64>(count - order, repeat: 0)
         fixedResiduals(samples, count, order, res)
         let (k, cost) = bestRiceK(res, count - order)
@@ -275,7 +282,17 @@ private func encodeFrame(spec: FrameSpec): Array<Byte> {
     }
     hw.writeBits(13, 4) // 采样率：16 位 Hz 扩展在帧头末尾
     hw.writeBits(UInt64(spec.channels - 1), 4) // 独立声道分配
-    hw.writeBits(4, 3) // 位深 16
+
+    // 位深码（规范 §8.2 表 4）：000=取 STREAMINFO 值，001=8，010=12，
+    // 011=保留，100=16，101=20，110=24，111=32。
+    // 逐帧显式写出而不写 000，可让解码器不依赖 STREAMINFO 回看；
+    // 本库解码侧两种口径都支持（flac_frame.cj 的 sampleSizeCode 映射）。
+    let depthCode: UInt64 = match (spec.bits) {
+        case 16 => 4
+        case 24 => 6
+        case _ => throw Audio4CjException("flacBytes: 帧位深码缺失（${spec.bits} 位无对应编码）")
+    }
+    hw.writeBits(depthCode, 3)
     hw.writeBits(0, 1) // 保留位
     writeUtf8Number(hw, spec.frameIndex)
     // 帧尾扩展区（顺序：块大小扩展 → 采样率扩展，均在 CRC-8 之前）
@@ -311,7 +328,8 @@ private func encodeFrame(spec: FrameSpec): Array<Byte> {
 // ============================================================
 
 /// 组装文件头：fLaC 魔数 + STREAMINFO（最后一块元数据，MD5 置 0）
-private func buildStreamInfo(sampleRate: Int64, channels: Int64, frames: Int64, minBlock: Int64, maxBlock: Int64): Array<Byte> {
+private func buildStreamInfo(sampleRate: Int64, channels: Int64, frames: Int64, minBlock: Int64, maxBlock: Int64,
+    bitsPerSample: Int64): Array<Byte> {
     let head = BitWriter()
     head.writeBits(0x66, 8) // f
     head.writeBits(0x4C, 8) // L
@@ -326,7 +344,7 @@ private func buildStreamInfo(sampleRate: Int64, channels: Int64, frames: Int64, 
     head.writeBits(0, 24) // max framesize（未知）
     head.writeBits(UInt64(sampleRate), 20)
     head.writeBits(UInt64(channels - 1), 3)
-    head.writeBits(15, 5) // 位深 16 = (16 - 1)
+    head.writeBits(UInt64(bitsPerSample - 1), 5) // 位深：16 → 15，24 → 23
     head.writeBits(UInt64(frames), 36)
     // MD5 128 位（未计算，规范允许全 0）
     head.writeBits(0, 32)
@@ -379,7 +397,7 @@ private func encodeAllFrames(ints: Array<Int64>, frames: Int64, channels: Int64,
     return out
 }
 
-/// 把 f32 交错 PCM 编码为完整 FLAC 文件映像（16 位，s16 口径与 wavBytes 一致）。
+/// 把 f32 交错 PCM 编码为完整 FLAC 文件映像（16 / 24 位，口径与 wavBytes 一致）。
 ///
 /// 语义与边界：
 /// - 采样率/声道数取自 buffer；定长分帧 4096 帧，尾帧允许更短；子帧类型自动择优
@@ -387,10 +405,10 @@ private func encodeAllFrames(ints: Array<Int64>, frames: Int64, channels: Int64,
 ///   压缩率低于 libFLAC（无立体声联合编码、搜索阶有限），但格式完全合法
 ///
 /// 抛出：
-///   - 位深非 16，或声道数超出 1..8 → `Audio4CjException`
+///   - 位深非 16 / 24，或声道数超出 1..8 → `Audio4CjException`
 public func flacBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<Byte> {
-    if (bitsPerSample != 16) {
-        throw Audio4CjException("flacBytes: 目前仅支持 16 位编码（收到 ${bitsPerSample}）")
+    if (bitsPerSample != 16 && bitsPerSample != 24) {
+        throw Audio4CjException("flacBytes: 目前仅支持 16 / 24 位编码（收到 ${bitsPerSample}）")
     }
     let channels = buffer.channels
     if (channels < 1 || channels > 8) {
@@ -398,18 +416,23 @@ public func flacBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<By
     }
     let samples = buffer.samples
     let frames = buffer.frameCount
-    // f32 交错 [-1,1] → 16 位整数码样本（Int64 承载，帧内预测在整数域进行）
+    // f32 交错 [-1,1] → 整数码样本（Int64 承载，帧内预测在整数域进行）。
+    // 缩放口径与 convert.f32ToPcm 一致：v * 2^(bits-1)，正满量程表示为略小于 1.0
+    let scale = Float64(Int64(1) << (bitsPerSample - 1))
+    let posMax = scale - 1.0
+    let negMax = -scale
     let ints = Array<Int64>(samples.size, repeat: 0)
     for (i in 0..samples.size) {
-        var v = Float64(samples[i]) * 32768.0
-        if (v > 32767.0) {
-            v = 32767.0
+        var v = Float64(samples[i]) * scale
+        if (v > posMax) {
+            v = posMax
         }
-        if (v < -32768.0) {
-            v = -32768.0
+        if (v < negMax) {
+            v = negMax
         }
         ints[i] = Int64(v)
     }
+    let bits = Int32(bitsPerSample)
     // 规划分帧（STREAMINFO 的 min/max 块大小按实际值声明）
     let fullFrames = frames / FLAC_BLOCK_FRAMES
     let tail = frames % FLAC_BLOCK_FRAMES
@@ -424,10 +447,10 @@ public func flacBytes(buffer: AudioBuffer, bitsPerSample!: Int64 = 16): Array<By
         minBlock
     }
     var out = ArrayList<Byte>()
-    for (b in buildStreamInfo(buffer.sampleRate, channels, frames, minBlock, maxBlock)) {
+    for (b in buildStreamInfo(buffer.sampleRate, channels, frames, minBlock, maxBlock, bitsPerSample)) {
         out.add(b)
     }
-    let body = encodeAllFrames(ints, frames, channels, buffer.sampleRate, 16)
+    let body = encodeAllFrames(ints, frames, channels, buffer.sampleRate, bits)
     for (b in body) {
         out.add(b)
     }

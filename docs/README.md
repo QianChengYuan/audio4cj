@@ -50,6 +50,7 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | 🚧 进行中 |
 | **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 | **M8（0.1.5）** | **FLAC 编码**（新包 `audio4cj.encode`：`flacBytes`，16 位；roundtrip 逐样本零误差 + ffmpeg 交叉解码 MD5 一致） | ✅ 已完成 |
+| **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏） | ✅ 已完成 |
 
 ## 三、文档索引
 
