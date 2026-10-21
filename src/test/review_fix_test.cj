@@ -403,9 +403,11 @@ class ReviewFixRegressionTest {
     /// 不得在临时目录残留（历史缺陷：open() 失败时 _tempPath 尚未登记）。
     @TestCase
     func openBytesCleansTempFileOnFailure() {
-        // 无法识别的格式：open(tmp) 必然抛 FormatNotSupportedException
-        let junk: Array<UInt8> = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-            0x0E, 0x0F]
+        // 探测可通过（"fLaC" 头）但打开必失败的截断字节：走到临时文件桥接路径，
+        // open(tmp) 抛异常后 catch 分支必须删除临时文件。
+        // （v0.2.0 ByteSource 泛化后 MP3/WAV 已免落盘直通，只有 FLAC 系仍走桥接，
+        // 因此守护素材必须选 FLAC。）
+        let junk = rfPrefix(rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac"), 24)
 
         @AssertThrows[Audio4CjException](AudioFile.openBytes(junk))
 
@@ -419,7 +421,8 @@ class ReviewFixRegressionTest {
     /// P2-1 的正向路径：合法字节流 openBytes 成功后 close，临时文件同样被删除。
     @TestCase
     func openBytesSuccessPathAlsoCleansUp() {
-        let bytes = rfReadWhole("testdata/wav/wav_s16_44100_stereo.wav")
+        // FLAC 仍走临时文件桥接（MP3/WAV 已内存直通，不产生临时文件）
+        let bytes = rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         let f = AudioFile.openBytes(bytes)
         @Assert(f.info().sampleRate > 0)
         f.close()
@@ -436,7 +439,8 @@ class ReviewFixRegressionTest {
     /// readAll + close 净残留 1 个 .tmp。清理必须挂在所有置关闭状态的路径上。
     @TestCase
     func openBytesReadAllPathAlsoCleansUp() {
-        let bytes = rfReadWhole("testdata/wav/wav_s16_44100_stereo.wav")
+        // FLAC 仍走临时文件桥接（MP3/WAV 已内存直通，不产生临时文件）
+        let bytes = rfReadWhole("testdata/flac/flac_s16_44100_stereo.flac")
         let f = AudioFile.openBytes(bytes)
         let out = f.readAll()
         @Assert(out.frameCount > 0)
@@ -447,6 +451,49 @@ class ReviewFixRegressionTest {
         for (e in Directory.readFrom(dir)) {
             @Assert(!e.name.startsWith("audio4cj_"))
         }
+    }
+
+    /// ByteSource 泛化（v0.2.0）：MP3 / WAV 的 openBytes 免落盘直通。
+    ///
+    /// 守护口径：打开前后临时目录的 `audio4cj_` 文件数**不增**（旧实现每会话
+    /// 净增 1，直到 close；直通后应为 0 增长），且解码结果与文件路径打开一致。
+    @TestCase
+    func openBytesMp3WavNoTempFile() {
+        let dir = getVariable("TMPDIR") ?? getVariable("TEMP") ?? getVariable("TMP") ?? "."
+        let countBefore = countTempFiles(dir)
+
+        // MP3：直通路径
+        let mp3 = AudioFile.openBytes(rfReadWhole("testdata/mp3/mp3_cbr_128k.mp3"))
+        @Assert(mp3.info().sampleRate > 0)
+        let mp3Frames = mp3.readAll().frameCount
+        mp3.close()
+        // 与文件路径打开的解码结果交叉验证（同一份字节，帧数必须一致）
+        try (f = AudioFile.open("testdata/mp3/mp3_cbr_128k.mp3")) {
+            @Expect(f.readAll().frameCount, mp3Frames)
+        }
+
+        // WAV：直通路径（含 metadata 的 LIST/INFO 解析）
+        let wav = AudioFile.openBytes(rfReadWhole("testdata/wav/wav_s16_44100_stereo.wav"))
+        @Assert(wav.info().sampleRate > 0)
+        @Assert(wav.metadata().title.isNone() || wav.metadata().title.isSome()) // metadata() 不抛异常即达意
+        let wavFrames = wav.readAll().frameCount
+        wav.close()
+        try (f = AudioFile.open("testdata/wav/wav_s16_44100_stereo.wav")) {
+            @Expect(f.readAll().frameCount, wavFrames)
+        }
+
+        @Expect(countTempFiles(dir), countBefore)
+    }
+
+    /// 临时目录里 `audio4cj_` 前缀文件数（openBytes 桥接文件的前缀约定）。
+    private func countTempFiles(dir: String): Int64 {
+        var n: Int64 = 0
+        for (e in Directory.readFrom(dir)) {
+            if (e.name.startsWith("audio4cj_")) {
+                n += 1
+            }
+        }
+        n
     }
 
     /// P2-2：MP3 无 Xing/VBRI 锚点时，durationEstimated 必须为 true；

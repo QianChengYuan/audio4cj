@@ -22,7 +22,7 @@ import std.io.*
  * ========================================================================== */
 private let APE_MAGIC_SIZE: Int64 = 8
 private let APE_FOOTER_SIZE: Int64 = 32
-private let APE_SCAN_LIMIT: Int64 = 1024 * 1024
+protected let APE_SCAN_LIMIT: Int64 = 1024 * 1024
 
 /// 解析 APEv2 tag 数据（自 header 起的完整字节），失败返回空 Tag。
 protected func parseApev2(data: Array<UInt8>): Tag {
@@ -181,25 +181,41 @@ protected func readApev2FromFile(path: String): Tag {
         if (got < APE_FOOTER_SIZE * 2) {
             return result
         }
-        let win = safeSlice(tail, 0, got)
-        // 自后向前找合法 footer：magic 匹配 + size 声明的 tag 完整落在窗口内
-        var off = Int64(win.size) - APE_MAGIC_SIZE
-        while (off >= 0) {
-            if (win[off] == 0x41 && win[off + 1] == 0x50 && win[off + 2] == 0x45 && win[off + 3] == 0x54 &&
-                win[off + 4] == 0x41 && win[off + 5] == 0x47 && win[off + 6] == 0x45 && win[off + 7] == 0x58) {
-                // footer 结构：magic(8)+version(4)+size(4)+count(4)+flags(4)+rsv(8)
-                let declared = readU32LeAt(win, off + 12)
-                let count = readU32LeAt(win, off + 16)
-                if (declared > APE_FOOTER_SIZE * 2 && declared <= off + APE_FOOTER_SIZE && count > 0 && count <= 10000) {
-                    let tagStart = off + APE_FOOTER_SIZE - declared
-                    if (tagStart >= 0) {
-                        result = parseApev2(safeSlice(win, tagStart, off + APE_FOOTER_SIZE))
-                        return result
-                    }
+        result = apev2TagFromTailWindow(safeSlice(tail, 0, got))
+    }
+
+    result
+}
+
+/// 在**文件尾部窗口**内自后向前查找合法 APEv2 footer 并解析；找不到返回空 Tag。
+///
+/// 窗口约定：`win` 是文件末尾一段连续字节（长度 ≤ APE_SCAN_LIMIT，且 ≥
+/// APE_FOOTER_SIZE * 2 才可能有完整 footer）。窗口内的扫描与解析是纯函数 ——
+/// 文件级读取（readApev2FromFile）与内存源读取（MP3 reader 的 metadata，
+/// ByteSource 泛化）共用这一份实现。
+protected func apev2TagFromTailWindow(win: Array<UInt8>): Tag {
+    var result = Tag()
+    if (win.size < APE_FOOTER_SIZE * 2) {
+        return result
+    }
+
+    // 自后向前找合法 footer：magic 匹配 + size 声明的 tag 完整落在窗口内
+    var off = Int64(win.size) - APE_MAGIC_SIZE
+    while (off >= 0) {
+        if (win[off] == 0x41 && win[off + 1] == 0x50 && win[off + 2] == 0x45 && win[off + 3] == 0x54 && win[off + 4] ==
+            0x41 && win[off + 5] == 0x47 && win[off + 6] == 0x45 && win[off + 7] == 0x58) {
+            // footer 结构：magic(8)+version(4)+size(4)+count(4)+flags(4)+rsv(8)
+            let declared = readU32LeAt(win, off + 12)
+            let count = readU32LeAt(win, off + 16)
+            if (declared > APE_FOOTER_SIZE * 2 && declared <= off + APE_FOOTER_SIZE && count > 0 && count <= 10000) {
+                let tagStart = off + APE_FOOTER_SIZE - declared
+                if (tagStart >= 0) {
+                    result = parseApev2(safeSlice(win, tagStart, off + APE_FOOTER_SIZE))
+                    return result
                 }
             }
-            off -= 1
         }
+        off -= 1
     }
 
     result

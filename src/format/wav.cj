@@ -41,7 +41,7 @@ private let MAX_INFO_CHUNK_SIZE: Int64 = 1024 * 1024
 /// WAV 容器的 FormatReader 实现。
 protected class WavFormatReader <: FormatReader {
     private let _path: String
-    private var _file: File
+    private var _src: SeekableByteSource
 
     /// wFormatTag：1 = PCM 整型，3 = IEEE float，0xFFFE = extensible
     private var _audioFormat: Int64 = 0
@@ -64,8 +64,15 @@ protected class WavFormatReader <: FormatReader {
 
     /// 打开并解析 WAV 头。文件不存在或结构非法时抛出异常。
     public init(path: String) {
+        this(FileByteSource(path), path)
+    }
+
+    /// 从现成字节源打开（ByteSource 泛化：`openBytes` 走 MemoryByteSource 直通）。
+    ///
+    /// `path` 仅用于错误信息；内存源传一个可读的标识即可。
+    public init(source: SeekableByteSource, path: String) {
         this._path = path
-        this._file = File(path, Read)
+        this._src = source
         parseHeader()
     }
 
@@ -99,8 +106,8 @@ protected class WavFormatReader <: FormatReader {
         }
 
         let buf = Array<UInt8>(aligned, repeat: 0)
-        _file.seek(SeekPosition.Begin(_dataOffset + _bytesConsumed))
-        let got = _file.read(buf)
+        _src.seekTo(_dataOffset + _bytesConsumed)
+        let got = _src.readSome(buf)
         if (got <= 0) {
             return None // 意外 EOF：按流结束处理
         }
@@ -160,8 +167,8 @@ protected class WavFormatReader <: FormatReader {
         }
 
         let body = Array<UInt8>(size, repeat: 0)
-        _file.seek(SeekPosition.Begin(bodyOffset))
-        let got = _file.read(body)
+        _src.seekTo(bodyOffset)
+        let got = _src.readSome(body)
         if (got < 4) {
             return
         }
@@ -200,7 +207,7 @@ protected class WavFormatReader <: FormatReader {
     public func close(): Unit {
         if (!_closed) {
             _closed = true
-            _file.close()
+            _src.close()
         }
     }
 
@@ -254,8 +261,8 @@ protected class WavFormatReader <: FormatReader {
     private func parseHeader(): Unit {
         // ---- 1. RIFF 头（12 字节）----
         let riff = Array<UInt8>(12, repeat: 0)
-        _file.seek(SeekPosition.Begin(0))
-        if (_file.read(riff) < 12) {
+        _src.seekTo(0)
+        if (_src.readSome(riff) < 12) {
             throw CorruptedFileException("文件过短，不是合法 WAV（${_path}）")
         }
         if (!matchTag(riff, 0, "RIFF") || !matchTag(riff, 8, "WAVE")) {
@@ -276,8 +283,8 @@ protected class WavFormatReader <: FormatReader {
             guard += 1
 
             let ch = Array<UInt8>(8, repeat: 0)
-            _file.seek(SeekPosition.Begin(offset))
-            if (_file.read(ch) < 8) {
+            _src.seekTo(offset)
+            if (_src.readSome(ch) < 8) {
                 break
             }
             let size = Int64(readUInt32LE(ch, 4))
@@ -291,8 +298,8 @@ protected class WavFormatReader <: FormatReader {
                     throw CorruptedFileException("fmt chunk 长度异常：${size}")
                 }
                 let fmt = Array<UInt8>(size, repeat: 0)
-                _file.seek(SeekPosition.Begin(bodyOffset))
-                let got = _file.read(fmt)
+                _src.seekTo(bodyOffset)
+                let got = _src.readSome(fmt)
                 if (got < 16) {
                     throw CorruptedFileException("fmt chunk 内容不完整")
                 }
@@ -321,6 +328,13 @@ protected class WavFormatReader <: FormatReader {
 
             // 奇数长度后有 1 字节填充
             offset = bodyOffset + size + (size % 2)
+
+            // chunk 链已越过文件末尾（尾部残缺的截断文件）：立即停止扫描。
+            // 原 File 实现里 seek 越界是容许的（后续 read 返回 0 触发 break），
+            // ByteSource 的 seekTo 按契约对越界抛异常，此处转为正常终止。
+            if (offset > _src.length()) {
+                break
+            }
         }
 
         if (!fmtSeen) {

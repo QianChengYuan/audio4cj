@@ -14,7 +14,7 @@ import std.collection.ArrayList
  *   它负责：元数据解析、窗口回填、按请求帧数交付、seek。
  *   它**不含**任何 FLAC 算法 —— 算法全在 flac_frame.cj，且已与外部基准逐样本对齐。
  *
- * 【字节从哪里来：本文件不认识"文件"，只认识 FlacByteSource】
+ * 【字节从哪里来：本文件不认识"文件"，只认识 ByteSource】
  *   "字节来自裸文件还是 Ogg 页体"是**容器**问题，不是解码问题，故抽到
  *   flac_source.cj（接口 + 裸文件实现）与 ogg_flac_source.cj（Ogg 实现）。
  *   于是同一份解码逻辑同时服务原生 FLAC 与 Ogg 封装的 FLAC，两者不再各写一套。
@@ -156,7 +156,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     private var _sourceExhausted: Bool = false
 
     /// 字节来源（原生裸文件，或 Ogg 页体重建流）—— 本类不关心是哪一种。
-    private var _source: FlacByteSource
+    private var _source: ByteSource
     private var _closed: Bool = false
 
     /// pending：上一帧未能交付的交错 f32 样本，及其已读位置。
@@ -172,7 +172,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
         this._path = path
 
         // 容器差异**只体现在这一处**：字节是裸文件本身，还是 Ogg 页体的重建流
-        let source: FlacByteSource = if (oggWrapped) {
+        let source: ByteSource = if (oggWrapped) {
             OggFlacByteSource(path)
         } else {
             FileByteSource(path)
@@ -200,7 +200,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 构造失败的实例永远不会被使用者持有，也就没人能再调用 close()，
     /// 句柄会随之泄漏 —— 表现为该文件无法被删除或移动（FlacFormatReader.init
     /// 的注释记录了同一类现象）。把清理收在这里，init 因而保持一条直线。
-    private static func readMetadataOrClose(source: FlacByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+    private static func readMetadataOrClose(source: ByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
         let parsed = try {
             PureFlacKernel.readMetadata(source)
         } catch (e: Exception) {
@@ -214,7 +214,7 @@ protected class PureFlacKernel <: FlacDecodeKernel {
     /// 返回时**源的读取位置**恰好落在首帧起点。
     ///
     /// SEEKTABLE 是可选块：没有时返回空列表，seek 退化为从头解码（正确性不受影响）。
-    private static func readMetadata(source: FlacByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
+    private static func readMetadata(source: ByteSource): (FlacStreamInfo, Int64, ArrayList<FlacSeekPoint>) {
         // 标记 + 首块头（复用经过测试的 parseStreamInfo，故按它期望的布局拼接）
         let prefix = source.readExact(FLAC_MARKER_SIZE + 4)
         let firstLen = (Int64(prefix[FLAC_MARKER_SIZE + 1]) << 16) | (Int64(prefix[FLAC_MARKER_SIZE + 2]) << 8) | Int64(prefix[FLAC_MARKER_SIZE +

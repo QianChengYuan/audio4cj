@@ -55,16 +55,16 @@ private func estimateTotalFrames(fileSize: Int64, anchor: Mp3Anchor): Int64 {
 /// 不允许调用实例方法**。init 里就要预读首帧以解析锚点，因此这项操作
 /// 只能以"只依赖入参"的形式存在。
 ///
-/// 注意 `File.read` 只能从数组**起始处**写入，故分次读取需经临时缓冲拼接。
-private func mp3FillWindow(file: File, buf: Array<UInt8>, len: Int64): (Int64, Bool) {
+/// 注意读取只能从数组**起始处**写入，故分次读取需经临时缓冲拼接。
+private func mp3FillWindow(src: ByteSource, buf: Array<UInt8>, len: Int64): (Int64, Bool) {
     var n = len
     var eof = false
     while (n < buf.size && !eof) {
-        // 直接把文件读进窗口尾部：`buf[n..]` 是**共享视图**（不是拷贝），
+        // 直接把数据读进窗口尾部：`buf[n..]` 是**共享视图**（不是拷贝），
         // 因此既不需要临时数组、也不需要逐字节搬运。原先每读一次都要
         // 分配一块 `want` 大小（最大 64 KB）的临时数组再把内容逐字节拷进窗口，
         // 而这是**每帧**一次的量级 —— 实测流层占了墙钟近四成（见文档性能节）。
-        let r = file.read(buf.slice(n, buf.size - n))
+        let r = src.readSome(buf.slice(n, buf.size - n))
         if (r <= 0) {
             eof = true
             break
@@ -77,7 +77,7 @@ private func mp3FillWindow(file: File, buf: Array<UInt8>, len: Int64): (Int64, B
 /// MP3 容器的 FormatReader 实现。
 protected class Mp3FormatReader <: FormatReader {
     private let _path: String
-    private var _file: File
+    private var _src: SeekableByteSource
     private let _dec: Mp3Dec
 
     private let _sampleRate: Int64
@@ -125,14 +125,21 @@ protected class Mp3FormatReader <: FormatReader {
 
     /// 打开文件并解析首帧锚点。数据里没有合法帧、或不是 Layer III 时抛异常。
     protected init(path: String) {
-        this._path = path
-        this._file = File(path, Read)
+        this(FileByteSource(path), path)
+    }
 
-        // 若文件以 ID3v2 开头，跳过标签区再预读锚点窗：
+    /// 从现成字节源打开（ByteSource 泛化：`openBytes` 走 MemoryByteSource 直通）。
+    ///
+    /// `path` 仅用于错误信息与关闭后的提示文案；内存源传一个可读的标识即可。
+    protected init(source: SeekableByteSource, path: String) {
+        this._path = path
+        this._src = source
+
+        // 若数据以 ID3v2 开头，跳过标签区再预读锚点窗：
         // 内嵌大封面（APIC）可把标签推到 64KB 预读窗之外——实测一张 80KB 的
         // ID3v2 使窗口内没有任何音频帧，帧同步报"找不到合法帧"（误报损坏）。
         let head = Array<UInt8>(10, repeat: 0)
-        let hn = this._file.read(head)
+        let hn = this._src.readSome(head)
         if (hn >= 10 && head[0] == 0x49 && head[1] == 0x44 && head[2] == 0x33) { // "ID3"
             // 标签大小为 4×7bit syncsafe 整数；v2.4 可选 10 字节 footer（flags bit4）
             let sz = (Int64(head[6] & 0x7F) << 21) | (Int64(head[7] & 0x7F) << 14) | (Int64(head[8] & 0x7F) << 7) |
@@ -143,9 +150,9 @@ protected class Mp3FormatReader <: FormatReader {
                 0
             }
             this._audioStart = 10 + sz + footer
-            this._file.seek(SeekPosition.Begin(this._audioStart))
+            this._src.seekTo(this._audioStart)
         } else if (hn > 0) {
-            this._file.seek(SeekPosition.Begin(0))
+            this._src.seekTo(0)
         }
 
         let buf = Array<UInt8>(MP3_WINDOW_BYTES, repeat: 0)
@@ -154,7 +161,7 @@ protected class Mp3FormatReader <: FormatReader {
         mp3DecInit(dec)
 
         // 预读首窗以解析锚点（此时仍不可调用实例方法，故走顶层函数）
-        let (filled, eof) = mp3FillWindow(this._file, buf, 0)
+        let (filled, eof) = mp3FillWindow(this._src, buf, 0)
         this._buf = buf
         this._pcm = pcm
         this._dec = dec
@@ -163,13 +170,13 @@ protected class Mp3FormatReader <: FormatReader {
 
         let anchor = mp3ParseAnchor(this._buf, this._bufLen)
         if (anchor.isNone()) {
-            // 构造失败必须**先关句柄再抛**（本项目既有教训：否则文件被占用无法删除）
-            this._file.close()
+            // 构造失败必须**先关源再抛**（本项目既有教训：否则文件被占用无法删除）
+            this._src.close()
             throw CorruptedFileException("MP3 数据中找不到合法帧：${path}")
         }
         let a = anchor.getOrThrow()
         if (a.layer != 3) {
-            this._file.close()
+            this._src.close()
             throw FormatNotSupportedException("MP3 解码仅支持 Layer III（检出 Layer ${a.layer}）：${path}")
         }
 
@@ -180,7 +187,7 @@ protected class Mp3FormatReader <: FormatReader {
         // 经 durationEstimated 如实告知调用方（v0.2.0）。
         var estimated = false
         if (total < 0) {
-            total = estimateTotalFrames(this._file.length, a)
+            total = estimateTotalFrames(this._src.length(), a)
             estimated = true
         }
         this._totalFrames = total
@@ -357,12 +364,61 @@ protected class Mp3FormatReader <: FormatReader {
         _framesConsumed * 1000 / _sampleRate
     }
 
-    /// 读取标签：委托 meta 层的文件级读取（与 `AudioFile.readTags` 共用同一实现）。
+    /// 读取标签：从字节源读头/尾窗口，交 meta 层纯函数解析（v0.2.0 ByteSource 泛化）。
     ///
     /// 无标签时返回**空 Tag**（各字段为 None），绝不返回 None。
+    ///
+    /// 【为什么保存/恢复源位置】读取窗口会把源位置拨到别处；而解码窗口的
+    /// 逻辑推进（refill）依赖源当前的顺序位置 —— 不恢复则下一次 refill
+    /// 从标签区读数据，结果是静默的错位音频。
     public func metadata(): Tag {
         checkOpen()
-        readMp3TagsFromFile(_path)
+
+        let savedPos = _src.pos()
+        var head = Array<UInt8>()
+        var tail = Array<UInt8>()
+        let size = _src.length()
+
+        // 头窗口：覆盖完整 ID3v2（上限 ID3V2_MAX_TAG_SIZE）
+        let headLen = if (size < ID3V2_MAX_TAG_SIZE) {
+            size
+        } else {
+            ID3V2_MAX_TAG_SIZE
+        }
+        if (headLen > 0) {
+            _src.seekTo(0)
+            head = tryReadWindow(headLen)
+        }
+        // 尾窗口：覆盖 APEv2 扫描窗（APE_SCAN_LIMIT）；ID3v1 的 128 字节必然在内
+        let tailLen = if (size < APE_SCAN_LIMIT) {
+            size
+        } else {
+            APE_SCAN_LIMIT
+        }
+        if (tailLen > 0 && size > tailLen) {
+            _src.seekTo(size - tailLen)
+            tail = tryReadWindow(tailLen)
+        } else if (tailLen > 0) {
+            // 文件比尾窗还短：头窗口已覆盖全文，直接复用
+            tail = head
+        }
+
+        _src.seekTo(savedPos)
+        mp3TagsFromWindows(head, tail)
+    }
+
+    /// 从源当前位置尽量读满 n 字节（EOF 处按实际返回）。
+    private func tryReadWindow(n: Int64): Array<UInt8> {
+        let buf = Array<UInt8>(n, repeat: 0)
+        var got: Int64 = 0
+        while (got < n) {
+            let r = _src.readSome(buf.slice(got, n - got))
+            if (r <= 0) {
+                break
+            }
+            got += r
+        }
+        safeSlice(buf, 0, got)
     }
 
     public func info(): AudioInfo {
@@ -387,11 +443,11 @@ protected class Mp3FormatReader <: FormatReader {
         _closed
     }
 
-    /// 释放资源（幂等）：关闭文件句柄。
+    /// 释放资源（幂等）：关闭字节源。
     public func close(): Unit {
         if (!_closed) {
             _closed = true
-            _file.close()
+            _src.close()
         }
     }
 
@@ -418,7 +474,7 @@ protected class Mp3FormatReader <: FormatReader {
     /// 补齐窗口数据（已到流末尾时为空操作）。
     private func refill(): Unit {
         if (!_eof) {
-            let (n, e) = mp3FillWindow(_file, _buf, _bufLen)
+            let (n, e) = mp3FillWindow(_src, _buf, _bufLen)
             _bufLen = n
             _eof = e
         }
@@ -437,12 +493,11 @@ protected class Mp3FormatReader <: FormatReader {
         _bufLen = left
     }
 
-    /// 重开文件并把解码器与窗口复位到流起点（向后定位用）。
+    /// 回到流起点并把解码器与窗口复位（向后定位用）。
     private func rewind(): Unit {
-        _file.close()
-        _file = File(_path, Read)
+        _src.reopen()
         if (_audioStart > 0) {
-            _file.seek(SeekPosition.Begin(_audioStart))
+            _src.seekTo(_audioStart)
         }
         _bufLen = 0
         _eof = false

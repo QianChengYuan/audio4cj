@@ -89,7 +89,86 @@ protected func readId3v1FromFile(path: String): Tag {
 /// MP3 标签：ID3v2（文件头）> APEv2（文件尾，v0.1.6 起支持）> ID3v1（文件尾 128 字节），
 /// 逐字段回填（primary 优先、fallback 补空）。
 protected func readMp3TagsFromFile(path: String): Tag {
-    mergeTags(readId3v2FromFile(path), mergeTags(readApev2FromFile(path), readId3v1FromFile(path)))
+    var head = Array<UInt8>()
+    var tail = Array<UInt8>()
+    try (f = File(path, Read)) {
+        let size = f.length
+        // 头窗口：覆盖完整 ID3v2（上限 ID3V2_MAX_TAG_SIZE）
+        let headLen = if (size < ID3V2_MAX_TAG_SIZE) {
+            size
+        } else {
+            ID3V2_MAX_TAG_SIZE
+        }
+        if (headLen > 0) {
+            let hb = Array<UInt8>(headLen, repeat: 0)
+            let got = f.read(hb)
+            head = safeSlice(hb, 0, got)
+        }
+        // 尾窗口：覆盖 APEv2 扫描窗（APE_SCAN_LIMIT）；ID3v1 的 128 字节必然在内
+        let tailLen = if (size < APE_SCAN_LIMIT) {
+            size
+        } else {
+            APE_SCAN_LIMIT
+        }
+        if (tailLen > 0) {
+            f.seek(SeekPosition.End(-tailLen))
+            let tb = Array<UInt8>(tailLen, repeat: 0)
+            let got = f.read(tb)
+            tail = safeSlice(tb, 0, got)
+        }
+    }
+    mp3TagsFromWindows(head, tail)
+}
+
+/// 从「文件头部窗口 + 尾部窗口」解析 MP3 的三段标签（ID3v2 / APEv2 / ID3v1）。
+///
+/// 窗口约定：
+///   - `head`：文件**开头**的连续字节（长度任意；ID3v2 判定用前 10 字节，
+///     标签体超过窗口长度时按窗口截断 —— 与文件级读取的 16 MB 上限口径一致）；
+///   - `tail`：文件**末尾**的连续字节（APEv2 扫描 + ID3v1 的载体；长度不足
+///     时相应标签自然落空）。
+///
+/// 这是纯函数 —— 文件级读取（readMp3TagsFromFile）与内存源读取（MP3 reader
+/// 的 `metadata()`，见 ByteSource 泛化）共用同一份实现，保证两条路径行为一致。
+protected func mp3TagsFromWindows(head: Array<UInt8>, tail: Array<UInt8>): Tag {
+    mergeTags(id3v2TagFromHeadWindow(head), mergeTags(apev2TagFromTailWindow(tail), id3v1TagFromTailWindow(tail)))
+}
+
+/// 从文件头部窗口解析 ID3v2；无标签（或头部非法）返回空 Tag。
+///
+/// 与 readId3v2FromFile 的窗口内逻辑一致：前 10 字节判头、长度按
+/// ID3V2_MAX_TAG_SIZE 截断。窗口比标签声明短时按窗口可得的字节解析
+/// （结构损坏的报错口径由 parseId3v2 决定，与文件级路径相同）。
+protected func id3v2TagFromHeadWindow(head: Array<UInt8>): Tag {
+    var result = Tag()
+    if (head.size < 10) {
+        return result
+    }
+    match (id3v2TotalSize(head)) {
+        case Some(total) =>
+            if (total > 10) {
+                var limit = total
+                if (limit > head.size) {
+                    limit = head.size
+                }
+                if (limit > ID3V2_MAX_TAG_SIZE) {
+                    limit = ID3V2_MAX_TAG_SIZE
+                }
+                result = parseId3v2(safeSlice(head, 0, limit))
+            }
+        case None => ()
+    }
+    result
+}
+
+/// 从文件尾部窗口解析 ID3v1；末 128 字节不含 "TAG" 标识返回空 Tag。
+protected func id3v1TagFromTailWindow(tail: Array<UInt8>): Tag {
+    var result = Tag()
+    if (tail.size < ID3V1_SIZE) {
+        return result
+    }
+    result = parseId3v1(safeSlice(tail, tail.size - ID3V1_SIZE, ID3V1_SIZE))
+    result
 }
 
 // ---------------------------------------------------------------------------

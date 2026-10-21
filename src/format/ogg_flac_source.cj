@@ -72,7 +72,7 @@ private let OGG_HTYPE_EOS: UInt8 = 0x04
 private let OGG_CRC_FIELD_OFFSET: Int64 = 22
 
 /// Ogg 封装的 FLAC 字节源。
-protected class OggFlacByteSource <: FlacByteSource {
+protected class OggFlacByteSource <: ByteSource {
     private let _path: String
     private var _file: File
     private var _closed: Bool = false
@@ -107,7 +107,7 @@ protected class OggFlacByteSource <: FlacByteSource {
     }
 
     // ------------------------------------------------------------------
-    // FlacByteSource 实现
+    // ByteSource 实现
     // ------------------------------------------------------------------
 
     public func readExact(n: Int64): Array<UInt8> {
