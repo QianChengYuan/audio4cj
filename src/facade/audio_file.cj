@@ -239,6 +239,33 @@ public class AudioFile <: Resource {
         }
     }
 
+    /// 写入标签 —— **安全子集**（v0.2.0）：只写 MP3 的 ID3v2.3。
+    ///
+    /// 安全子集的边界：
+    ///   - **音频帧逐位不动**：新标签（或替换旧标签）前置在文件头，
+    ///     其余字节（音频帧、APEv2 / ID3v1 尾部）原样保留；
+    ///   - 只输出 ID3v2.3 + UTF-16(BOM) 文本编码（兼容性最好的组合）；
+    ///   - 只写 `Tag` 的**标准字段**（title/artist/album/albumArtist/year/
+    ///     genre/track/trackTotal/disc/discTotal/lyrics/comment/composer/
+    ///     coverArt/coverMime）；`extra` 兜底字段**不写入**（键格式在
+    ///     各体系间有歧义，宁可丢弃也不写错）；
+    ///   - 原子落盘：先写 `<path>.a4cj_tmp` 再换名覆盖，失败路径原文件完整。
+    ///
+    /// 写后 `readTags(path)` 可读回一致的字段（多值/编码细节除外）。
+    ///
+    /// 抛出：
+    ///   - 文件不存在 / 无权限 → `std.fs` 的 `FSException`
+    ///   - 非 MP3 容器（含无法识别的格式）→ `FormatNotSupportedException`
+    ///   - 标签序列化结果超上限 → `Audio4CjException`
+    public static func writeTags(path: String, tag: Tag): Unit {
+        let probe = detectFile(path)
+        if (probe.container != "mp3") {
+            throw FormatNotSupportedException(
+                "标签写入目前仅支持 MP3（ID3v2.3）安全子集：${formatLabel(probe)}（${path}）")
+        }
+        writeMp3TagsToFile(path, tag)
+    }
+
     /// 文件路径。
     public prop path: String {
         get() {

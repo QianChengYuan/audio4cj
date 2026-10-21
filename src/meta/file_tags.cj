@@ -1,7 +1,9 @@
 package audio4cj.meta
 
+import std.collection.ArrayList
 import std.fs.*
 import std.io.*
+import audio4cj.core.Audio4CjException
 
 /* ============================================================================
  * 文件级标签读取 —— meta 层中**唯一执行 I/O 的文件**
@@ -18,6 +20,10 @@ import std.io.*
  *
  * 依赖方向：本文件依赖 meta 的纯解析器（parseId3v2 / parseId3v1 /
  *   parseFlacMetadata / mergeTags），后者仍保持零 I/O。
+ *
+ * 标签写入（v0.2.0）：MP3 的「安全子集」写入也集中在本文件 ——
+ *   与读取同一条 I/O 集中纪律。写入 = 读全文件 → 剥旧 ID3v2 → 新标签前置
+ *   → 原子落盘（先写临时文件再换名）。音频帧与 APEv2 / ID3v1 尾部**原样保留**。
  * ========================================================================== */
 
 /// FLAC 元数据块扫描窗口（256 KB）。
@@ -84,6 +90,80 @@ protected func readId3v1FromFile(path: String): Tag {
 /// 逐字段回填（primary 优先、fallback 补空）。
 protected func readMp3TagsFromFile(path: String): Tag {
     mergeTags(readId3v2FromFile(path), mergeTags(readApev2FromFile(path), readId3v1FromFile(path)))
+}
+
+// ---------------------------------------------------------------------------
+// 标签写入（安全子集，v0.2.0）：目前仅 MP3 / ID3v2.3
+// ---------------------------------------------------------------------------
+
+/// 计算 MP3 文件中**旧 ID3v2 标签的总字节数**（无标签或头部非法为 0）。
+///
+/// 只读 10 字节头部即可判定；长度字段不可信，按 ID3V2_MAX_TAG_SIZE 截断，
+/// 超限视为结构异常（返回 0 会把超限标签当音频保留 —— 但 16 MB 的"标签"
+/// 几乎必然是探测误判或损坏，此时写入器宁可把新标签前置、旧块原样保留，
+/// 也不去冒剥错字节的险）。
+private func oldId3v2SizeAtHead(f: File): Int64 {
+    let header = Array<UInt8>(10, repeat: 0)
+    let got = f.read(header)
+    if (got < 10) {
+        return 0
+    }
+    match (id3v2TotalSize(header)) {
+        case Some(total) =>
+            if (total > 10 && total <= ID3V2_MAX_TAG_SIZE) {
+                total
+            } else {
+                0
+            }
+        case None => 0
+    }
+}
+
+/// 把 `tag` 写入 MP3 文件（ID3v2.3，安全子集）。
+///
+/// 流程：读全文件 → 剥掉头部旧 ID3v2 → 新标签前置 → 写临时文件 → 原子换名。
+/// 音频帧、APEv2 与 ID3v1 尾部字节**逐位保留**。
+///
+/// 抛出：
+///   - 文件不存在 / 无权限 → `std.fs` 的 `FSException`
+///   - 标签体序列化后超过 ID3V2_MAX_TAG_SIZE → `Audio4CjException`
+///   - 临时文件写入或换名失败 → 底层 `FSException`（此时原文件未被触碰）
+protected func writeMp3TagsToFile(path: String, tag: Tag): Unit {
+    let newTagBytes = serializeId3v23(tag)
+    if (Int64(newTagBytes.size) > ID3V2_MAX_TAG_SIZE) {
+        throw Audio4CjException(
+            "ID3v2.3 标签序列化结果超出上限（${newTagBytes.size} > ${ID3V2_MAX_TAG_SIZE}）：${path}")
+    }
+
+    // 读全文件。MP3 典型体积（数 MB ~ 数十 MB）可接受；标签写入本就是
+    // 重写头部 + 平移后续字节的操作，不做全文件读写的原地方案需要
+    // 逐段搬移，复杂度收益不匹配（安全子集原则：先做对）。
+    var rest = Array<UInt8>()
+    try (f = File(path, Read)) {
+        let oldSize = oldId3v2SizeAtHead(f)
+        f.seek(SeekPosition.Begin(oldSize))
+        let remaining = f.length - oldSize
+        if (remaining > 0) {
+            let buf = Array<UInt8>(remaining, repeat: 0)
+            let got = f.read(buf)
+            rest = safeSlice(buf, 0, got)
+        }
+    }
+
+    let out = ArrayList<UInt8>()
+    for (b in newTagBytes) {
+        out.add(b)
+    }
+    for (b in rest) {
+        out.add(b)
+    }
+
+    // 原子落盘：临时文件写完后换名覆盖，任何一步失败原文件都完整保留
+    let tmpPath = "${path}.a4cj_tmp"
+    try (f = File(tmpPath, Write)) {
+        f.write(out.toArray())
+    }
+    rename(Path(tmpPath), to: Path(path), overwrite: true)
 }
 
 /// FLAC 标签：读取文件头部窗口内的元数据块链，取 `VORBIS_COMMENT` 块。

@@ -31,6 +31,8 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 
 标签读取有两个入口：`AudioFile.metadata()`（打开文件后读取，要求容器可解码）与 **`AudioFile.readTags(path)`**（**不要求解码能力** —— Ogg/Vorbis、MP4 等尚不能解码的容器同样能读出标签）。
 
+**标签写入（v0.2.0，安全子集）**：**`AudioFile.writeTags(path, tag)`** 目前仅支持 MP3 的 ID3v2.3 —— 音频帧逐位不动（新标签前置/替换），只写标准字段，原子落盘。详见 [api/facade.md](api/facade.md#3111-writetags静态v020-新增安全子集)。
+
 设计上有六条贯穿全局的契约，使用前请务必先读 [核心契约](#四六条核心契约)。
 
 ## 二、当前进度
