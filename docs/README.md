@@ -49,11 +49,11 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M7** | **纯仓颉化收官**：FLAC / Ogg-FLAC / **MP3** 全部改为纯仓颉实现，C 依赖整体移除（MP3 是最后一块） | ✅ 已完成 |
 | **M5** | 流式与健壮性（有界队列背压 `AsyncFrameStream`、随机与异常输入回归、长时运行与并发测试） | ✅ 已完成 |
 | **M6 前置** | 容器与质量基线扩展（OGG 页重组与 MP4 `ilst` 标签读取、**Ogg 封装 FLAC 解码**、探测层 Ogg 子编码区分、golden PCM 三方比对基线） | ✅ 已完成 |
-| **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | ✅ 已完成（0.1.8 起上架；0.2.0 已上架） |
+| **M6** | 发布（多平台 CI、`LICENSES.md` 台账、发布配置） | ✅ 已完成（0.1.8 起上架；0.2.0 / 0.3.0 已上架） |
 | **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 | **M8（0.1.5）** | **FLAC 编码**（新包 `audio4cj.encode`：`flacBytes`，16 位；roundtrip 逐样本零误差 + ffmpeg 交叉解码 MD5 一致） | ✅ 已完成 |
 | **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏）+ **FLAC 标签写入**（Vorbis comment，安全子集）+ **openBytes 全容器免落盘直通**（ByteSource 泛化：FLAC 内核缓存标签块、Ogg 页重组吃内存源） | ✅ 已完成 |
-| **M9** | **Ogg Vorbis 纯仓颉解码**（码本/Huffman、floor1、residue、反耦合、IMDCT、重叠相加；Ogg 页 CRC 与 packet 重组、末页 granule 裁剪、seek 重开丢弃） | ✅ 已完成（0.3.0 待发版） |
+| **M9** | **Ogg Vorbis 纯仓颉解码**（码本/Huffman、floor1、residue、反耦合、IMDCT、重叠相加；Ogg 页 CRC 与 packet 重组、末页 granule 裁剪、seek 重开丢弃） | ✅ 已完成（0.3.0 已上架） |
 
 ## 三、文档索引
 
