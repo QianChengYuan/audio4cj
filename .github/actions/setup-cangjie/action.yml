@@ -8,7 +8,7 @@
 #       url-override: ${{ vars.CANGJIE_SDK_URL_LINUX }}    # 可选
 #       sha-override: ${{ vars.CANGJIE_SDK_SHA_LINUX }}    # 可选,空则用内置 SHA
 #
-# 说明: 内置下载源表覆盖 1.2.0（四平台）。objectKey / SHA-256 逐条列举在
+# 说明: 内置下载源表覆盖 1.1.0 / 1.2.0（四平台）。objectKey / SHA-256 逐条列举在
 #       install.sh 与 install.ps1 中 —— objectKey 是官方对象存储的文件 ID，
 #       换版本必须换 key，所以按 "${OS}_${VERSION}" 整条列出而不是拼字符串。
 #

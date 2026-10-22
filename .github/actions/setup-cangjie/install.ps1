@@ -2,7 +2,7 @@
 # 由 .github/actions/setup-cangjie/composite action 调用
 # 通过环境变量 INPUT_OS / INPUT_VERSION / INPUT_URL_OVERRIDE / INPUT_SHA_OVERRIDE 传参
 #
-# 覆盖平台：windows（1.2.0）
+# 覆盖平台：windows（1.1.0 / 1.2.0）
 
 $ErrorActionPreference = "Stop"
 
@@ -19,9 +19,11 @@ $InputSHA       = if ($env:INPUT_SHA_OVERRIDE) { $env:INPUT_SHA_OVERRIDE } else 
 # 覆盖方式：url-override / sha-override（CI 传 vars.CANGJIE_SDK_URL_WINDOWS /
 #          vars.CANGJIE_SDK_SHA_WINDOWS）。
 $defaultURLs = @{
+  "windows_1.1.0" = "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.1.0.zip&objectKey=69e9d12b21f5a8178d6fd213"
   "windows_1.2.0" = "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
 }
 $defaultSHAs = @{
+  "windows_1.1.0" = "3E2746B1C556441F1E0D8128CA23FE80A34583AFE2FA58A32F8ABB3B3C08B7E6"
   "windows_1.2.0" = "7BD5088AD56FB03C1214E73EA076DE5AC08580CC419A8CBD46A524EE1CA250BF"
 }
 

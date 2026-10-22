@@ -17,7 +17,6 @@ import std.collection.ArrayList
  *   ① FLAC 元数据块类型 6（PICTURE）；
  *   ② Vorbis comment 的 `METADATA_BLOCK_PICTURE`（base64 后的同结构）。
  * ========================================================================== */
-
 private let PIC_B64_ALPHABET: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 private func picAppendU32BE(out: ArrayList<UInt8>, v: Int64): Unit {
@@ -394,8 +393,7 @@ class FlacCoverIntegrationTest {
         fromBlock[7] = 0xBBu8
 
         let commentBody = picBuildVorbisComment(
-            ["METADATA_BLOCK_PICTURE=" + picBase64Encode(picBuildPictureBody(3, "image/png", "", fromComment))]
-        )
+            ["METADATA_BLOCK_PICTURE=" + picBase64Encode(picBuildPictureBody(3, "image/png", "", fromComment))])
         let stream = picBuildFlacStream(
             [
                 picWrapFlacBlock(6, picBuildPictureBody(3, "image/png", "", fromBlock), false),

@@ -3,7 +3,7 @@
 # 由 .github/actions/setup-cangjie/composite action 调用
 # 通过环境变量 INPUT_OS / INPUT_VERSION / INPUT_URL_OVERRIDE / INPUT_SHA_OVERRIDE 传参
 #
-# 覆盖平台：linux / linux-arm64 / macos（均为 1.2.0）
+# 覆盖平台：linux / linux-arm64 / macos（1.1.0 / 1.2.0）
 #
 # 注：本文件必须以 **LF** 行尾入库 —— CRLF 的 shell 脚本在 Linux 上会因
 #     `\r` 而报 "bad interpreter"。仓库根的 .gitattributes 已用 `eol=lf` 保证。
@@ -26,6 +26,18 @@ INPUT_SHA_OVERRIDE="${INPUT_SHA_OVERRIDE:-}"
 #          vars.CANGJIE_SDK_SHA_*）。
 # 注：不用关联数组（macOS 自带 bash 3.2 不支持 declare -A），故用扁平 case 列举。
 case "${INPUT_OS}_${INPUT_VERSION}" in
+  linux_1.1.0)
+    DEFAULT_URL="https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.0.tar.gz&objectKey=69e9d50c21f5a8178d6fd219"
+    DEFAULT_SHA="5ce7e8c8523aad9cf5965f818249e1a39f10788963aef7c5852697a3ac964060"
+    ;;
+  linux-arm64_1.1.0)
+    DEFAULT_URL="https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-aarch64-1.1.0.tar.gz&objectKey=69e9d37021f5a8178d6fd216"
+    DEFAULT_SHA="fe961bd2972632fb86cbb8bb2d536a9fcaa8308d348c6a4f9148276ee62f495a"
+    ;;
+  macos_1.1.0)
+    DEFAULT_URL="https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-mac-aarch64-1.1.0.tar.gz&objectKey=69eac73121f5a8178d6fd21b"
+    DEFAULT_SHA="d39f4044e37d55ae1473488225bc2018fc4d9df42b6cdd9b3cc2ca956e6f22bf"
+    ;;
   linux_1.2.0)
     DEFAULT_URL="https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
     DEFAULT_SHA="8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
