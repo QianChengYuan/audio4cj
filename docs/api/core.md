@@ -275,7 +275,7 @@ main() {
 
 ```cangjie
 // package audio4cj（根包）
-public let AUDIO4CJ_VERSION = "0.1.6"
+public let AUDIO4CJ_VERSION = "0.3.0"
 ```
 
 ```cangjie
