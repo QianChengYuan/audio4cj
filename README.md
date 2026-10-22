@@ -2,9 +2,8 @@
 
 > 仓颉（Cangjie）生态的统一音频解析库：**探测容器格式 → 解码为统一的 f32 交错 PCM → 提取统一的标签模型**。
 
-[![CI](https://github.com/QianChengYuan/audio4cj/actions/workflows/ci.yml/badge.svg)](https://github.com/QianChengYuan/audio4cj/actions/workflows/ci.yml)
-[![CI Lint](https://github.com/QianChengYuan/audio4cj/actions/workflows/ci-lint.yml/badge.svg)](https://github.com/QianChengYuan/audio4cj/actions/workflows/ci-lint.yml)
-[![CodeQL](https://github.com/QianChengYuan/audio4cj/actions/workflows/codeql.yml/badge.svg)](https://github.com/QianChengYuan/audio4cj/actions/workflows/codeql.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/QianChengYuan/audio4cj/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/QianChengYuan/audio4cj/actions)
+[![SDK](https://img.shields.io/badge/SDK-1.1.0%2B-blueviolet)](https://github.com/QianChengYuan/audio4cj)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **纯仓颉实现 · 零 C 依赖 · Apache-2.0**
