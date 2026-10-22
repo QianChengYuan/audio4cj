@@ -20,16 +20,18 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 > 但 **32-bit 整型 PCM 有 31 位有效数字**，转换为 f32（24 位尾数）**必有不可逆的精度损失**。
 > 该路径是有损转换，音频工程场景请勿当作无损链路使用（详见 [api/pcm.md](api/pcm.md) 的往返精度表）。
 >
-> **当前可解码格式：WAV / FLAC / MP3 / Ogg 封装的 FLAC** —— 四者**都是纯仓颉实现**
+> **当前可解码格式：WAV / FLAC / MP3 / Ogg 封装的 FLAC / Ogg Vorbis** —— 五者**都是纯仓颉实现**
 > （WAV 是未压缩容器，其「解码」本质是位深转换；FLAC 含帧解码、CRC-8/CRC-16 校验与
 > SEEKTABLE 定位；**MP3 含帧同步、Huffman 解码、反量化、IMDCT 与多相合成滤波器组**；
-> Ogg-FLAC 另含页级重组与页 CRC-32 校验）。
+> Ogg-FLAC 另含页级重组与页 CRC-32 校验；**Vorbis 含码本/Huffman、floor1、residue、
+> 反耦合、IMDCT 与重叠相加**，并按 packet 边界重组 Ogg 页）。
 > **MP3 曾是最后一个依赖 C 库的格式**（当初被移出过一版），现由本库自己的解码内核
-> （`src/format/mp3_*.cj`）承担，与其余格式一样**不引入任何 C 依赖**。
+> （`src/format/mp3_*.cj`）承担，与其余格式一样**不引入任何 C 依赖**。Vorbis 解码算法
+> 参考公共领域 / MIT 的 stb_vorbis，代码为纯仓颉重写，来源见 [LICENSES.md](../LICENSES.md)。
 >
 > **标签读取覆盖更广**：WAV / FLAC / MP3（ID3v1/v2 + APEv2 尾标签）/ **OGG**（Vorbis、Opus、FLAC-in-Ogg）/ **MP4**（`ilst`）。
 
-标签读取有两个入口：`AudioFile.metadata()`（打开文件后读取，要求容器可解码）与 **`AudioFile.readTags(path)`**（**不要求解码能力** —— Ogg/Vorbis、MP4 等尚不能解码的容器同样能读出标签）。
+标签读取有两个入口：`AudioFile.metadata()`（打开文件后读取，要求容器可解码）与 **`AudioFile.readTags(path)`**（**不要求解码能力** —— Ogg/Opus、MP4 等尚不能解码的容器同样能读出标签）。
 
 **标签写入（v0.2.0，安全子集）**：**`AudioFile.writeTags(path, tag)`** 支持 MP3（ID3v2.3）与 FLAC（Vorbis comment）—— 音频数据逐位不动（标签替换、既有块保留），只写标准字段，原子落盘。详见 [api/facade.md](api/facade.md#3121-writetags静态v020-新增安全子集)。
 
@@ -51,11 +53,12 @@ audio4cj 解决的是仓颉生态中「音频格式各自为政」的问题：�
 | **M7+** | 各格式陆续改为纯仓颉实现，**C 依赖整体移除**（制品包内不再有任何 C 代码） | ✅ 已完成 |
 | **M8（0.1.5）** | **FLAC 编码**（新包 `audio4cj.encode`：`flacBytes`，16 位；roundtrip 逐样本零误差 + ffmpeg 交叉解码 MD5 一致） | ✅ 已完成 |
 | **M8.5（0.2.0）** | **FLAC 编码 24 位**（`flacBytes` 的 `bitsPerSample!: 24`，s24 口径与 `wavBytes` 一致；顺带修复短素材尾块崩溃与 openBytes+readAll 临时文件泄漏）+ **FLAC 标签写入**（Vorbis comment，安全子集）+ **openBytes 全容器免落盘直通**（ByteSource 泛化：FLAC 内核缓存标签块、Ogg 页重组吃内存源） | ✅ 已完成 |
+| **M9** | **Ogg Vorbis 纯仓颉解码**（码本/Huffman、floor1、residue、反耦合、IMDCT、重叠相加；Ogg 页 CRC 与 packet 重组、末页 granule 裁剪、seek 重开丢弃） | ✅ 已完成（待发版） |
 
 ## 三、文档索引
 
 - **[快速上手](quickstart.md)** —— 环境要求、构建命令、可运行示例、异常处理范式
-- **[更新记录](../CHANGELOG.md)** —— 各版本面向使用者的变更（含 MP3 纯仓颉解码内核）
+- **[更新记录](../CHANGELOG.md)** —— 各版本面向使用者的变更（含 MP3 纯仓颉解码内核、Ogg Vorbis 解码）
 - **API 参考**
   - [`audio4cj.core`](api/core.md) —— 异常体系、`AudioInfo` / `Track` / `CodecParameters`、`Registry<T>`
   - [`audio4cj.pcm`](api/pcm.md) —— `AudioBuffer`、位深转换与字节解析工具
@@ -136,9 +139,9 @@ try (f = AudioFile.open(path)) {
 > ——仓颉 std 是否提供内存统计 API 尚未核实。未测项不写成已测项。
 >
 > **诚实标注 2**：测试套件**不依赖任何外部工具**（golden 基准已随仓库入库，无损互证本身不需要外部工具），
-> 因此**在源码仓库内**可完整运行（2026-10-21 实测 **321 / 321**，`SKIPPED = 0`，SDK 1.2.0；
+> 因此**在源码仓库内**可完整运行（2026-10-22 实测 **335 / 335**，`SKIPPED = 0`，SDK 1.2.0；
 > CI 另按最低支持版本 1.1.0 验证同一套用例）。
-> ⚠ 制品包交付**产品代码、公开文档、许可证，以及一组纯内存用例**：包内含 **16 个纯内存测试文件**
+> ⚠ 制品包交付**产品代码、公开文档、许可证，以及一组纯内存用例**：包内含 **17 个纯内存测试文件**
 > （不读 `testdata/` 语料、不写任何文件；当前清单见 `cjpm.toml` 的 `include` 白名单），
 > 解包后 `cjpm test` 即可跑通、**不要求工作目录可写**；包内用例数以包内 `cjpm test` 实测为准。
 > **`testdata/` 语料不随包**（二进制，`cjpm bundle` 本就不打包），依赖语料与会写盘的用例
@@ -150,7 +153,8 @@ try (f = AudioFile.open(path)) {
 
 | 能力 | 现状 |
 |---|---|
-| **Ogg/Vorbis、Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** |
+| **Ogg/Opus、Ogg/Speex 的解码** | 探测层能**精确识别到子编码**（错误信息会写明 `ogg/opus` 等），但 `supported` 为 `false`，`open()` 抛出精确的不支持异常。当前可解码 **WAV / FLAC / MP3 / Ogg 封装的 FLAC / Ogg Vorbis** |
+| **Vorbis floor 0** | 当前只实现 floor 1（Vorbis I 主流编码器的默认选择）。遇到 floor 0 的流会抛 `FormatNotSupportedException`，不会静默输出错误音频 |
 | **AAC 解码**（ADTS 与 MP4 封装） | 同上，识别为 `aac` / `mp4` 但不支持解码。结论：在只接受宽许可依赖的前提下**无许可干净的候选库**（候选库的许可证均不合准入线：一个属传染性许可、一个是专有许可） |
 | **重采样** | 无。库只统一位深与声道布局，不改变采样率 |
 | **Speex 的注释头** | 未覆盖。Speex 的注释机制与 Vorbis comment 的两种 magic（`\x03vorbis` / `OpusTags`）都不同，`readTags` 对其返回**空 `Tag`**（不报错） |

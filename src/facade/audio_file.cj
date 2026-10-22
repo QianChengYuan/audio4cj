@@ -32,7 +32,8 @@ import std.time.*
  *   多文件并行处理请为每个文件创建独立实例（§4.7）。
  *
  * 当前可解码范围（与 probe 层的 supported 字段保持一致）：
- *   WAV、**FLAC**、**Ogg 封装的 FLAC**、**MP3** —— 四者均为**纯仓颉实现**。
+ *   WAV、**FLAC**、**Ogg 封装的 FLAC**、**MP3**、**Ogg Vorbis** ——
+ *   五者均为**纯仓颉实现**。
  *
  * 【MP3 已回到解码范围（纯仓颉内核）】它曾是唯一依赖 C 库的格式，因而被移出
  *   过一版；如今由本库自己的解码内核（format/mp3_decode.cj）承担，
@@ -87,7 +88,7 @@ public class AudioFile <: Resource {
             // 会让使用者以为整个文件都用不了。
             throw FormatNotSupportedException(
                 "不支持的音频格式：${formatLabel(probe)}（${probe.mimeType}）。" +
-                    "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC；" +
+                    "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC / Vorbis；" +
                     "其余容器可能仍可用 AudioFile.readTags 读取标签。")
         }
 
@@ -100,13 +101,16 @@ public class AudioFile <: Resource {
             case "flac" => openFlac(path, formatInfo, false)
             case "mp3" => openMp3(path, formatInfo)
             case "ogg" =>
-                // 目前只有 Ogg 封装的 FLAC 可解码，它在 supported 检查处已通过。
-                // 这里再做一次显式判断并非冗余：它把「容器级」与「编码级」两道
-                // 关卡分开，将来若 supported 的判定被改动，也不会静默走错读取器。
-                if (probe.codec != "flac") {
+                // 容器级与编码级两道关卡分开：supported 只说明整体可解，
+                // 这里再按子编码选实现，避免将来 supported 判定被改动后
+                // 静默把 Vorbis 喂给 FLAC 读取器（或反之）。
+                if (probe.codec == "flac") {
+                    openFlac(path, formatInfo, true)
+                } else if (probe.codec == "vorbis") {
+                    assembleVorbis(VorbisFormatReader(path), path, formatInfo)
+                } else {
                     throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（${path}）")
                 }
-                openFlac(path, formatInfo, true)
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（${path}）")
         }
     }
@@ -132,7 +136,7 @@ public class AudioFile <: Resource {
         if (!probe.supported) {
             throw FormatNotSupportedException(
                 "不支持的音频格式：${formatLabel(probe)}（${probe.mimeType}）。" +
-                    "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC；" +
+                    "当前可解码 WAV / FLAC / MP3，以及 Ogg 封装的 FLAC / Vorbis；" +
                     "其余容器可能仍可用 AudioFile.readTags 读取标签。")
         }
 
@@ -145,11 +149,18 @@ public class AudioFile <: Resource {
                 formatInfoOf(probe))
             case "flac" => openFlac(MemoryByteSource(bytes), "<memory:flac>", formatInfoOf(probe))
             case "ogg" =>
-                // 与 open() 同理：容器级与编码级两道关卡分开（见 open 的注释）
-                if (probe.codec != "flac") {
+                // 与 open() 同理：容器级与编码级两道关卡分开（见 open 的注释）。
+                // FLAC 需要 OggFlacByteSource 把页体接成连续字节流；Vorbis 则由
+                // 自己的 reader 按 packet 重组，直接拿内存源即可。
+                if (probe.codec == "flac") {
+                    openFlac(OggFlacByteSource(MemoryByteSource(bytes), "<memory:ogg>"), "<memory:ogg>",
+                        formatInfoOf(probe))
+                } else if (probe.codec == "vorbis") {
+                    assembleVorbis(VorbisFormatReader(MemoryByteSource(bytes), "<memory:ogg/vorbis>"),
+                        "<memory:ogg/vorbis>", formatInfoOf(probe))
+                } else {
                     throw FormatNotSupportedException("Ogg 容器内的 ${probe.codec} 编码尚无解码实现（<memory:ogg>）")
                 }
-                openFlac(OggFlacByteSource(MemoryByteSource(bytes), "<memory:ogg>"), "<memory:ogg>", formatInfoOf(probe))
             case _ => throw FormatNotSupportedException("容器 ${formatLabel(probe)} 尚无对应实现（<memory>）")
         }
     }
@@ -210,6 +221,19 @@ public class AudioFile <: Resource {
             reader.channels(),
             reader.sampleRate(),
             reader.isFloatFormat()
+        )
+        AudioFile(path, reader, decoder, formatInfo)
+    }
+
+    /// Vorbis 装配的共享主体：open 走文件源，openBytes 走内存源。
+    ///
+    /// 位深固定为 32（表示 float32 PCM，不是 32 位整数）：Vorbis 解码内核
+    /// 直接产出 f32，与 MP3 一致。
+    private static func assembleVorbis(reader: VorbisFormatReader, path: String, formatInfo: FormatInfo): AudioFile {
+        let decoder = VorbisPcmDecoder(
+            reader.sampleRate(),
+            reader.channels(),
+            reader.totalFrames()
         )
         AudioFile(path, reader, decoder, formatInfo)
     }

@@ -95,9 +95,10 @@ private func pmExpectSupported(container: String, codec: String): Bool {
     if (container == "wav" || container == "flac" || container == "mp3") {
         return true
     }
-    // Ogg 容器里只有 FLAC 编码可解码（由本库自己的纯仓颉 Ogg 源实现）
+    // Ogg 容器里 FLAC 与 Vorbis 编码可解码（均为本库纯仓颉实现）；
+    // Opus / Speex 仍只做识别。
     if (container == "ogg") {
-        return codec == "flac"
+        return codec == "flac" || codec == "vorbis"
     }
     false
 }
@@ -248,7 +249,6 @@ class ProbeMatrixTest {
 
         // (素材路径, 错误信息中必须出现的格式标签)
         let cases = [
-            ("${PM_ROOT}/ogg/ogg_vorbis_q4.ogg", "ogg/vorbis"),
             ("${PM_ROOT}/ogg/ogg_opus_32k.opus", "ogg/opus"),
             ("${PM_ROOT}/ogg/ogg_speex_16000.spx", "ogg/speex"),
             ("${PM_ROOT}/aac/aac_adts_128k.aac", "aac"),

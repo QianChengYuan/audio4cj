@@ -12,6 +12,29 @@
 >
 > 本文件是更新记录的**权威副本**：它位于仓库根目录，随制品包分发
 
+## 未发布
+
+### 新增
+
+- **Ogg Vorbis 纯仓颉解码**：`AudioFile.open` / `openBytes` 现可直接打开
+  `.ogg`（Vorbis）并输出 f32 交错 PCM，`info().bitDepth` 为 `32`（表示浮点，
+  与 MP3 一致）。实现覆盖码本/Huffman、floor 1、residue（type 0/1/2）、
+  多声道反耦合、IMDCT 与重叠相加；Ogg 层按 **packet 边界**重组（不是字节流拼接），
+  逐页校验 CRC-32，并按末页 granule 裁剪尾部。`seekTo` 首版采用"重开 + 从流首
+  解码丢弃到目标帧"，返回实际落点毫秒
+- **Vorbis 标签随解码器一起可用**：`open()` 后的 `metadata()` 与独立的
+  `readTags()` 走同一套 Vorbis comment 解析；带 `METADATA_BLOCK_PICTURE` 的
+  封面仍映射到 `Tag.coverArt` / `Tag.coverMime`
+
+### 限制
+
+- 当前只实现 **floor 1**；遇到 floor 0 的 Vorbis 流会明确抛
+  `FormatNotSupportedException`，不会静默输出错误音频
+- Ogg/Opus、Ogg/Speex 仍不支持解码；`readTags()` 对 Opus 的 `OpusTags`
+  仍可正常读取
+- Vorbis 解码算法参考了公共领域 / MIT 的 stb_vorbis，代码为纯仓颉重写，
+  不链接其 C 源码；来源登记见 `LICENSES.md`
+
 ## 0.2.0
 
 ### 新增

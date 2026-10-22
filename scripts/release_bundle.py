@@ -163,6 +163,8 @@ FORBIDDEN = [
     ("src/test/ogg_tags_test.cj", set()),
     ("src/test/probe_matrix_test.cj", set()),
     ("src/test/review_fix_test.cj", set()),
+    ("src/test/vorbis_decode_test.cj", set()),
+    ("src/test/vorbis_setup_test.cj", set()),
     # --- 写盘 / 生成二进制素材的用例：不随包 ---
     #   判据：用例运行时**会写出临时素材**（统一走 src/test/test_scratch.cj 的
     #   testTmpPath，落到 target/test-tmp/），或直接写 target/ 下的产物。

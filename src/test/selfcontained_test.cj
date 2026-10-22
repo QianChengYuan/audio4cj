@@ -477,10 +477,11 @@ private func scOggFlacBytes(flac: Array<UInt8>, serial: Int64): Array<UInt8> {
     out.toArray()
 }
 
-/// 合成一个 Ogg/Vorbis 流：识别头页 + 注释头页。
+/// 合成一个 Ogg/Vorbis 流：识别头页 + 注释头页（**故意缺少 setup 头与音频**）。
 ///
-/// 本库不支持 Vorbis 解码，故它只用于验证"**识别得出、但不支持**"这条契约：
-/// 容器与子编码都要报得出来，不能退化成 unknown。
+/// 本库已支持 Vorbis 解码，但这份合成数据只用于验证两条契约：
+///   · 容器与子编码要报得出来，不能退化成 unknown；
+///   · 结构不完整的流必须被拒绝，而不是当成 0 帧音频正常打开。
 private func scOggVorbisBytes(serial: Int64): Array<UInt8> {
     let ident = ArrayList<UInt8>()
     ident.add(0x01u8)
@@ -779,25 +780,31 @@ class SelfContainedFormatTest {
         remove(oga)
     }
 
-    /// Ogg/Vorbis：**识别得出、但不支持**（不可解码 ≠ 认不出来）
+    /// Ogg/Vorbis：**识别得出、可解码**；本用例的合成流故意缺少 setup 头，
+    /// 因此 open 必须以"头包缺失/结构损坏"拒绝，而不是报"编码不支持"。
+    ///
+    /// 这条同时守住两个层次：
+    ///   · 能力面 —— probe.supported 必须为 true（Vorbis 已是纯仓颉实现）；
+    ///   · 健壮面 —— 只有 identification + comment 的流不是可解码文件，
+    ///     不能因为"编码支持"就静默解出空音频。
     @TestCase
-    func vorbisIsIdentifiedButUnsupported() {
+    func vorbisIsIdentifiedAndIncompleteStreamRejected() {
         let path = scWrite("a4cj_sc_vorbis.ogg", scOggVorbisBytes(21))
 
         let probe = detectFile(path)
         @Expect(probe.container, "ogg")
         @Expect(probe.codec, "vorbis")
-        @Expect(probe.supported, false)
+        @Expect(probe.supported, true)
 
         var message = ""
         try {
             let f = AudioFile.open(path)
             f.close()
-            @Fail("Ogg/Vorbis 尚无解码实现，open 应当抛异常")
+            @Fail("缺少 setup 头的 Ogg/Vorbis 流应当被拒绝")
         } catch (e: Exception) {
             message = e.toString()
         }
-        @Expect(message.contains("vorbis"), true)
+        @Expect(message.contains("setup"), true)
         remove(path)
     }
 

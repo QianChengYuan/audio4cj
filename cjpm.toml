@@ -4,7 +4,8 @@
 #
 #   解码全部为纯仓颉实现：WAV（位深转换）、FLAC（帧解码 + CRC-8/16 + SEEKTABLE）、
 #   MP3（帧同步 + Huffman + IMDCT + 多相合成滤波）、
-#   Ogg 封装的 FLAC（页重组 + 页 CRC-32）。
+#   Ogg 封装的 FLAC（页重组 + 页 CRC-32）、
+#   Ogg Vorbis（码本/Huffman + floor1 + residue + IMDCT + 重叠相加）。
 # ============================================================================
 
 [package]
@@ -26,7 +27,7 @@
   repository = "https://gitcode.com/yuan_1992/audio4cj"
   homepage = "https://gitcode.com/yuan_1992/audio4cj"
   documentation = "https://gitcode.com/yuan_1992/audio4cj/blob/main/README.md"
-  tag = ["audio", "flac", "mp3", "wav", "decoder"]            # 上限 5 项
+  tag = ["audio", "decoder", "flac", "mp3", "vorbis"]          # 上限 5 项
   category = ["Audio and Video"]                              # 取自 cjpm 内置枚举
 
   # —— 打包范围：白名单（fail-closed）——
@@ -80,6 +81,7 @@
     "/src/test/registry_test.cj",
     "/src/test/tag_test.cj",
     "/src/test/vorbis_comment_test.cj",
+    "/src/test/vorbis_mdct_test.cj",
     "/src/test/wav_info_test.cj",
     "/docs",          # 面向使用者的公开文档（仓库内部文档见 exclude）
     "/LICENSE",

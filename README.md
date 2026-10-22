@@ -34,7 +34,7 @@
 
 | 能力 | 当前支持 | 入口 |
 |---|---|---|
-| **解码** | WAV（整型 8/16/24/32 位 + **32 位浮点**）、FLAC、Ogg 封装的 FLAC、MP3（Layer III） | `AudioFile.open` / `openBytes` |
+| **解码** | WAV（整型 8/16/24/32 位 + **32 位浮点**）、FLAC、Ogg 封装的 FLAC、MP3（Layer III）、Ogg Vorbis | `AudioFile.open` / `openBytes` |
 | **标签读取** | MP3（ID3v1/v2.2/2.3/2.4 + APEv2 尾标签）、FLAC（Vorbis comment + `PICTURE`）、WAV（`LIST/INFO`）、OGG（Vorbis / Opus / FLAC-in-Ogg）、MP4（`ilst`） | `metadata()` / `readTags()` |
 | **标签写入**（0.2.0） | MP3（ID3v2.3）、原生 FLAC（Vorbis comment）；只写标准字段、音频数据逐位保留、原子落盘 | `writeTags()` |
 | **容器探测** | 十余种容器；Ogg 精确识别到子编码（vorbis / opus / flac / speex） | `format()` |
@@ -43,9 +43,9 @@
 | **编码** | FLAC 16 位（0.1.5）/ 24 位（0.2.0）；WAV 8/16/24/32 位 | `audio4cj.encode` / `audio4cj.pcm` |
 | **内存直通**（0.2.0） | `openBytes` 对全部可解码容器免落盘；传入数组不拷贝 | `AudioFile.openBytes` |
 
-**可解码 ≠ 可读标签**：Ogg/Vorbis、Ogg/Opus、MP4 目前不能解码，但标签可以用 `readTags()` 读；AAC 目前既不能解码，也不能读标签。
+**可解码 ≠ 可读标签**：Ogg/Opus、MP4 目前不能解码，但标签可以用 `readTags()` 读；AAC 目前既不能解码，也不能读标签。
 
-**明确不做**：Ogg/Vorbis、Ogg/Opus、Ogg/Speex、AAC、MP4 解码；重采样；WAV / OGG / MP4 标签写入；实时流协议（RTP / RTSP / WebRTC）。完整边界见[文档总览](docs/README.md#六尚未实现)。
+**明确不做**：Ogg/Opus、Ogg/Speex、AAC、MP4 解码；重采样；WAV / OGG / MP4 标签写入；实时流协议（RTP / RTSP / WebRTC）。完整边界见[文档总览](docs/README.md#六尚未实现)。
 
 ## 快速开始
 
@@ -177,10 +177,10 @@ audio4cj = "0.2.0"
 
 测试套件**不依赖任何外部工具**，也不需要联网，在**源码仓库内**可完整运行：
 
-> **仓库侧全量 `cjpm test`：321 / 321 通过，`SKIPPED = 0`**
-> （2026-10-21 实测，SDK 1.2.0；CI 另按最低支持版本 1.1.0 验证同一套用例）。
+> **仓库侧全量 `cjpm test`：335 / 335 通过，`SKIPPED = 0`**
+> （2026-10-22 实测，SDK 1.2.0；CI 另按最低支持版本 1.1.0 验证同一套用例）。
 >
-> **制品包内只带 16 个纯内存、零副作用的测试文件**（当前清单见 `cjpm.toml` 的 `include`
+> **制品包内只带 17 个纯内存、零副作用的测试文件**（当前清单见 `cjpm.toml` 的 `include`
 > 白名单）：不读 `testdata/` 语料、不写任何文件，解包后 `cjpm test` 即可跑通，
 > **不要求工作目录可写**。包内用例数以包内 `cjpm test` 实测输出为准。
 >
@@ -203,8 +203,10 @@ audio4cj = "0.2.0"
 
 本项目采用 **Apache License 2.0**，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
 
-运行时依赖：**无**。容器探测、各格式解码（WAV / FLAC / Ogg-FLAC / MP3）、标签读写、
+运行时依赖：**无**。容器探测、各格式解码（WAV / FLAC / Ogg-FLAC / MP3 / Ogg Vorbis）、标签读写、
 PCM 处理与 FLAC 编码全部为纯仓颉实现，不依赖任何第三方代码，也不要求 C 工具链。
+Ogg Vorbis 解码算法参考了公共领域 / MIT 的 stb_vorbis，但代码是纯仓颉重写、不链接其源文件；
+来源与许可证说明见 [LICENSES.md](LICENSES.md)。
 
 > **历史留痕**：本库曾通过 FFI 静态链接一个第三方 C 库承担 FLAC / MP3 / WAV 解码内核；
 > 随着各格式陆续改为纯仓颉实现（MP3 是最后一块），该依赖已整体移除

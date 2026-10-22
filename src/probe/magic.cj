@@ -116,8 +116,11 @@ protected func detectBytes(head: Array<UInt8>): ProbeResult {
         // 页体重建成一条与原生 FLAC 逐字节等同的流，再走同一套解码逻辑
         // （见 format/ogg_flac_source.cj）。这一点起初是借第三方实现对 Ogg 的
         // transparent 支持接出来的，现已不依赖任何 C 实现。
-        // 其余 Ogg 子编码（Vorbis / Opus / Speex）当前没有可用解码器。
-        return ProbeResult("ogg", "audio/ogg", codec == "flac", codec: codec)
+        // Ogg Vorbis 同样是纯仓颉实现（见 format/vorbis.cj / vorbis_decode.cj）：
+        // 页体按 packet 边界重组后交给 Vorbis 内核，不经过字节流拼接。
+        // 其余 Ogg 子编码（Opus / Speex）当前没有可用解码器。
+        let supported = codec == "flac" || codec == "vorbis"
+        return ProbeResult("ogg", "audio/ogg", supported, codec: codec)
     }
     if (matchAt(head, 0, ascii("wvpk"))) {
         return ProbeResult("wavpack", "audio/wavpack", false)

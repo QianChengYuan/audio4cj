@@ -339,16 +339,19 @@ class OggTagsTest {
 
     /// 关键契约：读标签**不要求容器可解码**
     ///
-    /// Ogg/Vorbis 至今没有解码实现（supported = false），但它的标签必须读得出来
+    /// Ogg/Opus 当前仍没有解码实现（supported = false），但它的标签必须读得出来
     /// —— 这正是 readTags 独立于 open 存在的理由。本用例先确认"确实解不了码"，
     /// 再确认"标签读得出来"，两条一起才构成完整的契约验证。
+    ///
+    /// 注：Vorbis 已在本版本接入纯仓颉解码，不再是"不可解码"的样本；
+    /// 这里改用 Opus 继续守住同一条契约。
     @TestCase
     func readTagsWorksWithoutDecoder() {
         if (gsSkipIfNoFixtures("readTagsWorksWithoutDecoder")) {
             return
         }
 
-        let path = "testdata/ogg/ogg_vorbis_tagged.ogg"
+        let path = "testdata/ogg/ogg_opus_tagged.opus"
 
         // 前提：该文件当前确实不能解码
         var openFailed = false
@@ -362,7 +365,7 @@ class OggTagsTest {
 
         // 但标签可以读
         let tag = AudioFile.readTags(path)
-        @Assert(tag.title.getOrThrow() == "OGG Vorbis 标题")
+        @Assert(tag.title.getOrThrow() == "OGG Opus 标题")
     }
 
     /// Speex 的注释机制与 Vorbis comment 不同 —— 如实返回空 Tag（不是错误）

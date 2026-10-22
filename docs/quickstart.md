@@ -10,7 +10,7 @@
 
 > **没有任何 C 依赖，也没有构建顺序要求**
 >
-> - **WAV、FLAC、MP3 与 Ogg 封装的 FLAC** 都是纯仓颉实现，**不需要** C 库；
+> - **WAV、FLAC、MP3、Ogg 封装的 FLAC 与 Ogg Vorbis** 都是纯仓颉实现，**不需要** C 库；
 > - **MP3 曾是最后一个依赖 C 库的格式**（一度被移出过解码范围），现在由本库自己的
 >   解码内核（`src/format/mp3_*.cj`）承担 —— 解码侧现在**零 C 依赖**；
 > - 因此 `cjpm build` / `cjpm check` / `cjpm test` 都不需要 C 编译器，
@@ -80,19 +80,19 @@ cjpm clean          # 清理构建产物
 **没有任何 C 构建步骤。** 解码全部为纯仓颉实现，`cjpm build` / `cjpm test` 只编译仓颉代码。
 
 > 测试套件**不依赖任何外部工具**，也不需要联网。
-> ⚠ 制品包只交付**产品代码、公开文档、许可证，以及一组纯内存用例**（**16 个纯内存测试文件**：
+> ⚠ 制品包只交付**产品代码、公开文档、许可证，以及一组纯内存用例**（**17 个纯内存测试文件**：
 > 不读 `testdata/` 语料、不写任何文件；当前清单见 `cjpm.toml` 的 `include` 白名单）——
 > 解包后 `cjpm test` 即可跑通，**不要求工作目录可写**。**`testdata/` 语料不随包**
 > （它是二进制，`cjpm bundle` 本就不打包），依赖语料与会写盘的用例都留在源码仓库。
 >
 > 想跑含真实语料与外部基准比对的**全量用例**，请从**源码仓库**获取（`testdata/` 已入库；
-> 2026-10-21 实测 321 / 321 通过，`SKIPPED = 0`，SDK 1.2.0）。
+> 2026-10-22 实测 335 / 335 通过，`SKIPPED = 0`，SDK 1.2.0）。
 > 依赖清单与审计流程见 [LICENSES.md](../LICENSES.md)。
 
 ## 四、快速上手示例
 
-> 以下示例对 **WAV / FLAC / MP3 / Ogg 封装的 FLAC** 均适用 —— 四者共用同一套 `AudioFile` API。
-> 唯一需留意的是 `bitDepth` 的语义差异：**MP3 恒为 `32`**（表示输出为 float32，
+> 以下示例对 **WAV / FLAC / MP3 / Ogg 封装的 FLAC / Ogg Vorbis** 均适用 —— 五者共用同一套 `AudioFile` API。
+> 唯一需留意的是 `bitDepth` 的语义差异：**MP3 与 Vorbis 恒为 `32`**（表示输出为 float32，
 > 而非 32 位整数 PCM），详见 [`AudioInfo`](api/core.md)。
 
 ### 示例 1：读取音频信息
@@ -201,7 +201,7 @@ main() {
 
 ### 示例 6：只读标签（不需要解码能力）
 
-**尚无解码实现**的格式（如 OGG/Vorbis、MP4），也能用 `readTags` 读出标签：
+**尚无解码实现**的格式（如 OGG/Opus、MP4），也能用 `readTags` 读出标签：
 
 ```cangjie
 import audio4cj.facade.AudioFile
@@ -274,14 +274,14 @@ main() {
 
 ### 示例 9：从 OGG / MP4 读标签（不需要能解码）
 
-`readTags()` **不要求容器可解码**。Ogg/Vorbis、Opus、MP4 这些尚不能解码的容器也能读出标签 —— 因为它们与可解码格式共用同一套解析器（Vorbis comment / `ilst` 原子）。
+`readTags()` **不要求容器可解码**。Ogg/Opus、MP4 这些尚不能解码的容器也能读出标签 —— 因为它们与可解码格式共用同一套解析器（Vorbis comment / `ilst` 原子）。Ogg/Vorbis 现已可解码，但同样可以只读标签。
 
 ```cangjie
 import audio4cj.facade.AudioFile
 
 main() {
-    // Ogg/Vorbis 当前不能解码，但标签可读
-    let ogg = AudioFile.readTags("./song.ogg")
+    // Ogg/Opus 当前不能解码，但标签可读
+    let ogg = AudioFile.readTags("./song.opus")
     let oggTitle = ogg.title ?? "(无)"
     println("OGG 标题: ${oggTitle}")
 
@@ -377,7 +377,8 @@ main() {
 
 ## 六、限制与注意事项
 
-1. **当前可解码 WAV / FLAC / MP3 / Ogg 封装的 FLAC**。OGG/Vorbis、OGG/Opus、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
+1. **当前可解码 WAV / FLAC / MP3 / Ogg 封装的 FLAC / Ogg Vorbis**。OGG/Opus、AAC 等虽能被探测层识别，但 `AudioFile.open()` 会抛 `FormatNotSupportedException`。仅需读取标签时请用 `AudioFile.readTags()`（支持 MP3 / FLAC / WAV / OGG / MP4，不要求可解码）。
+2. **Vorbis 当前只实现 floor 1**。遇到 floor 0 的流会抛 `FormatNotSupportedException`，不会静默输出错误音频；Opus / Speex 仍不支持解码。
 2. **32 位浮点 WAV 支持，64 位浮点不支持**。`isSupportedPcmFormat(32, isFloatFormat: true)` 返回 `true`、`(64, true)` 返回 `false`。浮点载荷按位重解释、**不做 [-1, 1] 钳位**（越界值原样输出）。
 3. **`AudioFile` 不跨线程共享**。多文件并行处理请为每个文件创建独立实例。
 4. **库不统一采样率**。输出统一为 f32 交错，但采样率沿用源文件，混合不同采样率的音频需自行重采样。

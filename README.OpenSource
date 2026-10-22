@@ -7,5 +7,14 @@
     "Owner": "lieff",
     "Upstream URL": "https://github.com/lieff/minimp3",
     "Description": "Minimalistic MP3 decoder single-header library. audio4cj's pure-Cangjie MP3 kernel (src/format/mp3_*.cj) references its algorithm structure and was re-implemented in Cangjie; no minimp3 source code is bundled, linked or redistributed. CC0-1.0 imposes no conditions, so it is not a runtime or distribution dependency. See LICENSES.md for the full ledger."
+  },
+  {
+    "Name": "stb_vorbis",
+    "License": "Unlicense OR MIT",
+    "License File": "-",
+    "Version Number": "N/A",
+    "Owner": "nothings",
+    "Upstream URL": "https://github.com/nothings/stb",
+    "Description": "Single-header Ogg Vorbis decoder from the stb repository. audio4cj's pure-Cangjie Vorbis kernel (src/format/vorbis*.cj) references its algorithm structure (codebooks/Huffman, floor1, residue, IMDCT) and was re-implemented in Cangjie; no stb_vorbis source code is bundled, linked or redistributed. The upstream code is offered under the Unlicense (public domain) or MIT, neither of which imposes copyleft conditions, so it is not a runtime or distribution dependency. See LICENSES.md for the full ledger."
   }
 ]

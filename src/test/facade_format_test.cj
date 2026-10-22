@@ -100,12 +100,12 @@ class FacadeFormatTest {
 
         var message = ""
         try {
-            AudioFile.open("testdata/ogg/ogg_vorbis_q4.ogg")
-            @Fail("Ogg/Vorbis 尚无解码实现，应当抛异常")
+            AudioFile.open("testdata/ogg/ogg_opus_32k.opus")
+            @Fail("Ogg/Opus 尚无解码实现，应当抛异常")
         } catch (e: Exception) {
             message = e.message
         }
-        @Expect(message.contains("vorbis"), true)
+        @Expect(message.contains("opus"), true)
     }
 
     /// 【MP3 的契约：能识别、**可解码**、标签也可读】
@@ -114,8 +114,8 @@ class FacadeFormatTest {
     /// probe 的 supported 为 true，`open()` 能真正解出 PCM。若有人把 supported 改回 false、
     /// 或误删 readTags 的 mp3 分支，这里会立刻变红 —— 能力变化若只写在文档里，迟早漂移。
     ///
-    /// 它同时钉住一处**最容易做错**的地方：不可解码 ≠ 认不出来（对照上一条 Vorbis 用例：
-    /// Vorbis 是"识别得出、但不支持"，MP3 则是三者齐备）。
+    /// 它同时钉住一处**最容易做错**的地方：不可解码 ≠ 认不出来（对照上一条 Opus 用例：
+    /// Opus 是"识别得出、但不支持"，MP3 则是三者齐备）。
     @TestCase
     func mp3IsIdentifiableDecodableAndTagReadable(): Unit {
         if (gsSkipIfNoFixtures("mp3IsIdentifiableDecodableAndTagReadable")) {
