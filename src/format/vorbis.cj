@@ -118,7 +118,7 @@ protected class VorbisFormatReader <: FormatReader {
 
     public func nextPacket(): ?Packet {
         if (_closed) {
-            throw CorruptedFileException("对已关闭的 Vorbis reader 执行操作：${_path}")
+            throw ClosedResourceException("对已关闭的 Vorbis reader 执行操作：${_path}")
         }
         if (_drained) {
             return None
@@ -193,13 +193,15 @@ protected class VorbisFormatReader <: FormatReader {
 
     public func seekTo(timestampMs: Int64): Int64 {
         if (_closed) {
-            throw CorruptedFileException("对已关闭的 Vorbis reader 执行操作：${_path}")
+            throw ClosedResourceException("对已关闭的 Vorbis reader 执行操作：${_path}")
         }
         var targetMs = timestampMs
         if (targetMs < 0) {
             targetMs = 0
         }
-        var targetFrame = targetMs * _sampleRate / 1000
+        // 饱和换算：timestampMs 取 Int64.Max 时直接乘 _sampleRate 会抛标准库
+        // OverflowException（历史缺陷）；WAV/FLAC/MP3 已统一走该函数，此处对齐。
+        var targetFrame = msToFramesSaturating(targetMs, _sampleRate)
         if (_totalFrames >= 0 && targetFrame > _totalFrames) {
             targetFrame = _totalFrames
         }

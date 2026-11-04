@@ -2,6 +2,7 @@ package audio4cj.format
 
 import std.core.*
 import std.collection.*
+import audio4cj.core.CorruptedFileException
 
 /* ============================================================================
  * MP3 —— 位读取器
@@ -34,6 +35,16 @@ protected class Mp3Bits {
     }
 }
 
+/// 按 0 填充语义读取第 i 字节（越过缓冲区末端视为 0）。
+/// 文件级函数：init 中禁止在成员初始化完成前调用成员方法。
+private func l3ByteAt(buf: Array<UInt8>, i: Int64): Int64 {
+    if (i >= 0 && i < buf.size) {
+        Int64(buf[i])
+    } else {
+        0
+    }
+}
+
 /// Layer III 霍夫曼解码用的位缓存。
 ///
 /// 对应原参照实现里的三个 C 宏局部量（bs_cache / bs_sh / next_index）：
@@ -49,9 +60,12 @@ protected class L3BitCache {
     init(bs: Mp3Bits) {
         this.buf = bs.buf
         let idx = bs.pos / 8
-        // 预取 4 字节拼成 32 位缓存，再按帧内位偏移左移对齐
-        let c: Int64 = (((Int64(bs.buf[idx]) * 256 + Int64(bs.buf[idx + 1])) * 256 + Int64(bs.buf[idx + 2])) * 256 +
-            Int64(bs.buf[idx + 3])) << (bs.pos & 7)
+        // 预取 4 字节拼成 32 位缓存，再按帧内位偏移左移对齐。
+        // 帧尾不足 4 字节时缺的字节按 0 补齐 —— 与 check() 的回填语义一致
+        // （历史缺陷：直接读 bs.buf[idx..idx+3]，缓冲区末端会越界抛
+        // IndexOutOfBounds 而非走位流的正常耗尽路径）。
+        let c: Int64 = (((l3ByteAt(bs.buf, idx) * 256 + l3ByteAt(bs.buf, idx + 1)) * 256 + l3ByteAt(bs.buf, idx + 2)) *
+            256 + l3ByteAt(bs.buf, idx + 3)) << (bs.pos & 7)
         this.cache = c & 0xFFFFFFFF
         this.sh = (bs.pos & 7) - 8
         this.nextIndex = idx + 4
@@ -105,11 +119,24 @@ protected func getBits(bs: Mp3Bits, nIn: Int64): Int64 {
         return 0
     }
 
+    // 物理越界防护：pos/limit 是「位不变式」层面的判定，若 limit 与 buf 长度
+    // 不一致（调用方约束被破坏），直接下标会抛运行时 IndexOutOfBounds。
+    // 显式转成库级 CorruptedFileException，让不可信输入统一走库异常体系。
+    // （历史缺陷：while (shl > 8) 循环内 bs.buf[p] 无独立边界检查。）
+    if (p >= bs.buf.size) {
+        throw CorruptedFileException(
+            "MP3 位读取越过缓冲区末端：pos=${bs.pos - n}, limit=${bs.limit}, buf=${bs.buf.size}B")
+    }
+
     p = p + 1
     next = Int64(bs.buf[p - 1]) & (255 >> s)
     while (shl > 8) {
         shl = shl - 8
         cache = cache | (next << shl)
+        if (p >= bs.buf.size) {
+            throw CorruptedFileException(
+                "MP3 位读取越过缓冲区末端：pos=${bs.pos - n}, limit=${bs.limit}, buf=${bs.buf.size}B")
+        }
         next = Int64(bs.buf[p])
         p = p + 1
     }

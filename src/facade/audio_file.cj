@@ -185,14 +185,24 @@ public class AudioFile <: Resource {
     }
 
     /// FLAC 装配的共享主体：读取器 + 解码器 + 格式快照。
+    ///
+    /// 【失败保护】reader 此处已成功构造（持有底层文件句柄）—— 若后续
+    /// 解码器构造或 AudioFile 绑定（含 tracks() 快照）抛异常，必须先关
+    /// reader 再上抛，否则句柄无人关闭（历史缺陷：装配链无失败保护）。
+    /// 各读取器自身的构造失败路径已自行处理（先 close 再 throw）。
     private static func flacAudioFile(reader: FlacFormatReader, path: String, formatInfo: FormatInfo): AudioFile {
-        let decoder = FlacPcmDecoder(
-            reader.sampleRate(),
-            reader.channels(),
-            reader.bitsPerSample(),
-            reader.totalFrames()
-        )
-        AudioFile(path, reader, decoder, formatInfo)
+        try {
+            let decoder = FlacPcmDecoder(
+                reader.sampleRate(),
+                reader.channels(),
+                reader.bitsPerSample(),
+                reader.totalFrames()
+            )
+            AudioFile(path, reader, decoder, formatInfo)
+        } catch (e: Exception) {
+            reader.close()
+            throw e
+        }
     }
 
     /// 以 MP3 读取器 + 解码器装配 `AudioFile`。
@@ -206,23 +216,35 @@ public class AudioFile <: Resource {
 
     /// MP3 装配的共享主体：open 走文件源，openBytes 走内存源（路径仅作标识）。
     private static func assembleMp3(reader: Mp3FormatReader, path: String, formatInfo: FormatInfo): AudioFile {
-        let decoder = Mp3PcmDecoder(
-            reader.sampleRate(),
-            reader.channels(),
-            reader.totalFrames()
-        )
-        AudioFile(path, reader, decoder, formatInfo)
+        // 失败保护同 flacAudioFile（装配链后半段抛异常时先关 reader）。
+        try {
+            let decoder = Mp3PcmDecoder(
+                reader.sampleRate(),
+                reader.channels(),
+                reader.totalFrames()
+            )
+            AudioFile(path, reader, decoder, formatInfo)
+        } catch (e: Exception) {
+            reader.close()
+            throw e
+        }
     }
 
     /// WAV 装配的共享主体（分工同 MP3）。
     private static func assembleWav(reader: WavFormatReader, path: String, formatInfo: FormatInfo): AudioFile {
-        let decoder = WavPcmDecoder(
-            reader.bitsPerSample(),
-            reader.channels(),
-            reader.sampleRate(),
-            reader.isFloatFormat()
-        )
-        AudioFile(path, reader, decoder, formatInfo)
+        // 失败保护同 flacAudioFile（装配链后半段抛异常时先关 reader）。
+        try {
+            let decoder = WavPcmDecoder(
+                reader.bitsPerSample(),
+                reader.channels(),
+                reader.sampleRate(),
+                reader.isFloatFormat()
+            )
+            AudioFile(path, reader, decoder, formatInfo)
+        } catch (e: Exception) {
+            reader.close()
+            throw e
+        }
     }
 
     /// Vorbis 装配的共享主体：open 走文件源，openBytes 走内存源。
@@ -230,12 +252,18 @@ public class AudioFile <: Resource {
     /// 位深固定为 32（表示 float32 PCM，不是 32 位整数）：Vorbis 解码内核
     /// 直接产出 f32，与 MP3 一致。
     private static func assembleVorbis(reader: VorbisFormatReader, path: String, formatInfo: FormatInfo): AudioFile {
-        let decoder = VorbisPcmDecoder(
-            reader.sampleRate(),
-            reader.channels(),
-            reader.totalFrames()
-        )
-        AudioFile(path, reader, decoder, formatInfo)
+        // 失败保护同 flacAudioFile（装配链后半段抛异常时先关 reader）。
+        try {
+            let decoder = VorbisPcmDecoder(
+                reader.sampleRate(),
+                reader.channels(),
+                reader.totalFrames()
+            )
+            AudioFile(path, reader, decoder, formatInfo)
+        } catch (e: Exception) {
+            reader.close()
+            throw e
+        }
     }
 
     /// 把探测结果固化成公开的值类型。
@@ -467,26 +495,31 @@ public class AudioFile <: Resource {
         var sampleRate: Int64 = 0
         var channels: Int64 = 0
 
-        while (totalFrames < limitFrames) {
-            match (s.next()) {
-                case Some(buf) =>
-                    if (sampleRate == 0) {
-                        sampleRate = buf.sampleRate
-                        channels = buf.channels
-                    }
-                    chunks.add(buf)
-                    totalFrames += buf.frameCount
-                case None => break
+        // 关流与置位必须对异常路径也成立（历史缺陷：s.next() 抛异常时
+        // s.close() 不执行，reader 在 readAll/readFrames 的便捷语义下保持打开）。
+        try {
+            while (totalFrames < limitFrames) {
+                match (s.next()) {
+                    case Some(buf) =>
+                        if (sampleRate == 0) {
+                            sampleRate = buf.sampleRate
+                            channels = buf.channels
+                        }
+                        chunks.add(buf)
+                        totalFrames += buf.frameCount
+                    case None => break
+                }
             }
+        } finally {
+            s.close()
+            // stream() 返回的流与 AudioFile 共享底层 reader，s.close() 已经把关掉的
+            // reader 释放了：此后 info()/metadata()/stream() 都会抛
+            // ClosedResourceException。故这里必须同步置位关闭状态，否则
+            // isClosed() 返回 false 而几乎每个成员方法都抛异常，同一对象的状态
+            // 自相矛盾（历史缺陷）。readAll/readFrames 是一次性便捷 API，
+            // 消费完即视为资源已释放；需要继续分块读取请自行持有 stream()。
+            _closed = true
         }
-        s.close()
-        // stream() 返回的流与 AudioFile 共享底层 reader，s.close() 已经把关掉的
-        // reader 释放了：此后 info()/metadata()/stream() 都会抛
-        // ClosedResourceException。故这里必须同步置位关闭状态，否则
-        // isClosed() 返回 false 而几乎每个成员方法都抛异常，同一对象的状态
-        // 自相矛盾（历史缺陷）。readAll/readFrames 是一次性便捷 API，
-        // 消费完即视为资源已释放；需要继续分块读取请自行持有 stream()。
-        _closed = true
 
         mergeChunks(chunks, sampleRate, channels, limitFrames)
     }

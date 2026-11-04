@@ -103,6 +103,14 @@ public class AsyncFrameStream <: Resource {
             throw ClosedResourceException("对已关闭的 AsyncFrameStream 执行操作")
         }
 
+        // 结束后短路：与同步 FrameStream 一致（其 _ended 后再调 next() 直接
+        // 返回 None，见 frame_stream.cj）。否则消费者取到哨兵后若再调 next()，
+        // 会陷入「队列空 → remove 超时 → 无异常 → 继续等」的无限旋转（历史缺陷：
+        // 流结束后 next() 挂死）。
+        if (_endedFlag.load()) {
+            return None
+        }
+
         // 注意：此处不使用 `while (true) { ... return ... }` 形式 ——
         // 仓颉将 while 视为 Unit 表达式，编译器不会因「循环内必然 return」
         // 而认定函数不会落到末尾，会报类型不匹配。故用显式状态变量。
@@ -167,11 +175,16 @@ public class AsyncFrameStream <: Resource {
             case Some(f) =>
                 // 后台线程的异常已由 pump() 记录并经 next() 转交消费者；
                 // 这里吞掉它是为了不让汇合失败越过后面的 _source.close()，
-                // 否则会泄漏底层 reader。
+                // 否则会泄漏底层 reader。但 pump 未能执行（如线程尚未启动
+                // 就被取消）时 _failure 为空 —— 这种失败必须在 close() 前
+                // 补记下来，否则静默丢失。
                 try {
                 f.get()
             } catch (e: Exception) {
-                ()
+                match (_failure.load()) {
+                    case None => _failure.store(Some(DecodeException("后台解码线程汇合失败：${e}")))
+                    case Some(_) => () // 已有记录：以 pump 的原始异常为准
+                }
             }
             case None => ()
         }
@@ -238,9 +251,11 @@ public class AsyncFrameStream <: Resource {
             if (_queue.add(buf, Duration.millisecond * WAIT_TIMEOUT_MS)) {
                 accepted = true
                 decided = true
-            } else if (_source.isCancelled() || _closedFlag.load()) {
-                // 入队超时：若已取消或已关闭，说明消费者不会再取走数据，
-                // 继续等待将造成死锁，故放弃投递并退出。
+            } else if (_source.isCancelled() || _closedFlag.load() || _endedFlag.load()) {
+                // 入队超时：若已取消、已关闭，或消费者已取到结束哨兵
+                // （_endedFlag —— 消费者此后可能不再调 next() 也不调 close()），
+                // 说明消费者不会再取走数据，继续等待将造成生产者线程无限
+                // 旋转（历史缺陷：线程泄漏），故放弃投递并退出。
                 accepted = false
                 decided = true
             }
@@ -256,7 +271,9 @@ public class AsyncFrameStream <: Resource {
         while (!done) {
             if (_queue.add(None, Duration.millisecond * WAIT_TIMEOUT_MS)) {
                 done = true
-            } else if (_closedFlag.load()) {
+            } else if (_closedFlag.load() || _endedFlag.load()) {
+                // 退出条件与 enqueue 同理：消费者已看到结束语义的任一信号
+                // 后，再无限等待入队只会造成线程泄漏。
                 done = true
             }
         }
