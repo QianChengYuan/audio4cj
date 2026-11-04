@@ -136,12 +136,15 @@ FORBIDDEN = [
     ("testdata/", set()),  # 测试素材（二进制本就不会被打包，留下的是空壳）
     ("docs/release.md", set()),  # 发布流程：内部工程文档
     ("docs/codec-expansion-assessment.md", set()),  # 编解码扩展评估：内部工程文档
+    ("docs/decode-deviation-localization-evaluation.md", set()),  # 解码偏差定位评估：内部工程文档
     # --- 依赖语料的用例：不随包 ---
     #   判据只有一条 —— **要不要素材**：这些文件需要 testdata/ 或 musics/，而素材
     #   是二进制、cjpm 官方规则不打包，留在包里只会变成守卫静默跳过的死用例。
     #   它们仍留在仓库，由仓库侧 `cjpm test` 全量运行（testdata/ 已入库）；
     #   包内的功能验证由自足用例承担（见 REQUIRED 的 src/test/）。
-    #   与 cjpm.toml 的 exclude **逐个对应**：任何一边漏改，另一边（以及下方
+    #   拦截机制说明：cjpm.toml 对测试源码采用 **include 逐文件白名单**（依赖语料
+    #   的文件本就不在白名单里），故 exclude 不再逐个列出；本表是**反向断言** ——
+    #   任何一边漏改（白名单误放行、或这里漏钉），另一边（以及下方
     #   「测试素材依赖检查」的内容判据）都会报警。
     ("src/test/bench_decode_test.cj", set()),
     ("src/test/diag_dump_test.cj", set()),
@@ -163,6 +166,9 @@ FORBIDDEN = [
     ("src/test/ogg_tags_test.cj", set()),
     ("src/test/probe_matrix_test.cj", set()),
     ("src/test/review_fix_test.cj", set()),
+    ("src/test/flac_tag_write_test.cj", set()),  # 写标签需语料 + 落盘（双判据，按语料钉）
+    ("src/test/pcm_analysis_test.cj", set()),  # 频谱分析用例读 testdata 语料
+    ("src/test/tag_write_test.cj", set()),  # 写标签需语料 + 落盘（双判据，按语料钉）
     ("src/test/vorbis_decode_test.cj", set()),
     ("src/test/vorbis_setup_test.cj", set()),
     # --- 写盘 / 生成二进制素材的用例：不随包 ---
@@ -172,7 +178,7 @@ FORBIDDEN = [
     #   包内只留纯内存、零副作用的用例。
     #   它们仍留在仓库，由仓库侧 `cjpm test` 全量运行（自足端到端、
     #   CRC 校验与损坏样本回归、随机输入回归、WAV 写回读、流式背压等）。
-    #   与 cjpm.toml 的 include 白名单**逐个对应**：任何一边漏改，另一边报警。
+    #   拦截机制同上（include 白名单），本表是反向断言：任何一边漏改，另一边报警。
     ("src/test/async_frame_stream_test.cj", set()),
     ("src/test/flac_decode_test.cj", set()),
     ("src/test/fuzz_test.cj", set()),
@@ -181,6 +187,7 @@ FORBIDDEN = [
     ("src/test/selfcontained_test.cj", set()),
     ("src/test/test_scratch.cj", set()),
     ("src/test/wav_endtoend_test.cj", set()),
+    ("src/test/wav_float32_test.cj", set()),  # 经 testTmpPath 落盘写临时 WAV
     ("src/test/wav_writer_test.cj", set()),
     # --- 构建产物 ---
     ("target/", set()),

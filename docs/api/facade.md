@@ -80,8 +80,9 @@ public static func open(path: String): AudioFile
 | `flac` | **纯仓颉**（`PureFlacKernel`，见 `src/format/flac_bitstream.cj`） | `STREAMINFO` 中的真实位深（通常 16 / 24） |
 | `mp3` | **纯仓颉**（解码内核见 `src/format/mp3_*.cj`：帧同步 → Huffman → 反量化 → IMDCT → 多相合成滤波） | 恒为 `32`（表示输出为 float32，而非 32 位整数 PCM） |
 | `ogg` + `flac` | **纯仓颉**（`PureFlacKernel` + `OggFlacByteSource`）—— Ogg 容器先被重建成一条与原生 FLAC 逐字节等同的流（页体重组 + 页 CRC-32 校验），再交给同一套解码逻辑 | `STREAMINFO` 中的真实位深 |
+| `ogg` + `vorbis` | **纯仓颉**（解码内核见 `src/format/vorbis_*.cj`：码本/Huffman → floor1 → residue → IMDCT → 重叠相加） | 恒为 `32`（表示输出为 float32，而非 32 位整数 PCM） |
 
-其余 Ogg 子编码（`vorbis` / `opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
+其余 Ogg 子编码（`opus` / `speex`）与 `aac` / `mp4` 仍抛 `FormatNotSupportedException`，
 但异常信息会写明**具体的子编码**（如 `ogg/opus`），而不是笼统的"不支持"；这些容器的**标签**多数可用
 [`readTags`](#312-readtags静态m3-新增) 读取。
 
@@ -89,8 +90,8 @@ public static func open(path: String): AudioFile
 > （编码器写 Ogg 时未必能预知长度），此时 `info().totalFrames` 如实返回 **`-1`「不可知」**
 > —— 这是契约行为（见契约 1），不是缺陷。
 
-> **依赖提示**：**本库不依赖任何第三方代码**（`wav`、`flac`、`mp3`、`ogg`+`flac` 都是纯仓颉
-> 实现），因此既没有静态链接进来的 C 代码，也不需要 C 工具链。
+> **依赖提示**：**本库不依赖任何第三方代码**（`wav`、`flac`、`mp3`、`ogg`+`flac`、`ogg`+`vorbis`
+> 都是纯仓颉实现），因此既没有静态链接进来的 C 代码，也不需要 C 工具链。
 
 ```cangjie
 import audio4cj.facade.AudioFile
@@ -302,7 +303,7 @@ public static func readTags(path: String): Tag
 
 **只读标签，不要求容器可解码。**
 
-与 `open()` 的关键区别：本方法**不校验容器的解码支持状态**，因此 Ogg/Vorbis、MP4 等尚无解码实现的容器也能读出标签。这是元数据层的主要入口。
+与 `open()` 的关键区别：本方法**不校验容器的解码支持状态**，因此 MP4、Ogg/Opus 等尚无解码实现的容器也能读出标签。这是元数据层的主要入口。
 
 | 参数 | 说明 |
 |---|---|
@@ -341,7 +342,7 @@ import audio4cj.core.FormatNotSupportedException
 
 main() {
     try {
-        let tag = AudioFile.readTags("./song.ogg")      // OGG/Vorbis 尚不能解码，但标签可读
+        let tag = AudioFile.readTags("./song.ogg")      // 不打开解码器直接读标签（Ogg/Opus 等不可解码容器同样适用）
         let title = tag.title ?? "(无标题)"
         let track = tag.track ?? 0
         let total = tag.trackTotal ?? 0
@@ -415,7 +416,7 @@ public func tracks(): Array<Track>
 |---|---|
 | `format().container` | 容器标识（小写）：`wav` / `flac` / `mp3` / `ogg` / … |
 | `format().codec` | 容器内的**子编码**；只有 Ogg 族有（`flac` / `vorbis` / `opus` / `speex`），其余为空串 |
-| `format().codecId` | 归一化标识，便于打印：`flac`、`ogg/flac`、`ogg/opus` |
+| `format().codecId` | 归一化标识，便于打印：`flac`、`ogg/flac`、`ogg/vorbis`、`ogg/opus` |
 | `format().mimeType` | MIME 类型，如 `audio/flac` |
 | `tracks()` | 轨道信息（当前所有受支持容器均为单轨） |
 

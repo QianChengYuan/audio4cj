@@ -55,7 +55,7 @@ public open class Audio4CjException <: Exception {
 
 **何时抛出**：
 
-- `AudioFile.open()` 遇到探测层不支持的容器（如 Ogg/Vorbis、Ogg/Opus、AAC、未知格式）；
+- `AudioFile.open()` 遇到探测层不支持的容器（如 Ogg/Opus、AAC、未知格式）；
 - 容器虽被识别，但尚无对应实现。
 
 ```cangjie
@@ -109,7 +109,7 @@ public class ClosedResourceException <: Audio4CjException {
 | 场景 | 应抛出的异常 |
 |---|---|
 | 容器无法识别（未知魔数） | `FormatNotSupportedException` |
-| 容器已识别但无实现（如 Ogg/Vorbis、AAC） | `FormatNotSupportedException` |
+| 容器已识别但无实现（如 Ogg/Opus、AAC） | `FormatNotSupportedException` |
 | 容器结构非法（RIFF 标识缺失、chunk 长度非法） | `CorruptedFileException` |
 | 编码数据损坏（坏帧） | `DecodeException` |
 | 格式不支持 seek | `SeekNotSupportedException` |
@@ -191,7 +191,7 @@ public class FormatInfo {
 |---|---|
 | `container` | 容器标识（小写）：`wav` / `flac` / `mp3` / `ogg` / `mp4` / … |
 | `codec` | 容器内的**子编码**；只有 Ogg 族非空（`flac` / `vorbis` / `opus` / `speex`，判定不出时为空串） |
-| `codecId` | 归一化标识：`flac`、`ogg/flac`、`ogg/opus`。**仅供打印 —— 程序化判断请用上面两个字段** |
+| `codecId` | 归一化标识：`flac`、`ogg/flac`、`ogg/vorbis`、`ogg/opus`。**仅供打印 —— 程序化判断请用上面两个字段** |
 | `mimeType` | MIME 类型；无法判定时为 `application/octet-stream` |
 
 > **与 `Track.codecId` 的口径差异（容易误用，故写明）**：
@@ -275,7 +275,7 @@ main() {
 
 ```cangjie
 // package audio4cj（根包）
-public let AUDIO4CJ_VERSION = "0.3.0"
+public let AUDIO4CJ_VERSION = "0.3.1"
 ```
 
 ```cangjie

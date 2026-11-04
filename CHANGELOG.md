@@ -13,6 +13,40 @@
 >
 > 本文件是更新记录的**权威副本**：它位于仓库根目录，随制品包分发
 
+## 0.3.1
+
+### 修复
+
+- **`AsyncFrameStream` 生命周期三处缺陷**：流结束后再次调用 `next()` 不再永久阻塞
+  （与同步 `FrameStream` 一致返回 `None`）；消费者停止消费后后台解码线程不再无限空转；
+  `close()` 汇合后台线程时若失败信息此前未被记录，现会补记并可在 `next()` 中感知
+- **Vorbis 与其他格式对齐**：`seekTo` 传入超大时间戳不再抛运行时溢出异常
+  （与其他格式一致做饱和处理，落到流末尾）；对已关闭的 reader 执行
+  `nextPacket` / `seekTo` 改抛 `ClosedResourceException`（此前误抛
+  `CorruptedFileException`）
+- **资源不再泄漏**：`AudioFile.open()` / `openBytes()` 装配过程中若后续步骤失败，
+  已打开的底层文件句柄会被正确关闭；`readAll()` / `readFrames()` 在解码中途
+  出错时同样保证释放
+- **畸形 MP3 输入的健壮性**：位读取越过缓冲区时明确抛
+  `CorruptedFileException`（此前可能以运行时数组越界崩溃或静默产出垃圾样本）；
+  帧尾不足 4 字节时位缓存按 0 填充（与回填语义一致）
+
+### 文档
+
+- API 文档补齐 0.3.0 的 Ogg Vorbis 解码能力：支持表新增 `ogg + vorbis` 行、
+  `FormatNotSupportedException` 与异常速查表的示例更新、`FormatInfo.codecId`
+  枚举补上 `ogg/vorbis`
+
+### 打包
+
+- `flac_encode_test.cj`（全程内存闭环）登记进包内自足测试子集，纯内存测试文件
+  17 → **18** 个；发布脚本 FORBIDDEN 侧补齐对应反向断言
+
+### 版本号
+
+- `cjpm.toml`、`AUDIO4CJ_VERSION`（`src/audio4cj.cj`）与
+  `docs/api/core.md` 同步升至 **0.3.1**。
+
 ## 0.3.0
 
 ### 新增

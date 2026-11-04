@@ -3,7 +3,7 @@
 > 仓颉（Cangjie）生态的统一音频解析库：**探测容器格式 → 解码为统一的 f32 交错 PCM → 提取统一的标签模型**。
 
 [![CI](https://img.shields.io/github/actions/workflow/status/QianChengYuan/audio4cj/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/QianChengYuan/audio4cj/actions)
-[![SDK](https://img.shields.io/badge/SDK-1.1.0%2B-blueviolet)](https://github.com/QianChengYuan/audio4cj)
+[![SDK](https://img.shields.io/badge/SDK-1.2.0%2B-blueviolet)](https://cangjie-lang.cn/download/1.2.0)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **纯仓颉实现 · 零 C 依赖 · Apache-2.0**
@@ -179,7 +179,7 @@ audio4cj = "0.3.0"
 > **仓库侧全量 `cjpm test`：335 / 335 通过，`SKIPPED = 0`**
 > （2026-10-22 实测，SDK 1.2.0；CI 另按最低支持版本 1.1.0 验证同一套用例）。
 >
-> **制品包内只带 17 个纯内存、零副作用的测试文件**（当前清单见 `cjpm.toml` 的 `include`
+> **制品包内只带 18 个纯内存、零副作用的测试文件**（当前清单见 `cjpm.toml` 的 `include`
 > 白名单）：不读 `testdata/` 语料、不写任何文件，解包后 `cjpm test` 即可跑通，
 > **不要求工作目录可写**。包内用例数以包内 `cjpm test` 实测输出为准。
 >
