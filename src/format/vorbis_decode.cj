@@ -45,6 +45,38 @@ protected class VorbisPcmChunk {
     }
 }
 
+/// 一个音频包头部的解析结果：所选 mode 的块长、窗口几何与映射索引。
+///
+/// 值类型，由 parsePacketPlan 一次性产出，供后续各阶段只读传递 ——
+/// 避免 decodePacket 里同时挂着七八个窗口几何局部变量。
+private struct VorbisPacketPlan {
+    let n: Int64 // 本包块长（长块 blocksize1 / 短块 blocksize0）
+    let n2: Int64 // 半块长（residue 与反耦合的作用域）
+    let blockFlag: Bool // 是否长块（决定 IMDCT 的 blockType）
+    let leftStart: Int64 // 本包输出的起点（与上一包尾部混合处）
+    let rightStart: Int64 // 右半段（留给下一包混合）的起点
+    let rightEnd: Int64 // 右半段终点（= 右缘）
+    let mappingIndex: Int64 // 本包 mode 选中的 mapping
+
+    init(
+        n: Int64,
+        n2: Int64,
+        blockFlag: Bool,
+        leftStart: Int64,
+        rightStart: Int64,
+        rightEnd: Int64,
+        mappingIndex: Int64
+    ) {
+        this.n = n
+        this.n2 = n2
+        this.blockFlag = blockFlag
+        this.leftStart = leftStart
+        this.rightStart = rightStart
+        this.rightEnd = rightEnd
+        this.mappingIndex = mappingIndex
+    }
+}
+
 /// Vorbis 音频包解码内核。
 protected class VorbisDecoderCore {
     private let _setup: VorbisSetup
@@ -123,6 +155,10 @@ protected class VorbisDecoderCore {
     }
 
     /// 解码一个音频包；首包 / 丢弃期返回 None。
+    ///
+    /// 原为约 246 行的单体函数，现按流水线拆为八个阶段，各阶段一个私有方法：
+    /// 头部（parsePacketPlan）→ floor → residue → 反耦合 → floor 合成 →
+    /// IMDCT → 重叠相加 → 输出。行为逐行保持不变，阶段划分对照 stb_vorbis。
     protected func decodePacket(packet: Array<UInt8>): ?VorbisPcmChunk {
         if (packet.size == 0) {
             return None
@@ -134,6 +170,23 @@ protected class VorbisDecoderCore {
             return None
         }
 
+        let plan = parsePacketPlan(br)
+        let mapping = _setup.mappings[plan.mappingIndex]
+        let channels = _setup.channels
+
+        let (zero, reallyZero) = decodeFloors(br, mapping)
+
+        decodeResidues(br, mapping, zero, plan.n2)
+        uncouple(mapping, plan.n2)
+        applyFloors(mapping, reallyZero, plan.n2)
+        inverseMdct(plan.n, channels, plan.blockFlag)
+        overlapAdd(plan, channels)
+
+        emitPcm(plan, channels)
+    }
+
+    /// 解析包头的 mode 选择与窗口几何（stb vorbis_decode_initial 的对应部分）。
+    private func parsePacketPlan(br: VorbisBitReader): VorbisPacketPlan {
         let modeCount = _setup.modes.size
         let modeBits = vorbisIlog(modeCount - 1)
         let modeIndex = if (modeBits > 0) {
@@ -151,7 +204,6 @@ protected class VorbisDecoderCore {
         } else {
             _setup.blocksize0
         }
-        let n2 = n / 2
 
         var prevFlag = false
         var nextFlag = false
@@ -177,11 +229,15 @@ protected class VorbisDecoderCore {
         } else {
             n
         }
+        VorbisPacketPlan(n, n / 2, blockFlag, leftStart, rightStart, rightEnd, mode.mapping)
+    }
 
-        let mapping = _setup.mappings[mode.mapping]
+    /// ---- floor ----解各声道 floor1，返回 (zero, reallyZero)。
+    ///
+    /// zero：floor 判定全零（未编码）的声道；耦合会重新启用部分声道，
+    /// reallyZero 是耦合前的快照，供 floor 合成阶段判断"整体清零"。
+    private func decodeFloors(br: VorbisBitReader, mapping: VorbisMapping): (Array<Bool>, Array<Bool>) {
         let channels = _setup.channels
-
-        // ---- floor ----
         let zero = Array<Bool>(channels, repeat: false)
         var ch: Int64 = 0
         while (ch < channels) {
@@ -208,14 +264,17 @@ protected class VorbisDecoderCore {
             }
             cs += 1
         }
+        (zero, reallyZero)
+    }
 
-        // ---- residue（按 submap 分组）----
+    /// ---- residue ----按 submap 分组解 residue（n2 为半块长）。
+    private func decodeResidues(br: VorbisBitReader, mapping: VorbisMapping, zero: Array<Bool>, n2: Int64): Unit {
         var submap: Int64 = 0
         while (submap < mapping.submaps) {
             let buffers = ArrayList<Array<Float32>>()
             let flags = ArrayList<Bool>()
-            ch = 0
-            while (ch < channels) {
+            var ch: Int64 = 0
+            while (ch < _setup.channels) {
                 if (mapping.mux[ch] == submap) {
                     buffers.add(_spectra[ch])
                     flags.add(zero[ch])
@@ -225,19 +284,14 @@ protected class VorbisDecoderCore {
             if (buffers.size > 0) {
                 let residueIndex = mapping.submapResidue[submap]
                 let residue = _setup.residues[residueIndex]
-                decodeResidue(
-                    br,
-                    residue,
-                    _setup.codebooks,
-                    buffers.toArray(),
-                    n2,
-                    flags.toArray()
-                )
+                decodeResidue(br, residue, _setup.codebooks, buffers.toArray(), n2, flags.toArray())
             }
             submap += 1
         }
+    }
 
-        // ---- 反耦合（必须逆序）----
+    /// ---- 反耦合 ----（必须逆序执行，与编码端的正向耦合互逆）
+    private func uncouple(mapping: VorbisMapping, n2: Int64): Unit {
         var ci = mapping.couplingSteps - 1
         while (ci >= 0) {
             let mag = mapping.couplingMag[ci]
@@ -273,10 +327,12 @@ protected class VorbisDecoderCore {
             }
             ci -= 1
         }
+    }
 
-        // ---- floor 曲线乘到 residue 上 ----
-        ch = 0
-        while (ch < channels) {
+    /// ---- floor 曲线乘到 residue 上 ----（reallyZero 声道整体清零）
+    private func applyFloors(mapping: VorbisMapping, reallyZero: Array<Bool>, n2: Int64): Unit {
+        var ch: Int64 = 0
+        while (ch < _setup.channels) {
             let mux = mapping.mux[ch]
             let floor = _setup.floors[mapping.submapFloor[mux]]
             if (reallyZero[ch]) {
@@ -290,76 +346,84 @@ protected class VorbisDecoderCore {
             }
             ch += 1
         }
+    }
 
-        // ---- IMDCT ----
-        ch = 0
+    /// ---- IMDCT ----（blockType：1 = 长块，0 = 短块）
+    private func inverseMdct(n: Int64, channels: Int64, blockFlag: Bool): Unit {
         let blockType = if (blockFlag) {
             1
         } else {
             0
         }
+        var ch: Int64 = 0
         while (ch < channels) {
             _mdct.inverse(_spectra[ch], n, blockType)
             ch += 1
         }
+    }
 
-        // ---- 重叠相加 + 保存下一包所需的尾部 ----
+    /// ---- 重叠相加 ----左缘与上一包尾部混合，右半段存入 _prevWindows 留给下一包。
+    private func overlapAdd(plan: VorbisPacketPlan, channels: Int64): Unit {
         let overlap = _prevOverlap
         if (overlap > 0) {
             let w = windowForOverlap(overlap)
-            ch = 0
+            var ch: Int64 = 0
             while (ch < channels) {
                 let buf = _spectra[ch]
                 let prev = _prevWindows[ch]
                 var j: Int64 = 0
                 while (j < overlap) {
-                    buf[leftStart + j] = buf[leftStart + j] * w[j] + prev[j] * w[overlap - 1 - j]
+                    buf[plan.leftStart + j] = buf[plan.leftStart + j] * w[j] + prev[j] * w[overlap - 1 - j]
                     j += 1
                 }
                 ch += 1
             }
         }
 
-        let newOverlap = rightEnd - rightStart
-        ch = 0
+        let newOverlap = plan.rightEnd - plan.rightStart
+        var ch: Int64 = 0
         while (ch < channels) {
             let buf = _spectra[ch]
             let prev = _prevWindows[ch]
             var j: Int64 = 0
             while (j < newOverlap) {
-                prev[j] = buf[rightStart + j]
+                prev[j] = buf[plan.rightStart + j]
                 j += 1
             }
             ch += 1
         }
         _prevOverlap = newOverlap
+    }
 
+    /// ---- 输出 ----首包只 prime 不输出；按丢弃游标推进后，把
+    /// [outStart, rightStart) 交织成 f32 交错 PCM。
+    private func emitPcm(plan: VorbisPacketPlan, channels: Int64): ?VorbisPcmChunk {
         if (_firstPacket) {
             _firstPacket = false
-            _discardDeferred = n - rightEnd
+            _discardDeferred = plan.n - plan.rightEnd
             return None
         }
 
-        var outStart = leftStart
+        var outStart = plan.leftStart
         if (_discardDeferred > 0) {
-            let available = rightStart - outStart
+            let available = plan.rightStart - outStart
             if (_discardDeferred >= available) {
                 _discardDeferred -= available
-                outStart = rightStart
+                outStart = plan.rightStart
             } else {
                 outStart += _discardDeferred
                 _discardDeferred = 0
             }
         }
-        if (outStart >= rightStart) {
+        if (outStart >= plan.rightStart) {
             return None
         }
 
-        let frames = rightStart - outStart
+        let frames = plan.rightStart - outStart
         let samples = Array<Float32>(frames * channels, repeat: 0.0)
         var i: Int64 = 0
         while (i < frames) {
-            ch = 0
+            var ch: Int64 = 0
             while (ch < channels) {
                 samples[i * channels + ch] = _spectra[ch][outStart + i]
                 ch += 1
@@ -656,7 +720,57 @@ private func decodeResidue(
     }
 }
 
+/// 按类别索引解一个 type 0/1 分区：`books[c][pass]` 命中才解，未命中视为成功。
+/// 返回 false 表示包尾（正常结束）。
+/// pass 0 与后续 pass 的分区逻辑此前重复两份，统一走这里。
+private func decodeResiduePartition(
+    br: VorbisBitReader,
+    residue: VorbisResidue,
+    codebooks: Array<VorbisCodebook>,
+    target: Array<Float32>,
+    c: Int64,
+    pass: Int64,
+    pcount: Int64,
+    begin: Int64,
+    partSize: Int64
+): Bool {
+    let bookIndex = residue.books[c][pass]
+    if (bookIndex >= 0) {
+        let book = codebooks[bookIndex]
+        return decodePartition(br, book, target, begin + pcount * partSize, partSize, residue.residueType)
+    }
+    true
+}
+
+/// 同 decodeResiduePartition，type 2 交织分区版本（多声道交织写）。
+private func decodeInterleavedForClass(
+    br: VorbisBitReader,
+    residue: VorbisResidue,
+    codebooks: Array<VorbisCodebook>,
+    buffers: Array<Array<Float32>>,
+    n: Int64,
+    c: Int64,
+    pass: Int64,
+    pcount: Int64,
+    begin: Int64,
+    partSize: Int64,
+    doNotDecode: Array<Bool>
+): Bool {
+    let bookIndex = residue.books[c][pass]
+    if (bookIndex >= 0) {
+        let book = codebooks[bookIndex]
+        return decodeInterleavedPartition(br, book, buffers, n, begin + pcount * partSize, partSize, doNotDecode)
+    }
+    true
+}
+
 /// type 0/1（以及单声道的 type 2）：每个声道独立解。
+///
+/// 【与 decodeResidueInterleaved 为何不合并】两者外层"pass × 分区"骨架相似，
+/// 但数据布局本质不同：本函数按声道独立写入（decodePartition），交织版把
+/// 多声道拼成虚拟向量写（decodeInterleavedPartition）；统一需在最内层循环
+/// 引入间接层，代价大于收益（参照实现 stb_vorbis 亦保持两条路径）。
+/// 两者的实际重复（查书 + 解分区）已由上面两个 *_ForClass 函数消除。
 private func decodeResidueChannels(
     br: VorbisBitReader,
     residue: VorbisResidue,
@@ -706,14 +820,9 @@ private func decodeResidueChannels(
                     j = 0
                     while (j < ch) {
                         if (!doNotDecode[j]) {
-                            let c = classIndex[j][pcount]
-                            let bookIndex = residue.books[c][pass]
-                            if (bookIndex >= 0) {
-                                let offset = begin + pcount * partSize
-                                let book = codebooks[bookIndex]
-                                if (!decodePartition(br, book, buffers[j], offset, partSize, residue.residueType)) {
-                                    return
-                                }
+                            if (!decodeResiduePartition(br, residue, codebooks, buffers[j], classIndex[j][pcount], pass,
+                                pcount, begin, partSize)) {
+                                return
                             }
                         }
                         j += 1
@@ -727,14 +836,9 @@ private func decodeResidueChannels(
                 j = 0
                 while (j < ch) {
                     if (!doNotDecode[j]) {
-                        let c = classIndex[j][pcount]
-                        let bookIndex = residue.books[c][pass]
-                        if (bookIndex >= 0) {
-                            let offset = begin + pcount * partSize
-                            let book = codebooks[bookIndex]
-                            if (!decodePartition(br, book, buffers[j], offset, partSize, residue.residueType)) {
-                                return
-                            }
+                        if (!decodeResiduePartition(br, residue, codebooks, buffers[j], classIndex[j][pcount], pass,
+                            pcount, begin, partSize)) {
+                            return
                         }
                     }
                     j += 1
@@ -776,26 +880,18 @@ private func decodeResidueInterleaved(
                 while (i < residue.classwords && pcount < partRead) {
                     let c = row[i]
                     classIndex[pcount] = c
-                    let bookIndex = residue.books[c][pass]
-                    if (bookIndex >= 0) {
-                        let z = begin + pcount * partSize
-                        let book = codebooks[bookIndex]
-                        if (!decodeInterleavedPartition(br, book, buffers, n, z, partSize, doNotDecode)) {
-                            return
-                        }
+                    if (!decodeInterleavedForClass(br, residue, codebooks, buffers, n, c, pass, pcount, begin, partSize,
+                        doNotDecode)) {
+                        return
                     }
                     pcount += 1
                     i += 1
                 }
             } else {
                 let c = classIndex[pcount]
-                let bookIndex = residue.books[c][pass]
-                if (bookIndex >= 0) {
-                    let z = begin + pcount * partSize
-                    let book = codebooks[bookIndex]
-                    if (!decodeInterleavedPartition(br, book, buffers, n, z, partSize, doNotDecode)) {
-                        return
-                    }
+                if (!decodeInterleavedForClass(br, residue, codebooks, buffers, n, c, pass, pcount, begin, partSize,
+                    doNotDecode)) {
+                    return
                 }
                 pcount += 1
             }

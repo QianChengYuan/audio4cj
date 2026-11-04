@@ -206,39 +206,22 @@ protected func l3LdexpQ2(yIn: Float64, expQ2In: Int64): Float64 {
 ///
 /// 【为什么要先整体清零 `istPos`】它跨帧复用：上一帧残留的强度位置会被
 /// `mp3_stereo.cj` 当成有效数据读走。这是"复用缓冲"带来的典型陷阱。
-protected func l3DecodeScalefactors(hdr: Array<UInt8>, istPos: Array<UInt8>, bs: Mp3Bits, gr: Mp3GrInfo,
-    scf: Array<Float64>, ch: Int64): Unit {
-    // 整体清零（理由见函数头）：不是"顺手清理"，而是正确性必需。
-    var resetI: Int64 = 0
-    while (resetI < istPos.size) {
-        istPos[resetI] = UInt8(0)
-        resetI = resetI + 1
-    }
-    // 每行的含义：标度因子在**长块 / 混合块 / 短块**下各分几组（以 0 结尾）。
-    // 行号由块类型决定（见下面的 idxVal），取值来自规范。
-    let gScfPartitions: Array<Array<Int64>> = [
-        [6, 5, 5, 5, 6, 5, 5, 5, 6, 5, 7, 3, 11, 10, 0, 0, 7, 7, 7, 0, 6, 6, 6, 3, 8, 8, 5, 0],
-        [8, 9, 6, 12, 6, 9, 9, 9, 6, 9, 12, 6, 15, 18, 0, 0, 6, 15, 12, 0, 6, 12, 9, 6, 6, 18, 9, 0],
-        [9, 9, 6, 12, 9, 9, 9, 9, 9, 9, 12, 6, 18, 18, 0, 0, 12, 12, 12, 0, 12, 9, 9, 6, 15, 12, 9, 0]
-    ]
-    // 行选择 = 块类型：长块 → 0、混合块 → 1、纯短块 → 2。
-    // （有短块就 +1；若连长块部分都没有，说明是纯短块，再 +1。）
-    var idxVal: Int64 = 0
-    if (gr.nShortSfb != 0) {
-        idxVal = idxVal + 1
-    }
-    if (gr.nLongSfb == 0) {
-        idxVal = idxVal + 1
-    }
-    var scfPartition = gScfPartitions[idxVal]
-    var scfSize = [0, 0, 0, 0] // 4 组各自的标度因子位宽（0 = 该组不使用）
-    var iscf = Array<Int64>(40, repeat: 0) // 整数标度因子（尚未乘进 2 的幂）
+/// 标度因子分组表：每行的含义是标度因子在**长块 / 混合块 / 短块**下各分几组
+/// （以 0 结尾）。行号由块类型决定（长块 → 0、混合块 → 1、纯短块 → 2），取值来自规范。
+private let L3_SCF_PARTITIONS: Array<Array<Int64>> = [
+    [6, 5, 5, 5, 6, 5, 5, 5, 6, 5, 7, 3, 11, 10, 0, 0, 7, 7, 7, 0, 6, 6, 6, 3, 8, 8, 5, 0],
+    [8, 9, 6, 12, 6, 9, 9, 9, 6, 9, 12, 6, 15, 18, 0, 0, 6, 15, 12, 0, 6, 12, 9, 6, 6, 18, 9, 0],
+    [9, 9, 6, 12, 9, 9, 9, 9, 9, 9, 12, 6, 18, 18, 0, 0, 12, 12, 12, 0, 12, 9, 9, 6, 15, 12, 9, 0]
+]
 
-    var i: Int64 = 0
-    let scfShift = gr.scalefacScale + 1
-    var scfsi = gr.scfsi
-    var gainExp: Int64 = 0
-    var gain: Float64 = 0.0
+/// 计算 4 组标度因子的位宽与分组表（MPEG1 查表 / MPEG2 混合进制展开）。
+///
+/// 返回 (scfSize, scfPartition, scfsi)。MPEG2 返回的 scfsi = **-16 是有意的**：
+/// 让 l3ReadScalefactors 里的 `scfsiVal < 0` 成立，从而启用 MPEG2 的
+/// "标度因子满量程 = 强度位置"规则（见该函数说明）。
+private func l3ScfLayout(hdr: Array<UInt8>, gr: Mp3GrInfo, ch: Int64, idxVal: Int64): (Array<Int64>, Array<Int64>, 
+    Int64) {
+    var scfSize = [0, 0, 0, 0] // 4 组各自的标度因子位宽（0 = 该组不使用）
     if (hdrTestMpeg1(hdr)) {
         // MPEG1：4 比特的 scalefac_compress 直接查表得到"4 组的位宽"打包值 ——
         // 高 2 比特给第 0、1 组，低 2 比特给第 2、3 组（两两相同，规范如此规定：
@@ -249,6 +232,7 @@ protected func l3DecodeScalefactors(hdr: Array<UInt8>, istPos: Array<UInt8>, bs:
         scfSize[1] = (part >> 2)
         scfSize[2] = part & 3
         scfSize[3] = part & 3
+        (scfSize, L3_SCF_PARTITIONS[idxVal], gr.scfsi)
     } else {
         // MPEG2：9 比特是一个**混合进制数**（各"位"的进制由 gMod 给出，只有 1..6），
         // 反复"取余 → 减去 → 进下一段"即可逐轮展开出 4 个位宽，最多 3 轮
@@ -278,14 +262,61 @@ protected func l3DecodeScalefactors(hdr: Array<UInt8>, istPos: Array<UInt8>, bs:
             sfc = sfc - modprod
             k = k + 4
         }
-        // 每一轮消耗一组 gScfPartitions 的分组数，故按 k 切掉已消费的部分。
-        let scfBase = gScfPartitions[idxVal]
-        scfPartition = scfBase.slice(k, scfBase.size - k)
-        // **负数是有意的**：让 l3ReadScalefactors 里的 `scfsiVal < 0` 成立，
-        // 从而启用 MPEG2 的"标度因子满量程 = 强度位置"规则（见该函数说明）。
-        scfsi = -16
+        // 每一轮消耗一组 L3_SCF_PARTITIONS 的分组数，故按 k 切掉已消费的部分。
+        let scfBase = L3_SCF_PARTITIONS[idxVal]
+        (scfSize, scfBase.slice(k, scfBase.size - k), -16)
     }
+}
+
+/// 短块：把三个 subblock_gain 加进对应窗口带的指数（它们不逐带写进比特流）；
+/// 非短块且 preflag 时加 preamp（MPEG1 的 10 带预加重）。
+private func l3ApplyGainOffsets(gr: Mp3GrInfo, scfShift: Int64, iscf: Array<Int64>): Unit {
+    // 短块：每个窗口有自己的"公共增益"（subblock_gain），它不逐带写进比特流，
+    // 而是加进标度因子的**指数**里。3 个窗口交错，故按 ii、ii+1、ii+2 各加一项；
+    // `sh = 3 - scfShift` 把增益对齐到当前指数刻度（scalefac_scale 会让刻度变 2 倍）。
+    if (gr.nShortSfb != 0) {
+        let sh = 3 - scfShift
+        var ii: Int64 = 0
+        while (ii < gr.nShortSfb) {
+            iscf[gr.nLongSfb + ii + 0] = iscf[gr.nLongSfb + ii + 0] + (gr.subblockGain[0] << sh)
+            iscf[gr.nLongSfb + ii + 1] = iscf[gr.nLongSfb + ii + 1] + (gr.subblockGain[1] << sh)
+            iscf[gr.nLongSfb + ii + 2] = iscf[gr.nLongSfb + ii + 2] + (gr.subblockGain[2] << sh)
+            ii = ii + 3
+        }
+    } else if (gr.preflag != 0) {
+        let gPreamp: Array<Int64> = [1, 1, 1, 1, 2, 2, 3, 3, 3, 2]
+        var t: Int64 = 0
+        while (t < 10) {
+            iscf[11 + t] = iscf[11 + t] + gPreamp[t]
+            t = t + 1
+        }
+    }
+}
+
+protected func l3DecodeScalefactors(hdr: Array<UInt8>, istPos: Array<UInt8>, bs: Mp3Bits, gr: Mp3GrInfo,
+    scf: Array<Float64>, ch: Int64): Unit {
+    // 整体清零（理由见函数头）：不是"顺手清理"，而是正确性必需。
+    var resetI: Int64 = 0
+    while (resetI < istPos.size) {
+        istPos[resetI] = UInt8(0)
+        resetI = resetI + 1
+    }
+    // 行选择 = 块类型：长块 → 0、混合块 → 1、纯短块 → 2。
+    // （有短块就 +1；若连长块部分都没有，说明是纯短块，再 +1。）
+    var idxVal: Int64 = 0
+    if (gr.nShortSfb != 0) {
+        idxVal = idxVal + 1
+    }
+    if (gr.nLongSfb == 0) {
+        idxVal = idxVal + 1
+    }
+    var iscf = Array<Int64>(40, repeat: 0) // 整数标度因子（尚未乘进 2 的幂）
+
+    let scfShift = gr.scalefacScale + 1
+    let (scfSize, scfPartition, scfsi) = l3ScfLayout(hdr, gr, ch, idxVal)
     l3ReadScalefactors(iscf, istPos, scfSize, scfPartition, bs, scfsi)
+
+    l3ApplyGainOffsets(gr, scfShift, iscf)
 
     // 短块：每个窗口有自己的"公共增益"（subblock_gain），它不逐带写进比特流，
     // 而是加进标度因子的**指数**里。3 个窗口交错，故按 ii、ii+1、ii+2 各加一项；
@@ -310,23 +341,22 @@ protected func l3DecodeScalefactors(hdr: Array<UInt8>, istPos: Array<UInt8>, bs:
     // MS 立体声的定标：指数单位是 1/4 位，故"减 2"= 整体乘 1/√2。
     // 这一项与 mp3_stereo.cj 里强度立体声分支的 `s = √2` 是**配对**的：
     // 反量化时按 MS 打一个 1/√2，强度重建时再乘回来。
-    var msSub: Int64 = 0
-    if (hdrTestMsStereo(hdr)) {
-        msSub = 2
+    let msSub = if (hdrTestMsStereo(hdr)) {
+        2
     } else {
-        msSub = 0
+        0
     }
     // gainExp 是"每带标度因子的基准指数"（含规范偏置 210 与输出位宽修正）。
     // `gain = 2^((MAX_SCFI - gainExp)/4) · 2^(MAX_SCFI/4)` 这样写，是为了把
     // `1 << (MAX_SCFI / 4)` 作为**精确的 2 的整数次幂**乘进去，避免浮点幂运算 —
     // 这也是 MAX_SCFI 必须是 4 的倍数的原因（见 mp3_layer3.cj 的常量说明）。
-    gainExp = gr.globalGain + BITS_DEQUANTIZER_OUT * 4 - 210 - msSub
-    gain = l3LdexpQ2(Float64(1 << (MAX_SCFI / 4)), MAX_SCFI - gainExp)
+    let gainExp = gr.globalGain + BITS_DEQUANTIZER_OUT * 4 - 210 - msSub
+    let gain = l3LdexpQ2(Float64(1 << (MAX_SCFI / 4)), MAX_SCFI - gainExp)
 
     // 最终标度因子 = gain · 2^(iscf · 2^scalefac_scale / 4)：
     // `<< scfShift`（scfShift = scalefacScale + 1 ∈ {1,2}）把"步长是否加倍"折进指数，
     // 于是"整带乘一个标度因子"仍只用到 l3LdexpQ2，不需要额外分支。
-    i = 0
+    var i: Int64 = 0
     while (i < (gr.nLongSfb + gr.nShortSfb)) {
         let iscfVal = iscf[i]
         let shiftedVal = iscfVal << scfShift
@@ -573,20 +603,44 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
     // 位缓存：一次把 32 位读进 cache，主循环里只做移位与掩码 —— 这是本函数能跑到
     // 实用速度的前提（否则每取一位都要走一遍 getBits 的分支与边界检查）。
     let bc = L3BitCache(bs)
-    var ireg: Int64 = 0 // 当前处理到第几个"区域"（决定用哪张码表、逃逸位数）
-    var bigValCnt = grInfo.bigValues
     // 频带游标用**下标**，不用 `slice`：
     //   原先每消费一个频带就 `sfb = sfb.slice(1, sfb.size - 1)` —— 每个 granule 要分配
     //   十几次小数组（44.1kHz 立体声约每秒 2000+ 次），纯属白送的 GC 压力；
     //   换成下标后一次分配都没有，而且不再改动传进来的频带表（更安全）。
     let sfb = grInfo.sfbtab
+
+    // 原为约 230 行的单体函数，现按频谱的两段拆为两个阶段函数（每 granule 各调
+    // 一次，不在样本级热路径上引入调用开销）；阶段间的游标状态用元组传递。
+    let (bigValCnt, sfbIdx, scfIdx, dstOff, curOne) = l3HuffmanBigValues(dst, bc, grInfo, scf, sfb)
+    l3HuffmanCount1(dst, bc, grInfo, scf, sfb, bigValCnt, sfbIdx, scfIdx, dstOff, curOne, layer3grLimit)
+
+    // 【结尾为什么强行改 `bs.pos`】Huffman 循环可能因数据非法/越界而提前退出，但
+    // **下一 granule 的数据一定从"本 granule 声明的长度处"开始**。所以结束时把位位置
+    // 硬设到 `layer3grLimit`，是保证帧内后续解析不跑偏的关键一步 ——
+    // 少了它，第二个 granule 会紧接着错位，整帧报废。
+    bs.pos = layer3grLimit
+}
+
+/// 第一段：big_values 区（大值区，成对样点用 32 张码表之一编码）。
+///
+/// 规范把频谱按频率切成 2~3 段，每段用不同的码表 —— 因为低频大值、
+/// 高频多为零，用同一张表会浪费码长。`regionCount` 给出每段的频带数（255 = 不存在）。
+///
+/// 返回跨阶段游标状态 (bigValCnt, sfbIdx, scfIdx, dstOff, curOne)。
+private func l3HuffmanBigValues(
+    dst: Array<Float64>,
+    bc: L3BitCache,
+    grInfo: Mp3GrInfo,
+    scf: Array<Float64>,
+    sfb: Array<Int64>
+): (Int64, Int64, Int64, Int64, Float64) {
+    var ireg: Int64 = 0 // 当前处理到第几个"区域"（决定用哪张码表、逃逸位数）
+    var bigValCnt = grInfo.bigValues
     var sfbIdx: Int64 = 0
     var dstOff: Int64 = 0
     var curOne: Float64 = 0.0 // 当前频带的标度因子（就地反量化用）
     var scfIdx: Int64 = 0
 
-    // 区域循环：规范把频谱按频率切成 2~3 段，每段用不同的码表 —— 因为低频大值、
-    // 高频多为零，用同一张表会浪费码长。`regionCount` 给出每段的频带数（255 = 不存在）。
     while (bigValCnt > 0) {
         let tabNum = grInfo.tableSelect[ireg]
         var sfbCnt = grInfo.regionCount[ireg]
@@ -685,13 +739,33 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
             sfbCnt = sfbCnt - 1
         } while (bigValCnt > 0 && sfbCnt >= 0)
     }
+    (bigValCnt, sfbIdx, scfIdx, dstOff, curOne)
+}
 
-    // ---- 第二段：count1 区（4 元码表）----
-    // big_values 之后剩下的样点只会是"小值"，规范用**四元码表**编码：一个码字
-    // 同时描述 4 个样点的"零/非零 + 各自的符号"，1 比特的 count1Table 在两张表间选。
-    // `np = 1 - bigValCnt` 是个计数技巧：bigValCnt 已归零时 np = 1，循环体内先自减
-    // 变成 0 正好触发"取下一个频带"，省掉一次单独的首轮初始化。
-    var np: Int64 = 1 - bigValCnt
+/// 第二段：count1 区（4 元码表）。
+///
+/// big_values 之后剩下的样点只会是"小值"，规范用**四元码表**编码：一个码字
+/// 同时描述 4 个样点的"零/非零 + 各自的符号"，1 比特的 count1Table 在两张表间选。
+/// `np = 1 - bigValCnt` 是个计数技巧：bigValCnt 已归零时 np = 1，循环体内先自减
+/// 变成 0 正好触发"取下一个频带"，省掉一次单独的首轮初始化。
+private func l3HuffmanCount1(
+    dst: Array<Float64>,
+    bc: L3BitCache,
+    grInfo: Mp3GrInfo,
+    scf: Array<Float64>,
+    sfb: Array<Int64>,
+    bigValCntIn: Int64,
+    sfbIdxIn: Int64,
+    scfIdxIn: Int64,
+    dstOffIn: Int64,
+    curOneIn: Float64,
+    layer3grLimit: Int64
+): Unit {
+    var np: Int64 = 1 - bigValCntIn
+    var sfbIdx = sfbIdxIn
+    var scfIdx = scfIdxIn
+    var dstOff = dstOffIn
+    var curOne = curOneIn
     while (true) {
         var codebookCount1 = L3_HUFF_TAB32
         if (grInfo.count1Table != 0) {
@@ -798,5 +872,4 @@ protected func l3Huffman(dst: Array<Float64>, bs: Mp3Bits, grInfo: Mp3GrInfo, sc
             break
         }
     }
-    bs.pos = layer3grLimit
 }

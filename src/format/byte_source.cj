@@ -77,6 +77,30 @@ protected interface SeekableByteSource <: ByteSource {
     func length(): Int64
 }
 
+/// 精确读取的公共实现：从 `src` 逐次 `readSome` 拼满 n 字节，不足即抛。
+///
+/// FileByteSource 与 OggFlacByteSource 共用（此前是两份逐字节同构的拷贝，
+/// 修一处漏一处的风险）；`label` 用于异常消息标识来源（路径或容器名）。
+/// MemoryByteSource 不走此路径 —— 它持有原数组，可用 O(1) 切片直取。
+protected func readExactFrom(src: ByteSource, n: Int64, label: String): Array<UInt8> {
+    let out = Array<UInt8>(n, repeat: 0)
+    var got: Int64 = 0
+    while (got < n) {
+        let scratch = Array<UInt8>(n - got, repeat: 0)
+        let r = src.readSome(scratch)
+        if (r <= 0) {
+            throw CorruptedFileException("${label}：字节流提前结束（需 ${n} 字节，已得 ${got}）")
+        }
+        var i: Int64 = 0
+        while (i < r) {
+            out[got + i] = scratch[i]
+            i += 1
+        }
+        got += r
+    }
+    out
+}
+
 /// 裸文件字节源：源偏移与文件偏移一一对应。
 protected class FileByteSource <: SeekableByteSource {
     private let _path: String
@@ -89,28 +113,10 @@ protected class FileByteSource <: SeekableByteSource {
         this._file = File(path, Read)
     }
 
-    /// 精确读取 n 字节；不足则抛异常。
-    ///
-    /// 注意 `File.read` 只能从数组**起始处**写入，因此分次读取时须经临时缓冲
-    /// 拼接 —— 不能靠切片（仓颉的切片是拷贝，写进去不会回到原数组）。
+    /// 精确读取 n 字节；不足则抛异常（公共实现见 readExactFrom）。
+    /// _pos 由 readSome 逐次累计（成功时恰为 +n），此处不再重复累加。
     public func readExact(n: Int64): Array<UInt8> {
-        let buf = Array<UInt8>(n, repeat: 0)
-        var got: Int64 = 0
-        while (got < n) {
-            let scratch = Array<UInt8>(n - got, repeat: 0)
-            let r = _file.read(scratch)
-            if (r <= 0) {
-                throw CorruptedFileException("字节流提前结束（需 ${n} 字节，已得 ${got}）：${_path}")
-            }
-            var i: Int64 = 0
-            while (i < r) {
-                buf[got + i] = scratch[i]
-                i += 1
-            }
-            got += r
-        }
-        _pos += n
-        buf
+        readExactFrom(this, n, _path)
     }
 
     /// 跳过 n 字节：文件源直接定位越过（无需为被跳过的内容分配缓冲）。

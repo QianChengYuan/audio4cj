@@ -126,22 +126,8 @@ protected class OggFlacByteSource <: ByteSource {
     // ------------------------------------------------------------------
 
     public func readExact(n: Int64): Array<UInt8> {
-        let out = Array<UInt8>(n, repeat: 0)
-        var got: Int64 = 0
-        while (got < n) {
-            let scratch = Array<UInt8>(n - got, repeat: 0)
-            let r = readSome(scratch)
-            if (r <= 0) {
-                throw CorruptedFileException("Ogg/FLAC 字节流提前结束（需 ${n} 字节，已得 ${got}）")
-            }
-            var i: Int64 = 0
-            while (i < r) {
-                out[got + i] = scratch[i]
-                i += 1
-            }
-            got += r
-        }
-        out
+        // 公共实现见 byte_source.cj 的 readExactFrom（此前是同构拷贝）。
+        readExactFrom(this, n, "Ogg/FLAC")
     }
 
     public func skip(n: Int64): Unit {

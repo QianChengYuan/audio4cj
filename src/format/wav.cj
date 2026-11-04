@@ -4,6 +4,7 @@ import std.fs.*
 import std.io.* // SeekPosition 定义于 std.io（Seekable 接口所在包）
 import audio4cj.core.*
 import audio4cj.meta.Tag
+import audio4cj.meta.matchAsciiAt
 import audio4cj.meta.parseWavInfo
 import audio4cj.pcm.*
 
@@ -172,7 +173,7 @@ protected class WavFormatReader <: FormatReader {
         if (got < 4) {
             return
         }
-        if (!matchTag(body, 0, "INFO")) {
+        if (!matchAsciiAt(body, 0, "INFO")) {
             return // 非 INFO 类型的 LIST（如 "adtl"），跳过
         }
         _infoBody = body
@@ -265,7 +266,7 @@ protected class WavFormatReader <: FormatReader {
         if (_src.readSome(riff) < 12) {
             throw CorruptedFileException("文件过短，不是合法 WAV（${_path}）")
         }
-        if (!matchTag(riff, 0, "RIFF") || !matchTag(riff, 8, "WAVE")) {
+        if (!matchAsciiAt(riff, 0, "RIFF") || !matchAsciiAt(riff, 8, "WAVE")) {
             throw CorruptedFileException("缺少 RIFF/WAVE 标识（${_path}）")
         }
 
@@ -293,7 +294,7 @@ protected class WavFormatReader <: FormatReader {
             }
             let bodyOffset = offset + 8
 
-            if (matchTag(ch, 0, "fmt ")) {
+            if (matchAsciiAt(ch, 0, "fmt ")) {
                 if (size < 16 || size > 4096) {
                     throw CorruptedFileException("fmt chunk 长度异常：${size}")
                 }
@@ -305,7 +306,7 @@ protected class WavFormatReader <: FormatReader {
                 }
                 parseFmt(fmt)
                 fmtSeen = true
-            } else if (matchTag(ch, 0, "data")) {
+            } else if (matchAsciiAt(ch, 0, "data")) {
                 if (!fmtSeen) {
                     throw CorruptedFileException("data chunk 出现在 fmt 之前，结构非法")
                 }
@@ -314,7 +315,7 @@ protected class WavFormatReader <: FormatReader {
                     _dataSize = size
                     dataSeen = true
                 }
-            } else if (matchTag(ch, 0, "LIST")) {
+            } else if (matchAsciiAt(ch, 0, "LIST")) {
                 if (_infoBody.isNone()) {
                     readInfoChunk(bodyOffset, size)
                 }
@@ -368,19 +369,5 @@ protected class WavFormatReader <: FormatReader {
             let subFormat = Int64(readUInt16LE(fmt, 24))
             _audioFormat = subFormat
         }
-    }
-
-    /// 比较字节数组中的 ASCII 标签。
-    private func matchTag(data: Array<UInt8>, offset: Int64, tag: String): Bool {
-        let t = tag.toArray()
-        if (offset < 0 || offset + t.size > data.size) {
-            return false
-        }
-        for (i in 0..t.size) {
-            if (data[offset + i] != t[i]) {
-                return false
-            }
-        }
-        true
     }
 }
